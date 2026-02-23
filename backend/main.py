@@ -8,16 +8,17 @@ from dotenv import load_dotenv
 # Load environment variables
 load_dotenv()
 
-# Import FMP, FRED, Upstox, NewsAPI, and NewsData.io routes
+# Import FMP, FRED, Upstox, NewsAPI, NewsData.io, and Kite Connect routes
 from FMP_api.routes import router as fmp_router
 from FRED_api.routes import router as fred_router
 from Upstox_api.routes import router as upstox_router
 from NewsAPI.routes import router as news_router
 from NewsDataIO.routes import router as newsdata_router
+from Kite_api.routes import router as kite_router
 
 app = FastAPI(
     title="Equity Finance APIs",
-    description="Comprehensive API for equity finance, market data, macroeconomic indicators, news intelligence, and AI-driven financial analysis. Includes US markets (FMP), Indian markets (Upstox), macroeconomic data (FRED), real-time news (NewsAPI), and advanced news with market/ticker/sentiment data (NewsData.io).",
+    description="Comprehensive API for equity finance, market data, macroeconomic indicators, news intelligence, and AI-driven financial analysis. Includes US markets (FMP), Indian markets (Upstox, Kite Connect), macroeconomic data (FRED), real-time news (NewsAPI), and advanced news with market/ticker/sentiment data (NewsData.io).",
     version="1.0.0",
     docs_url="/docs",
     redoc_url="/redoc"
@@ -38,6 +39,7 @@ app.include_router(fred_router)
 app.include_router(upstox_router)
 app.include_router(news_router)
 app.include_router(newsdata_router)
+app.include_router(kite_router)
 
 
 # Response models
