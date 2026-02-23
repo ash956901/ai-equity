@@ -11,7 +11,7 @@ This repository contains an **AI-Native Equity Research Platform** — a full-st
 ### Core Capabilities
 - **Multi-Dimensional Data Ingestion:** Automated scraping and parsing of NSE/BSE filings, investor presentations, concall transcripts, news, and board meeting decks.
 - **N-th Order Thematic Discovery:** Maps "ripple effects" of news/events across interconnected industries using a Semantic Knowledge Graph (e.g., ethanol policy → petroleum sector → sugar industry).
-- **"Iris" Deep Research Assistant:** A domain-specific conversational AI grounded strictly in uploaded documents via an advanced RAG pipeline with strict context windowing.
+- **"Iris" Deep Research Assistant:** A domain-specific conversational AI powered by Sarvam AI's sarvam-m model, grounded strictly in uploaded documents via an advanced RAG pipeline with strict context windowing.
 - **Portfolio Intelligence & Automated Timeline:** Risk metrics (PE/PB, volatility), a scrolling feed of ≤50-word actionable insights from daily filings, and real-time WebSocket dashboards.
 
 ---
@@ -20,9 +20,9 @@ This repository contains an **AI-Native Equity Research Platform** — a full-st
 
 | Layer | Technologies |
 |---|---|
-| **Frontend** | Next.js (React, TypeScript), Tailwind CSS, Recharts, WebSocket client |
+| **Frontend** | React (Vite, TypeScript), Tailwind CSS, React Router, assistant-ui, Recharts, WebSocket client |
 | **Backend** | Python 3.10+, FastAPI, Pydantic v2, Uvicorn |
-| **AI / ML** | LangChain / LlamaIndex, Hugging Face Transformers (FinBERT), OpenAI API (GPT-4o) / Llama 3 |
+| **AI / ML** | Sarvam AI (sarvam-m), LangChain / LlamaIndex, Hugging Face Transformers (FinBERT), Llama 3 |
 | **Databases** | PostgreSQL (relational), Pinecone (vector DB) |
 | **Knowledge Graph** | NetworkX (in-memory graph logic) |
 | **Scraping / Parsing** | BeautifulSoup, Selenium, pdfplumber, python-pptx, OCR (Tesseract) |
@@ -35,12 +35,16 @@ This repository contains an **AI-Native Equity Research Platform** — a full-st
 
 ```
 /
-├── frontend/             # Next.js React application
-│   ├── app/              # App Router pages & layouts
-│   ├── components/       # Reusable UI components (atoms, molecules, organisms)
-│   ├── hooks/            # Custom React hooks
-│   ├── lib/              # API client, utility functions, constants
-│   ├── types/            # Shared TypeScript interfaces & types
+├── frontend/             # Vite + React + TypeScript application
+│   ├── src/
+│   │   ├── components/   # Reusable UI components
+│   │   │   ├── assistant-ui/  # Chat thread components (assistant-ui primitives)
+│   │   │   └── layout/        # Dashboard layout, sidebar
+│   │   ├── pages/        # Route-level page components
+│   │   ├── providers/    # React context providers (runtime, etc.)
+│   │   ├── hooks/        # Custom React hooks
+│   │   ├── lib/          # Utility functions, constants
+│   │   └── types/        # Shared TypeScript interfaces & types
 │   └── public/           # Static assets
 │
 ├── backend/              # FastAPI server
@@ -92,7 +96,8 @@ This repository contains an **AI-Native Equity Research Platform** — a full-st
 - **Components:** Always use functional components with React Hooks. No class components.
 - **Typing:** Strictly type all props, state, and API response interfaces in `/frontend/types/`. Avoid `any`.
 - **Styling:** Tailwind CSS utility classes only. No custom CSS files unless there is a compelling reason (e.g., complex animations). Use `cn()` helper (clsx + tailwind-merge) for conditional classes.
-- **Data Fetching:** Use React Query / SWR for server-state management. Keep API calls in `/frontend/lib/`.
+- **Chat UI:** Use `assistant-ui` primitives (`ThreadPrimitive`, `ComposerPrimitive`, `MessagePrimitive`, etc.) for the Iris chat interface. The runtime adapter connects to Sarvam AI's `sarvam-m` chat completions API.
+- **Data Fetching:** Use React Query / SWR for server-state management. Keep API calls in `/frontend/src/lib/`.
 - **File Naming:** `kebab-case` for files (e.g., `portfolio-card.tsx`), `PascalCase` for component exports.
 - **Modularity:** Prefer small, composable components. Extract repeated patterns into reusable components or hooks.
 
@@ -139,8 +144,8 @@ This repository contains an **AI-Native Equity Research Platform** — a full-st
 ## 7. Boundaries & Constraints (CRITICAL)
 
 - **Financial Accuracy:** The AI module must strictly adhere to provided document context (RAG). **Never** instruct the LLM to guess, extrapolate, or hallucinate financial metrics. If context is insufficient, the system must say so.
-- **Security:** Never hardcode API keys, tokens, or credentials (OpenAI, Pinecone, PostgreSQL, etc.). Always use `.env` variables via `os.getenv()` / `pydantic-settings`. Ensure `.env` is in `.gitignore`.
+- **Security:** Never hardcode API keys, tokens, or credentials (Sarvam AI, Pinecone, PostgreSQL, etc.). Always use `.env` variables via `os.getenv()` / `pydantic-settings` (backend) or `import.meta.env` (Vite frontend). Ensure `.env` is in `.gitignore`.
 - **Database Safety:** Do not write scripts that drop tables, truncate data, or alter PostgreSQL schemas without explicit user confirmation. Use Alembic migrations for all schema changes.
 - **Dependencies:** Do not introduce heavy new dependencies without evaluating necessity. Prefer existing stack tools. If a new library is needed, note it clearly.
-- **Cost Awareness:** LLM API calls (OpenAI) cost money. Implement caching for repeated queries and avoid unnecessary re-embedding of unchanged documents.
+- **Cost Awareness:** LLM API calls (Sarvam AI) cost money. Implement caching for repeated queries and avoid unnecessary re-embedding of unchanged documents.
 - **Data Privacy:** Scraped financial data may include sensitive corporate information. Do not log or expose raw document content in API error responses.
