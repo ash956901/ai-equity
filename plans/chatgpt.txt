@@ -1,0 +1,1835 @@
+
+
+
+
+You said:
+
+AI-powered Equity Research Platform 
+Empowering Future: Transforming Finance through futuristic AI Solutions.
+
+
+analyse compnay quarter or annual financial data according to stock broker needs and dump analysis and visualize 
+
+
+
+
+
+ Additional info: "We are an AI-native Equity Research Platform built to help investors make better, research-backed investment decisions. Being AI-native means the platform uses AI at its core to solve real investor problems.  Indian investors face four critical challenges in their stock market journey, and we solve all four using AI.  Problem 1: Stock Discovery India is a stock discoverer’s market, but identifying quality stocks, emerging themes, and the next big opportunity is difficult. To solve this, we built Discovery, where our AI engine processes massive volumes of exchange filings like investor presentations, concalls, and annual reports, and tags companies into thematic buckets such as AI, Blockchain, and Semiconductors in near real time.  For example, Discovery tagged Castrol India under the Data Centers theme. At first glance, this seems incorrect because Castrol is a lubricant company. However, the AI explains its reasoning: Castrol manufactures coolants for data centers and could benefit from the AI and data center boom.  This is where AI shines. Humans can analyze a few documents across limited companies, but AI can read millions of documents across every company to surface asymmetric insights.  Problem 2: Deep Research Discovering a company is just the first step. Serious investing requires deep research. For this, we built Iris, an AI chatbot specialized in the stock market space.  You can ask Iris to analyze financials, summarize the latest concall, explain a company’s AI strategy, or assess management quality. Iris acts as a research assistant not just for stocks, but also for IPOs, ETFs, and indices.  Iris also guides your research journey. When you start analyzing a company, it suggests the right questions to ask and helps you dig deeper with follow-up questions so you can make informed decisions.  Problem 3: Portfolio Analysis After discovering, researching, and investing, the next challenge is understanding your portfolio. A portfolio with good companies can still be risky if it lacks diversification.  With the Portfolio Dashboard, you can securely connect your broker account to our platform in under 10 seconds. You’ll instantly see portfolio intelligence such as asset allocation, sector exposure, diversification, one-year forecasts, red flags, and metrics like PE, PB, and volatility, benchmarked against indices.  You can also ask Iris questions about your portfolio, such as whether promoters are selling stakes in any of your holdings, and get instant answers.  Problem 4: Company Tracking Most investors track dozens of companies across portfolios and watchlists. Staying updated with daily corporate developments across all of them is nearly impossible.  To solve this, we built Timeline. We process thousands of NSE and BSE filings daily and surface only the most important updates as concise one-liners. Even a one-minute scroll keeps you informed. Multiple filters let you customize the feed based on your preferences.  We act as a one-stop solution to the four biggest problems Indian stock market investors face, bringing institutional-grade research tools to everyday investors so they can make their own informed decisions."    thsi is the reference product website link we're trying to build with more features: https://www.multibagg.ai/  - planning:  - i want build this using agents (frameworks: crewai/langraph/any other pwerful OSS software) whcih can find insights like the one ive mentioned above, as well as crawl through Press Releases/ ntoices/ finaincial documents containing a lot of diagrams (pi chart/histogram), tables, financial content in text and find insights and generate suggestions, also compare between two companies using suitable headers/grounds if asked for. - crawl company website fiancial and investor related releases/news/updates/etc. - an ETL pipeline which process all these information and stores it in some database/ and an agent which can answer using that info using the tools defined/ tools which can do it on the fly.  - i want to integrate using google news api/ some other api thats free for student projects to do sentiment analysis, push news on the subscribed/invested comapnies, etc. - also integrate broker apis (kotak/zerodha/groww) for portoflio maangement on user automated clicks.  - a chat interface for direct information, or comaprision (use tools etc), with options of uploading a PPT/PDF/document to analyse that separately. - teh chat session should be stored and should have memory context awareness.   stack: python. frameworks ik/but please suggest if more: crewai, langgraph, pydantic, azure/aws for cloud deployemnts, ETL idk which one to use, suggest for apis as well    
+
+ChatGPT said:
+This is a serious product vision, Shamanth.
+You're basically building an AI-native institutional-grade equity research OS.
+
+I’ll break this into:
+
+🧠 System Architecture (Agent-based)
+
+📊 Financial Analysis Engine (Broker-style output + Visualization)
+
+🕸 Data Crawling + ETL Pipeline
+
+📰 News + Sentiment Pipeline
+
+💼 Broker Integration Architecture
+
+💬 AI Chat with Memory + Document Upload
+
+🛠 Recommended Stack (battle-tested)
+
+⚙ Deployment Architecture (AWS/Azure ready)
+
+1️⃣ AGENT-BASED SYSTEM ARCHITECTURE
+You should use LangGraph over CrewAI.
+
+Why?
+
+CrewAI → good for role-play agents
+
+LangGraph → stateful multi-step reasoning
+
+Better memory
+
+Tool orchestration
+
+Deterministic execution paths
+
+Production-grade
+
+You need deterministic flows, not “creative agents”.
+
+High-Level Agent Graph
+User Query
+   ↓
+Router Agent
+   ↓
+-----------------------------------------
+| Financial Analysis Agent             |
+| Company Comparison Agent             |
+| Portfolio Risk Agent                 |
+| News Sentiment Agent                 |
+| Filing Insights Agent                |
+| Discovery Theme Tagging Agent        |
+-----------------------------------------
+   ↓
+Response Synthesizer Agent
+   ↓
+UI (Chat / Dashboard / API)
+2️⃣ 📊 FINANCIAL ANALYSIS ENGINE (Broker-Style Output)
+This is your “Iris” equivalent.
+
+Inputs:
+Quarterly results
+
+Annual reports
+
+Balance Sheet
+
+P&L
+
+Cash flow
+
+Investor presentation
+
+Concall transcript
+
+Output Should Include:
+1️⃣ Financial Growth Analysis
+Revenue CAGR (3Y/5Y)
+
+EBITDA margin trend
+
+PAT growth
+
+EPS growth
+
+FCF consistency
+
+2️⃣ Balance Sheet Health
+Debt/Equity
+
+Interest coverage
+
+ROCE
+
+ROE
+
+Working capital efficiency
+
+3️⃣ Risk Flags
+Promoter pledge %
+
+Auditor change
+
+Contingent liabilities
+
+Related party transactions
+
+4️⃣ Valuation Metrics
+PE vs Industry
+
+EV/EBITDA
+
+PEG ratio
+
+Historical PE band
+
+5️⃣ Visualizations (Auto-Generated)
+Revenue Trend (line chart)
+
+Margin trend
+
+Debt vs Equity
+
+FCF trend
+
+Peer comparison bar graph
+
+You should use:
+
+matplotlib (no seaborn)
+
+or Plotly (better for dashboards)
+
+3️⃣ 🕸 DATA CRAWLING + ETL PIPELINE
+This is your biggest competitive moat.
+
+Data Sources
+NSE filings
+
+BSE filings
+
+Company website investor section
+
+Press releases
+
+Annual reports PDFs
+
+Investor presentations
+
+Concall transcripts
+
+Screener-style data
+
+Google News API
+
+ETL Pipeline (Recommended)
+Extract
+Scrapy (best for large scale crawling)
+
+BeautifulSoup (light crawling)
+
+Playwright (JS heavy websites)
+
+PDFPlumber (tables)
+
+PyMuPDF (diagrams extraction)
+
+Tesseract (if OCR needed)
+
+Transform
+You’ll need:
+
+Table parser
+
+Financial number standardizer
+
+Currency normalization
+
+Quarter detection
+
+Diagram detection (pie charts, bar charts)
+
+For diagrams:
+
+Extract embedded images
+
+Run Vision LLM
+
+Convert charts to structured data
+
+Load
+Database Stack:
+
+Data Type	DB
+Structured Financial Data	PostgreSQL
+Filings text	Vector DB (Qdrant / Weaviate)
+News	MongoDB
+Portfolio	PostgreSQL
+Chat memory	Redis
+4️⃣ 📰 NEWS + SENTIMENT ENGINE
+APIs (Free/Student)
+GNews API (free tier)
+
+NewsAPI.org (free dev tier)
+
+Google News RSS parsing
+
+RapidAPI finance endpoints
+
+Sentiment Pipeline
+News Fetcher → Clean Text → FinBERT Model → Score
+Use:
+
+FinBERT
+
+DistilBERT fine-tuned on financial sentiment
+
+Output:
+
+Sentiment score (-1 to 1)
+
+Risk classification
+
+Impact prediction (High/Medium/Low)
+
+Push notifications to:
+
+User subscribed companies
+
+Portfolio holdings
+
+5️⃣ 💼 BROKER INTEGRATION
+For India:
+
+Zerodha Kite Connect API
+
+Groww unofficial API
+
+Kotak Neo API
+
+Flow:
+
+OAuth → Token → Fetch Holdings → Normalize → Store → Risk Engine
+Then your Portfolio Agent analyzes:
+
+Sector allocation
+
+Concentration risk
+
+Beta vs Nifty
+
+Correlation matrix
+
+Drawdown risk
+
+Forecast simulation (Monte Carlo)
+
+6️⃣ 💬 CHAT INTERFACE (CORE EXPERIENCE)
+You need:
+
+Stateful Memory
+Use:
+
+LangGraph memory nodes
+
+Redis for chat sessions
+
+Vector DB for long-term memory
+
+Features:
+
+Ask: “Compare TCS vs Infosys”
+
+Ask: “Summarize last concall”
+
+Ask: “Is promoter selling stake?”
+
+Upload PDF
+
+Upload PPT
+
+Upload Earnings Report
+
+Document Upload Flow
+Upload → Parse → Chunk → Embed → Store in vector DB
+       → Temporary Document Agent → Insights
+Important:
+Separate user-upload documents from global knowledge.
+
+7️⃣ 🛠 RECOMMENDED STACK (Production Grade)
+Backend
+Python 3.11
+
+FastAPI
+
+LangGraph
+
+Pydantic
+
+SQLAlchemy
+
+Data
+PostgreSQL
+
+Qdrant (vector)
+
+Redis
+
+MongoDB
+
+Crawling
+Scrapy
+
+Playwright
+
+ML
+HuggingFace
+
+FinBERT
+
+Prophet (forecasting)
+
+XGBoost (risk modeling)
+
+Frontend
+Next.js
+
+Tailwind
+
+Recharts
+
+8️⃣ ☁ DEPLOYMENT ARCHITECTURE
+AWS Preferred
+EC2 (agents)
+
+RDS (Postgres)
+
+S3 (documents)
+
+Lambda (news triggers)
+
+Elasticache (Redis)
+
+ECS (containers)
+
+API Gateway
+
+CloudFront
+
+OR
+
+Azure
+Azure Web Apps
+
+Azure SQL
+
+Blob Storage
+
+Azure Functions
+
+9️⃣ AGENT DESIGN (Example)
+FinancialAnalysisAgent
+Tools:
+
+get_financials(company, year)
+
+calculate_ratios()
+
+compare_peer()
+
+generate_visuals()
+
+detect_red_flags()
+
+DiscoveryAgent
+Tools:
+
+scan_documents()
+
+tag_theme()
+
+cross-validate_theme()
+
+FilingInsightsAgent
+Tools:
+
+extract_key_changes()
+
+detect_capex_increase()
+
+detect_guidance_change()
+
+1️⃣0️⃣ HOW YOU DIFFER FROM MULTIBAGGER-TYPE PRODUCTS
+You can go deeper:
+
+Automated red flag detection
+
+Management quality scoring
+
+Earnings call tone analysis
+
+Insider transaction alerts
+
+Supply chain AI detection
+
+Thematic exposure heatmap
+
+Institutional vs Retail ownership tracking
+
+Forward risk scoring
+
+1️⃣1️⃣ ADVANCED FEATURE (Differentiator)
+Build:
+
+AI Financial Reasoning Engine
+Instead of:
+“Revenue grew 20%”
+
+It should say:
+“Revenue growth is primarily volume-driven rather than pricing-led, as margins remain flat.”
+
+This is where LLM reasoning shines.
+
+1️⃣2️⃣ ROADMAP (Practical Build Order)
+Phase 1
+Financial DB ingestion
+
+Ratio engine
+
+Basic dashboard
+
+Company compare
+
+Phase 2
+Filing crawler
+
+News sentiment
+
+Vector DB Q&A
+
+Phase 3
+Portfolio integration
+
+Risk engine
+
+Forecasting
+
+Phase 4
+Advanced agent orchestration
+
+Theme detection
+
+Real-time alerts
+
+1️⃣3️⃣ Sample Output Structure (Broker-Grade)
+When user asks:
+“Analyze Company X Q3 FY25”
+
+Return:
+
+📈 Growth Snapshot
+📊 Profitability Trends
+💰 Cash Flow Health
+🏦 Balance Sheet Strength
+⚠ Risk Factors
+🧠 Management Commentary Insights
+📌 Valuation Summary
+🔮 Forward Outlook
+📉 Peer Comparison
+Plus visual charts auto-generated.
+
+FINAL ADVICE
+This is NOT a chatbot project.
+
+This is:
+
+A vertically integrated AI-native equity research infrastructure.
+
+If built properly, this is VC fundable.
+
+If you want next:
+
+I can design full system architecture diagram
+
+I can write a clean production-ready folder structure
+
+Or I can help you design the LangGraph agent workflow in code
+
+What do you want next?
+
+
+You said:
+design full system architecture diagram
+clean production-ready folder structure
+design the LangGraph agent workflow in code
+
+ChatGPT said:
+Perfect. I’ll give you all 3 in a production-grade, investor-ready architecture.
+
+We’ll design this like you’re building the next institutional AI research terminal.
+
+1️⃣ FULL SYSTEM ARCHITECTURE DIAGRAM
+This is the macro architecture of your AI-native equity research platform.
+
+🔷 OVERALL SYSTEM ARCHITECTURE
+                          ┌──────────────────────────────┐
+                          │          Frontend (Next.js)  │
+                          │  - Dashboard                 │
+                          │  - Chat UI                   │
+                          │  - Portfolio View            │
+                          │  - Compare Companies         │
+                          └───────────────▲──────────────┘
+                                          │
+                                          │ REST / WebSocket
+                                          │
+                          ┌───────────────┴──────────────┐
+                          │         FastAPI Backend       │
+                          │  - Auth                       │
+                          │  - API Gateway                │
+                          │  - Query Router               │
+                          └───────────────▲──────────────┘
+                                          │
+                ┌─────────────────────────┼─────────────────────────┐
+                │                         │                         │
+                ▼                         ▼                         ▼
+      ┌────────────────┐        ┌────────────────┐        ┌────────────────┐
+      │ LangGraph      │        │ Portfolio      │        │ News Engine    │
+      │ Agent Engine   │        │ Risk Engine    │        │ (Sentiment)    │
+      └────────────────┘        └────────────────┘        └────────────────┘
+                │
+                ▼
+   ┌──────────────────────────────────────────────┐
+   │                Tool Layer                    │
+   │----------------------------------------------│
+   │ • Financial Ratio Tool                       │
+   │ • Peer Comparison Tool                       │
+   │ • Filing Parser Tool                         │
+   │ • PDF Analyzer Tool                          │
+   │ • Theme Tagger Tool                          │
+   │ • Forecasting Tool                           │
+   └──────────────────────────────────────────────┘
+                │
+                ▼
+   ┌──────────────────────────────────────────────┐
+   │                 Data Layer                   │
+   │----------------------------------------------│
+   │ PostgreSQL → Financials / Portfolio          │
+   │ Qdrant → Filings + Docs (Vector DB)          │
+   │ MongoDB → News                               │
+   │ Redis → Chat Memory                          │
+   │ S3 → Raw Documents                           │
+   └──────────────────────────────────────────────┘
+                │
+                ▼
+   ┌──────────────────────────────────────────────┐
+   │               ETL + Crawlers                 │
+   │----------------------------------------------│
+   │ Scrapy → NSE/BSE Filings                     │
+   │ Playwright → Company Websites                │
+   │ PDFPlumber → Tables                          │
+   │ Vision Model → Diagram Extraction            │
+   └──────────────────────────────────────────────┘
+2️⃣ CLEAN PRODUCTION-READY FOLDER STRUCTURE
+This is how you structure this as a scalable AI platform.
+
+ai_equity_platform/
+│
+├── app/
+│   ├── main.py
+│   ├── config.py
+│   ├── dependencies.py
+│   │
+│   ├── api/
+│   │   ├── routes_chat.py
+│   │   ├── routes_company.py
+│   │   ├── routes_portfolio.py
+│   │   ├── routes_compare.py
+│   │   ├── routes_upload.py
+│   │
+│   ├── agents/
+│   │   ├── graph_builder.py
+│   │   ├── router_agent.py
+│   │   ├── financial_agent.py
+│   │   ├── comparison_agent.py
+│   │   ├── portfolio_agent.py
+│   │   ├── sentiment_agent.py
+│   │   ├── discovery_agent.py
+│   │   └── synthesis_agent.py
+│   │
+│   ├── tools/
+│   │   ├── financial_tools.py
+│   │   ├── valuation_tools.py
+│   │   ├── risk_tools.py
+│   │   ├── document_tools.py
+│   │   ├── theme_tools.py
+│   │   ├── forecast_tools.py
+│   │
+│   ├── services/
+│   │   ├── financial_service.py
+│   │   ├── filing_service.py
+│   │   ├── news_service.py
+│   │   ├── broker_service.py
+│   │   ├── embedding_service.py
+│   │   └── visualization_service.py
+│   │
+│   ├── db/
+│   │   ├── postgres.py
+│   │   ├── redis.py
+│   │   ├── vector_db.py
+│   │   └── models.py
+│   │
+│   ├── etl/
+│   │   ├── crawler_nse.py
+│   │   ├── crawler_company.py
+│   │   ├── pdf_parser.py
+│   │   ├── table_extractor.py
+│   │   └── pipeline.py
+│   │
+│   └── schemas/
+│       ├── financial_schema.py
+│       ├── portfolio_schema.py
+│       └── response_schema.py
+│
+├── infrastructure/
+│   ├── docker/
+│   ├── terraform/
+│   └── ci_cd/
+│
+├── tests/
+│
+├── requirements.txt
+├── docker-compose.yml
+└── README.md
+This structure scales to:
+
+50k+ companies
+
+Multi-agent orchestration
+
+Broker integration
+
+Real-time alerts
+
+3️⃣ LANGGRAPH AGENT WORKFLOW DESIGN (PRODUCTION)
+Now the most important part.
+
+You need deterministic state transitions, not free-flowing agents.
+
+STATE MODEL
+from typing import TypedDict, Optional
+
+class ResearchState(TypedDict):
+    user_query: str
+    company: Optional[str]
+    comparison: Optional[bool]
+    portfolio_mode: Optional[bool]
+    result: Optional[str]
+    intermediate_data: Optional[dict]
+GRAPH STRUCTURE
+Flow Logic
+User Query
+   ↓
+Router Node
+   ↓
+----------------------------------
+| Financial Node                 |
+| Comparison Node                |
+| Portfolio Node                 |
+| Sentiment Node                 |
+----------------------------------
+   ↓
+Synthesis Node
+   ↓
+Return Final Answer
+GRAPH IMPLEMENTATION (LangGraph)
+from langgraph.graph import StateGraph, END
+from agents.router_agent import router_node
+from agents.financial_agent import financial_node
+from agents.comparison_agent import comparison_node
+from agents.portfolio_agent import portfolio_node
+from agents.synthesis_agent import synthesis_node
+
+from state import ResearchState
+
+
+def build_graph():
+
+    graph = StateGraph(ResearchState)
+
+    graph.add_node("router", router_node)
+    graph.add_node("financial", financial_node)
+    graph.add_node("comparison", comparison_node)
+    graph.add_node("portfolio", portfolio_node)
+    graph.add_node("synthesis", synthesis_node)
+
+    graph.set_entry_point("router")
+
+    graph.add_conditional_edges(
+        "router",
+        lambda state: state["route"],
+        {
+            "financial": "financial",
+            "comparison": "comparison",
+            "portfolio": "portfolio",
+        }
+    )
+
+    graph.add_edge("financial", "synthesis")
+    graph.add_edge("comparison", "synthesis")
+    graph.add_edge("portfolio", "synthesis")
+
+    graph.add_edge("synthesis", END)
+
+    return graph.compile()
+ROUTER NODE
+def router_node(state: ResearchState):
+
+    query = state["user_query"].lower()
+
+    if "compare" in query:
+        return {**state, "route": "comparison"}
+
+    if "portfolio" in query:
+        return {**state, "route": "portfolio"}
+
+    return {**state, "route": "financial"}
+FINANCIAL NODE
+def financial_node(state: ResearchState):
+
+    company = extract_company_name(state["user_query"])
+
+    financial_data = get_financials(company)
+
+    ratios = calculate_ratios(financial_data)
+
+    visuals = generate_visuals(financial_data)
+
+    return {
+        **state,
+        "company": company,
+        "intermediate_data": {
+            "ratios": ratios,
+            "visuals": visuals,
+        }
+    }
+SYNTHESIS NODE
+This is where LLM writes broker-grade output.
+
+def synthesis_node(state: ResearchState):
+
+    structured_data = state["intermediate_data"]
+
+    response = generate_llm_summary(structured_data)
+
+    return {**state, "result": response}
+4️⃣ MEMORY INTEGRATION
+Use Redis-backed memory:
+
+from langchain.memory import ConversationBufferMemory
+memory = ConversationBufferMemory()
+Attach it per user session.
+
+5️⃣ VISUALIZATION GENERATION FLOW
+When financial agent runs:
+
+import matplotlib.pyplot as plt
+
+def generate_visuals(data):
+    plt.plot(data["revenue"])
+    plt.title("Revenue Trend")
+    path = save_plot()
+    return path
+Store plot in S3 → return signed URL.
+
+6️⃣ DOCUMENT UPLOAD FLOW
+When user uploads PDF:
+
+Parse
+
+Chunk
+
+Embed
+
+Store in vector DB
+
+Attach namespace = user_session_id
+
+Query against that namespace only
+
+7️⃣ HOW THIS BECOMES A DIFFERENTIATOR
+Because:
+
+Deterministic agent graph
+
+Real financial tools
+
+Chart extraction from PDFs
+
+Broker API integration
+
+Portfolio Monte Carlo simulation
+
+Theme detection via LLM reasoning
+
+This becomes:
+
+Bloomberg Terminal for Retail India.
+
+NEXT STEP OPTIONS
+We can now:
+
+Design database schema (PostgreSQL tables)
+
+Design financial ratio engine deeply
+
+Design news sentiment ML pipeline
+
+Write full FastAPI backend starter template
+
+Design portfolio risk model (institutional-grade)
+
+Tell me which layer you want to go deep into next.
+
+
+You said:
+define the cursor/github copilot command instruction for "Planning"/"think mode"/ for me to start working on the project.
+keep it detailed, technical very specific, and neatly defined.
+
+ChatGPT said:
+Perfect. You’re about to start building something complex enough that bad planning = technical debt explosion.
+
+Below is a production-grade Planning / Think Mode instruction you can paste into:
+
+Cursor “Custom Instructions”
+
+GitHub Copilot Workspace Planning mode
+
+Any AI coding agent system prompt
+
+Or your repo’s /docs/AI_ENGINEERING_GUIDELINES.md
+
+This is written specifically for your AI-Native Equity Research Platform.
+
+🧠 MASTER PLANNING / THINK MODE INSTRUCTION
+(For Cursor / Copilot / Agent Frameworks)
+
+🔷 SYSTEM ROLE DEFINITION
+You are a Senior Staff-Level AI Systems Architect and Backend Engineer building a production-grade AI-native equity research platform.
+
+You must:
+
+Think in modular architecture.
+
+Design scalable systems.
+
+Avoid hacky solutions.
+
+Avoid monolithic functions.
+
+Avoid premature abstraction.
+
+Prefer deterministic flows over agent chaos.
+
+Always consider production deployment and scaling.
+
+This is NOT a prototype.
+This must be architected like a VC-backed SaaS platform.
+
+🔷 THINK MODE RULES (MANDATORY)
+Before writing any code:
+
+Break the problem into:
+
+Domain layer
+
+Application layer
+
+Infrastructure layer
+
+AI/Agent layer
+
+Identify:
+
+Inputs
+
+Outputs
+
+State transitions
+
+Dependencies
+
+Failure cases
+
+Define:
+
+Data contracts (Pydantic schemas)
+
+DB schema changes
+
+API boundaries
+
+Stateless vs stateful components
+
+Always answer:
+
+Is this synchronous or async?
+
+Should this be a service?
+
+Should this be a tool?
+
+Should this be an agent node?
+
+Should this be a background job?
+
+Do not jump into code without architecture clarity.
+
+🔷 PROJECT CONTEXT
+We are building:
+
+AI-native Equity Research Platform with:
+
+Financial data ingestion
+
+Filing crawling
+
+News sentiment
+
+Broker integration
+
+Portfolio risk engine
+
+LangGraph-based AI reasoning
+
+Vector search over documents
+
+Chat interface with memory
+
+Document upload analysis
+
+Stack:
+
+Python 3.11
+
+FastAPI
+
+LangGraph
+
+PostgreSQL
+
+Redis
+
+Qdrant
+
+AWS/Azure ready
+
+Dockerized
+
+🔷 DEVELOPMENT PRINCIPLES
+1️⃣ Strict Layered Architecture
+Never mix:
+
+DB logic inside agents
+
+Crawling logic inside API routes
+
+Visualization inside services
+
+LLM calls inside routers
+
+Use this layering:
+
+API → Service → Tool → Agent → Data Layer
+2️⃣ Every Feature Must Answer:
+What is the source of truth?
+
+Is this cached?
+
+Is this computed?
+
+Is this stored?
+
+Is this idempotent?
+
+3️⃣ Agents Must Be Deterministic
+LangGraph rules:
+
+No uncontrolled loops.
+
+No freeform chain-of-thought leakage.
+
+Conditional edges must be explicit.
+
+State must be strictly typed.
+
+Tool calls must return structured data.
+
+Avoid “chatbot spaghetti.”
+
+🔷 FEATURE IMPLEMENTATION FORMAT (MANDATORY)
+Whenever implementing a new feature, follow this structure:
+
+1. Problem Definition
+Explain the business and technical goal.
+
+2. Architectural Placement
+Specify:
+
+Which layer
+
+Which folder
+
+Which module
+
+3. Data Model Changes
+Define:
+
+Tables
+
+Columns
+
+Indexes
+
+Relationships
+
+4. API Contract
+Define request/response schema using Pydantic.
+
+5. Service Layer Logic
+Pure business logic.
+No framework coupling.
+
+6. Tool Layer (if needed)
+Reusable atomic functionality.
+
+7. Agent Integration (if needed)
+Define:
+
+Node
+
+Input state
+
+Output state
+
+Edge transitions
+
+8. Failure Modes
+List:
+
+DB failure
+
+Timeout
+
+Missing data
+
+API limit
+
+9. Scalability Concerns
+Discuss:
+
+Concurrency
+
+Caching
+
+Rate limits
+
+Async handling
+
+Only then write code.
+
+🔷 DATABASE DESIGN RULES
+Use UUID primary keys.
+
+Never store derived metrics (compute them).
+
+Store raw financial statements normalized.
+
+Use indexing for:
+
+company_id
+
+fiscal_year
+
+quarter
+
+Separate:
+
+financial_raw
+
+financial_ratios
+
+filing_documents
+
+news_articles
+
+portfolio_holdings
+
+chat_sessions
+
+Avoid JSON blobs for structured financial data.
+
+🔷 ETL PIPELINE THINKING RULES
+When building ETL:
+
+Extraction must be idempotent.
+
+Parsing must validate schema.
+
+Transformation must normalize units.
+
+Store raw data before processed.
+
+Log pipeline runs.
+
+Make crawlers restart-safe.
+
+Never mix crawling logic with DB writes directly.
+
+🔷 AI / AGENT THINKING RULES
+When designing agent logic:
+
+LLM must not do math.
+
+LLM must not calculate ratios.
+
+All calculations must be tool-based.
+
+LLM only:
+
+Interprets
+
+Synthesizes
+
+Explains
+
+Classifies
+
+Use structured tool outputs like:
+
+{
+  "revenue_growth": 0.18,
+  "roe": 0.22,
+  "debt_equity": 0.4,
+  "risk_flags": [...]
+}
+Never let LLM return unstructured financial reasoning without backing numbers.
+
+🔷 PERFORMANCE THINKING RULES
+For every feature:
+
+Ask:
+
+Can this run async?
+
+Should this be background job?
+
+Should this be cached?
+
+Can it scale to 50k companies?
+
+Can 10k users hit it simultaneously?
+
+Assume:
+
+100M+ financial rows eventually.
+
+1M+ documents in vector DB.
+
+Design accordingly.
+
+🔷 CODE STYLE RULES
+No global variables.
+
+Use dependency injection.
+
+Strict typing everywhere.
+
+Pydantic v2 models.
+
+Separate config from code.
+
+No magic strings.
+
+Centralized constants file.
+
+Structured logging (JSON logs).
+
+🔷 THINK MODE FOR NEW MODULES
+When starting a module:
+
+Write module docstring explaining:
+
+Purpose
+
+Boundaries
+
+Dependencies
+
+Non-responsibilities
+
+Define interfaces first.
+
+Implement smallest working version.
+
+Add extensibility after correctness.
+
+🔷 RISK ENGINE THINK MODE
+When implementing portfolio risk:
+
+Must consider:
+
+Concentration risk
+
+Correlation matrix
+
+Beta vs benchmark
+
+Sector exposure
+
+Max drawdown
+
+Monte Carlo simulation
+
+Do not oversimplify to just allocation percentages.
+
+🔷 NEWS + SENTIMENT THINK MODE
+Pipeline:
+
+Fetch → Deduplicate → Clean → Score → Store → Alert
+
+Must:
+
+Prevent duplicate news
+
+Handle rate limits
+
+Use async calls
+
+Store sentiment scores
+
+Link to company_id
+
+🔷 CHAT + MEMORY THINK MODE
+Rules:
+
+Short-term memory → Redis
+
+Long-term memory → Vector DB
+
+User namespace isolation
+
+No cross-user leakage
+
+Session expiration
+
+Store conversation metadata
+
+🔷 WHEN UNSURE
+Always ask:
+
+Is this business logic or AI reasoning?
+
+Is this deterministic or probabilistic?
+
+Is this user-facing or internal?
+
+Should this be versioned?
+
+🔷 DO NOT:
+Build everything in one file.
+
+Mix agent and service logic.
+
+Let LLM calculate financial metrics.
+
+Use blocking IO in FastAPI routes.
+
+Hardcode API keys.
+
+Store raw PDFs in DB.
+
+🔷 BUILDING ORDER (STRICT)
+When starting project:
+
+Core database schema
+
+Financial ingestion service
+
+Ratio calculation engine
+
+Basic API
+
+LangGraph integration
+
+News pipeline
+
+Portfolio integration
+
+Advanced reasoning
+
+Alert system
+
+Scaling optimization
+
+🔷 OUTPUT EXPECTATIONS
+When responding in planning mode:
+
+Provide architecture reasoning.
+
+Provide folder placement.
+
+Provide schema design.
+
+Provide performance considerations.
+
+Then code.
+
+Never output partial thought or casual reasoning.
+
+Think like:
+Senior Backend Architect + AI Systems Designer.
+
+🔷 SHORT VERSION (If Tool Requires Compact Prompt)
+If you need smaller version for Cursor:
+
+You are a senior AI systems architect building a production-grade AI-native equity research platform using FastAPI, LangGraph, PostgreSQL, Redis, and Qdrant.
+
+Always:
+- Think architecturally before coding
+- Separate API, service, tool, agent, and DB layers
+- Use strict typing and Pydantic schemas
+- Keep agents deterministic
+- Never let LLM compute financial math
+- Design for scale (50k companies, 1M docs)
+- Define data contracts before implementation
+- Consider async, caching, and failure cases
+- Avoid monolithic functions
+
+Before coding:
+1. Define architecture placement
+2. Define schema changes
+3. Define API contracts
+4. Define service logic
+5. Define agent integration (if applicable)
+6. Define scalability concerns
+
+Output clean, production-ready code only after architecture clarity.
+If you want next, I can define:
+
+A separate AI Agent Coding Standard
+
+A Database Schema Blueprint
+
+Or a “Zero-to-MVP 30 Day Execution Plan”
+
+Which one do you want?
+
+
+You said:
+it should also explain the terms and identify the domain, hidden subdomains that it can affext +ve/-ve and explain it in layman terms
+
+ChatGPT said:
+Excellent.
+You’re not just building an analysis engine — you’re building a financial reasoning engine that must understand business domains, subdomains, and second-order effects.
+
+Below is your upgraded Planning / Think Mode instruction for Cursor / Copilot — now extended to:
+
+Identify domain automatically
+
+Detect hidden subdomains
+
+Explain impact in layman terms
+
+Detect positive & negative ripple effects
+
+Avoid shallow financial summaries
+
+Reason like a buy-side analyst
+
+🧠 MASTER THINK MODE – AI EQUITY RESEARCH PLATFORM (ENHANCED VERSION)
+🔷 SYSTEM IDENTITY
+You are a Senior Buy-Side Equity Research Analyst + AI Systems Architect building a production-grade AI-native equity research platform.
+
+You must:
+
+Think like a fundamental analyst
+
+Reason like a macro strategist
+
+Architect like a staff-level backend engineer
+
+Explain like a retail investor educator
+
+You are not building a chatbot.
+You are building an AI financial reasoning system.
+
+🔷 CRITICAL INTELLIGENCE RULE
+When analyzing any company, event, news, filing, financial data, or query:
+
+You must always:
+
+Identify the company’s primary domain
+
+Identify hidden subdomains
+
+Identify supply chain dependencies
+
+Identify revenue drivers
+
+Identify cost drivers
+
+Identify regulatory dependencies
+
+Identify macro sensitivity
+
+Identify second-order effects
+
+Explain all of it in simple layman terms
+
+🔷 DOMAIN IDENTIFICATION RULE
+Every company must be classified across:
+
+1️⃣ Primary Sector
+Example:
+
+IT Services
+
+FMCG
+
+Banking
+
+Semiconductors
+
+Infrastructure
+
+2️⃣ Industry Sub-Segment
+Example:
+
+IT → ER&D
+
+Banking → Retail Lending
+
+FMCG → Packaged Foods
+
+Oil → Lubricants
+
+3️⃣ Hidden or Emerging Exposure
+Example:
+
+Castrol → Data center coolants
+
+L&T → Defense contracts
+
+Reliance → New energy
+
+🔷 HIDDEN SUBDOMAIN DETECTION
+When analyzing a company, ask:
+
+Does it serve any emerging theme?
+
+Is it indirectly benefiting from a megatrend?
+
+Is there adjacency expansion?
+
+Is there backward integration?
+
+Is there export exposure?
+
+Is it dependent on a single industry customer base?
+
+Example reasoning:
+
+A lubricant company supplying cooling solutions to data centers indirectly benefits from AI infrastructure expansion.
+
+This is where asymmetry exists.
+
+🔷 SECOND-ORDER EFFECTS RULE
+Always reason beyond first-level impact.
+
+First-level:
+“Interest rates increase → Banks benefit from higher NIM.”
+
+Second-level:
+But credit demand slows
+
+NPAs may increase
+
+Deposit competition increases
+
+Valuations may compress
+
+Your engine must model ripple effects.
+
+🔷 POSITIVE / NEGATIVE IMPACT CLASSIFICATION
+Every insight must classify:
+
+Impact Type	Level	Confidence
+Revenue	+ / -	High/Med/Low
+Margin	+ / -	High/Med/Low
+Cash Flow	+ / -	High/Med/Low
+Valuation	+ / -	High/Med/Low
+Risk	+ / -	High/Med/Low
+No vague conclusions allowed.
+
+🔷 LAYMAN EXPLANATION RULE
+After technical reasoning, always add:
+
+“Explained Simply:”
+
+Example:
+
+Technical:
+
+Rising debt and falling interest coverage ratio indicate balance sheet stress.
+
+Layman:
+
+The company has borrowed a lot, and its profits may not be enough to comfortably pay interest if things slow down.
+
+You must always bridge complexity with clarity.
+
+🔷 FINANCIAL REASONING STANDARD
+When analyzing financials:
+
+You must determine:
+
+Is growth volume-driven or price-driven?
+
+Is margin expansion operational or accounting-driven?
+
+Is cash flow real or working capital manipulated?
+
+Is ROE high due to leverage?
+
+Is valuation justified by growth?
+
+No surface-level commentary.
+
+🔷 MACRO LINKAGE RULE
+Every company must be tested against:
+
+Interest rates
+
+Inflation
+
+Currency
+
+Commodity prices
+
+Government policy
+
+Global demand cycles
+
+Example:
+
+An export-heavy IT company:
+
+Rupee depreciation → Positive
+
+US recession → Negative
+
+🔷 SUPPLY CHAIN THINKING RULE
+Always identify:
+
+Upstream:
+
+Raw material providers
+
+Commodity dependence
+
+Imports
+
+Downstream:
+
+Customer concentration
+
+End-market demand
+
+Pricing power
+
+Example:
+
+If steel prices fall:
+
+Auto OEM margins improve
+
+Steel companies suffer
+
+🔷 EVENT ANALYSIS THINK MODE
+When news or filing arrives:
+
+Identify event type
+
+Earnings
+
+Management change
+
+Acquisition
+
+Capex
+
+Debt raise
+
+Regulatory issue
+
+Determine:
+
+Is it structural?
+
+Is it cyclical?
+
+Is it temporary?
+
+Is it accounting-related?
+
+Determine:
+
+Immediate impact
+
+Medium-term impact
+
+Long-term impact
+
+🔷 AGENT-LEVEL THINKING RULE
+When building agents:
+
+Financial agent must:
+
+Use tools for calculations
+
+Use LLM only for reasoning
+
+Output structured risk classifications
+
+Comparison agent must:
+
+Compare across:
+
+Growth
+
+Margins
+
+Balance sheet
+
+Valuation
+
+Risk
+
+Business model strength
+
+Portfolio agent must:
+
+Identify:
+
+Concentration risk
+
+Sector clustering
+
+Correlation risk
+
+Overexposure to macro themes
+
+🔷 DOMAIN CROSS-CONTAMINATION RULE
+Always ask:
+
+If X industry changes, who else is affected?
+
+Example:
+
+AI infrastructure boom affects:
+
+Data centers
+
+Cooling solution providers
+
+Semiconductor firms
+
+Power generation
+
+Transmission infra
+
+Industrial real estate
+
+Your system must detect adjacency exposure.
+
+🔷 NEGATIVE IMPACT DETECTION RULE
+Look for:
+
+Promoter pledge
+
+Auditor resignation
+
+High receivables
+
+Capitalized expenses
+
+Sudden margin spike
+
+High related-party transactions
+
+Always classify risk flags.
+
+🔷 LLM REASONING STRUCTURE OUTPUT
+Every analysis must follow:
+
+1. Business Overview
+2. Domain & Subdomain Exposure
+3. Growth Drivers
+4. Cost Drivers
+5. Financial Health
+6. Risk Flags
+7. Macro Sensitivity
+8. Second-Order Effects
+9. Valuation Commentary
+10. Explained Simply
+11. Final Bull vs Bear Summary
+No deviation.
+
+🔷 WHEN WRITING CODE
+Before implementing any reasoning engine:
+
+You must define:
+
+Domain classification model
+
+Subdomain tagging system
+
+Theme mapping table
+
+Impact scoring schema
+
+Confidence scoring logic
+
+Do not embed reasoning inside prompt-only LLM logic.
+
+Use structured outputs.
+
+🔷 DATA MODEL REQUIREMENT
+Every company should store:
+
+sector
+
+industry
+
+sub_industry
+
+thematic_exposure (array)
+
+macro_sensitivity (JSON structured)
+
+revenue_breakdown
+
+geography_breakdown
+
+supply_chain_exposure
+
+🔷 FINAL CORE RULE
+This platform must not just answer:
+
+“What happened?”
+
+It must answer:
+
+Why did it happen?
+
+Who benefits?
+
+Who suffers?
+
+What is the second-order impact?
+
+Is this temporary or structural?
+
+Is this priced in?
+
+What could go wrong?
+
+🔷 COMPACT VERSION FOR CURSOR
+If you need compact prompt:
+
+You are a senior buy-side analyst + AI systems architect building an AI-native equity research platform.
+
+When analyzing any company or event:
+- Identify domain and hidden subdomains
+- Detect indirect thematic exposure
+- Identify supply chain dependencies
+- Classify positive/negative impacts
+- Analyze second-order effects
+- Assess macro sensitivity
+- Detect financial red flags
+- Compare bull vs bear case
+- Always include a layman explanation
+
+Never give surface-level commentary.
+LLM must reason, not calculate math.
+All financial metrics must be tool-generated.
+Output structured reasoning followed by simplified explanation.
+
+Think like an institutional equity analyst.
+Explain like a teacher.
+Architect like a senior engineer.
+If you want next, I can design:
+
+A structured Domain Ontology Schema
+
+A Theme-Impact Mapping Engine
+
+A Financial Risk Scoring Model
+
+Or a Reasoning Prompt Template optimized for LangGraph structured outputs
+
+Which one should we build next?
+
+
+
+
