@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import {
   BarChart3,
   Bot,
+  Clock3,
   Compass,
   Command,
   FileText,
@@ -38,6 +39,7 @@ type ViewKey =
   | "discovery"
   | "portfolio"
   | "filings"
+  | "timeline"
   | "news"
   | "settings";
 type Theme = "light" | "dark";
@@ -52,6 +54,19 @@ interface DiscoveryCompany {
 }
 
 type MarketCapBucket = "all" | "mega" | "large" | "mid" | "small";
+
+interface TimelineEvent {
+  id: string;
+  company: string;
+  title: string;
+  summary: string;
+  type: "filing" | "news" | "signal";
+  impact: "high" | "medium" | "low";
+  timestamp: string;
+  sourceLabel: string;
+  sourceUrl?: string;
+  details: string[];
+}
 
 const DISCOVERY_COMPANIES: DiscoveryCompany[] = [
   {
@@ -136,6 +151,103 @@ const DISCOVERY_COMPANIES: DiscoveryCompany[] = [
   },
 ];
 
+const TIMELINE_EVENTS: TimelineEvent[] = [
+  {
+    id: "timeline-1",
+    company: "RELIANCE",
+    title: "Quarterly operational update published",
+    summary: "Retail and digital subscriber momentum remained strong across key reporting lines.",
+    type: "filing",
+    impact: "high",
+    timestamp: "2026-03-21T19:05:00+05:30",
+    sourceLabel: "NSE Filing Feed",
+    sourceUrl: "#",
+    details: [
+      "Consumer segment commentary highlighted sustained footfall growth and improving ticket sizes.",
+      "Management reiterated capex discipline with selective investments in growth verticals.",
+      "Market participants are likely to watch margin trajectory in telecom and retail next quarter.",
+    ],
+  },
+  {
+    id: "timeline-2",
+    company: "HAL",
+    title: "Defense contract pipeline signal strengthened",
+    summary: "Follow-on order visibility improved after multiple procurement milestones moved ahead.",
+    type: "signal",
+    impact: "high",
+    timestamp: "2026-03-21T16:50:00+05:30",
+    sourceLabel: "Iris Theme Engine",
+    details: [
+      "Backlog quality remains strong and supports medium-term execution confidence.",
+      "Aerospace suppliers linked to HAL may experience positive second-order effects.",
+      "Near-term re-rating risk depends on margin preservation and delivery schedules.",
+    ],
+  },
+  {
+    id: "timeline-3",
+    company: "TCS",
+    title: "Large transformation deal referenced in media commentary",
+    summary: "AI-focused enterprise transformation mandate signals steady global demand resilience.",
+    type: "news",
+    impact: "medium",
+    timestamp: "2026-03-21T14:20:00+05:30",
+    sourceLabel: "Market News Cluster",
+    sourceUrl: "#",
+    details: [
+      "Deal momentum indicates continued demand for cloud modernization and AI integration.",
+      "Execution quality and productivity gains may offset pricing pressure concerns.",
+      "Peers in IT services could benefit from improved sentiment on discretionary spending.",
+    ],
+  },
+  {
+    id: "timeline-4",
+    company: "TATAPOWER",
+    title: "Renewable capacity expansion milestone",
+    summary: "Additional clean energy capacity moved operational, improving long-term portfolio mix.",
+    type: "filing",
+    impact: "medium",
+    timestamp: "2026-03-21T11:40:00+05:30",
+    sourceLabel: "Exchange Disclosure",
+    sourceUrl: "#",
+    details: [
+      "Generation mix tilt continues toward renewable assets with better long-run strategic optionality.",
+      "Execution cadence supports confidence in stated commissioning timeline.",
+      "Financing and tariff assumptions remain key variables for valuation sensitivity.",
+    ],
+  },
+  {
+    id: "timeline-5",
+    company: "HDFCBANK",
+    title: "Risk monitor flagged moderation in credit momentum",
+    summary: "Internal trend monitor indicates slight moderation in disbursal growth versus prior month.",
+    type: "signal",
+    impact: "low",
+    timestamp: "2026-03-21T09:10:00+05:30",
+    sourceLabel: "Portfolio Risk Model",
+    details: [
+      "Signal is informational and not yet a structural deterioration flag.",
+      "Deposit growth pace and cost of funds are critical for margin stability.",
+      "Monitor next management commentary for updated growth confidence.",
+    ],
+  },
+  {
+    id: "timeline-6",
+    company: "M&M",
+    title: "EV lineup commentary improved narrative strength",
+    summary: "Product roadmap update reinforced positioning in premium EV adoption cycles.",
+    type: "news",
+    impact: "medium",
+    timestamp: "2026-03-20T18:15:00+05:30",
+    sourceLabel: "Auto Sector Coverage",
+    sourceUrl: "#",
+    details: [
+      "Narrative tailwind is positive, but execution and pricing remain crucial.",
+      "Supply chain resilience may determine ability to capture demand spikes.",
+      "Cross-impact expected for listed component suppliers.",
+    ],
+  },
+];
+
 interface CommandItem {
   id: string;
   label: string;
@@ -157,6 +269,7 @@ const navItems: NavItem[] = [
   { key: "discovery", label: "Discovery", icon: Compass, caption: "Themes" },
   { key: "portfolio", label: "Portfolio", icon: Wallet, caption: "Exposure" },
   { key: "filings", label: "Filings", icon: FileText, caption: "Reports" },
+  { key: "timeline", label: "Timeline", icon: Clock3, caption: "Feed" },
   { key: "news", label: "News", icon: Newspaper, caption: "Sentiment" },
   { key: "settings", label: "Settings", icon: Settings, caption: "Preferences" },
 ];
@@ -276,6 +389,13 @@ export default function App() {
         hint: "Navigation",
         keywords: "portfolio holdings risk exposure",
         action: () => goToView("portfolio"),
+      },
+      {
+        id: "go-timeline",
+        label: "Go to Timeline",
+        hint: "Navigation",
+        keywords: "timeline feed events filings history",
+        action: () => goToView("timeline"),
       },
       {
         id: "go-filings",
@@ -406,6 +526,8 @@ export default function App() {
         return <PortfolioView />;
       case "filings":
         return <FilingsView />;
+      case "timeline":
+        return <TimelineView />;
       case "news":
         return <NewsView />;
       case "settings":
@@ -900,6 +1022,178 @@ function PortfolioView() {
           <span>10.9%</span>
           <span className="negative">-0.6%</span>
         </div>
+      </div>
+    </section>
+  );
+}
+
+function TimelineView() {
+  const [query, setQuery] = useState("");
+  const [typeFilter, setTypeFilter] = useState<"all" | TimelineEvent["type"]>("all");
+  const [impactFilter, setImpactFilter] = useState<"all" | TimelineEvent["impact"]>("all");
+  const [selectedEventId, setSelectedEventId] = useState<string>(TIMELINE_EVENTS[0]?.id ?? "");
+
+  const filteredEvents = useMemo(() => {
+    const normalized = query.trim().toLowerCase();
+
+    return TIMELINE_EVENTS.filter((event) => {
+      const matchesQuery =
+        !normalized ||
+        `${event.company} ${event.title} ${event.summary} ${event.sourceLabel}`
+          .toLowerCase()
+          .includes(normalized);
+
+      const matchesType = typeFilter === "all" || event.type === typeFilter;
+      const matchesImpact = impactFilter === "all" || event.impact === impactFilter;
+
+      return matchesQuery && matchesType && matchesImpact;
+    }).sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+  }, [impactFilter, query, typeFilter]);
+
+  useEffect(() => {
+    if (!filteredEvents.length) {
+      setSelectedEventId("");
+      return;
+    }
+
+    const exists = filteredEvents.some((event) => event.id === selectedEventId);
+    if (!exists) {
+      setSelectedEventId(filteredEvents[0].id);
+    }
+  }, [filteredEvents, selectedEventId]);
+
+  const selectedEvent = filteredEvents.find((event) => event.id === selectedEventId) ?? null;
+
+  const formatTimestamp = (value: string) => {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return value;
+    return date.toLocaleString();
+  };
+
+  const getTypeClass = (type: TimelineEvent["type"]) => {
+    if (type === "filing") return "chip type-filing";
+    if (type === "news") return "chip type-news";
+    return "chip type-signal";
+  };
+
+  const getImpactClass = (impact: TimelineEvent["impact"]) => {
+    if (impact === "high") return "chip negative";
+    if (impact === "medium") return "chip warning";
+    return "chip positive";
+  };
+
+  return (
+    <section className="page-wrap">
+      <PageHeader
+        title="Research Timeline Feed"
+        subtitle="Chronological filing and insight stream with quick detail drill-down."
+      />
+
+      <div className="timeline-toolbar">
+        <div className="search-pill timeline-search">
+          <Search size={14} />
+          <input
+            placeholder="Search company, event, or source..."
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+          />
+        </div>
+
+        <div className="chip-row">
+          <select
+            className="type-select"
+            value={typeFilter}
+            onChange={(event) => setTypeFilter(event.target.value as "all" | TimelineEvent["type"])}
+          >
+            <option value="all">Type: All</option>
+            <option value="filing">Type: Filing</option>
+            <option value="news">Type: News</option>
+            <option value="signal">Type: Signal</option>
+          </select>
+
+          <select
+            className="type-select"
+            value={impactFilter}
+            onChange={(event) =>
+              setImpactFilter(event.target.value as "all" | TimelineEvent["impact"])
+            }
+          >
+            <option value="all">Impact: All</option>
+            <option value="high">Impact: High</option>
+            <option value="medium">Impact: Medium</option>
+            <option value="low">Impact: Low</option>
+          </select>
+        </div>
+      </div>
+
+      <div className="timeline-layout">
+        <div className="timeline-list">
+          {filteredEvents.length ? (
+            filteredEvents.map((event) => (
+              <button
+                key={event.id}
+                type="button"
+                className={`timeline-item ${selectedEventId === event.id ? "active" : ""}`}
+                onClick={() => setSelectedEventId(event.id)}
+              >
+                <div className="timeline-item-head">
+                  <p>{event.company}</p>
+                  <span>{formatTimestamp(event.timestamp)}</span>
+                </div>
+                <h3>{event.title}</h3>
+                <p>{event.summary}</p>
+                <div className="chip-row timeline-item-chips">
+                  <span className={getTypeClass(event.type)}>{event.type}</span>
+                  <span className={getImpactClass(event.impact)}>{event.impact} impact</span>
+                </div>
+              </button>
+            ))
+          ) : (
+            <div className="list-item single-line">
+              <p>No timeline events match the current filters.</p>
+            </div>
+          )}
+        </div>
+
+        <aside className="timeline-detail">
+          {selectedEvent ? (
+            <>
+              <div className="timeline-detail-head">
+                <div>
+                  <p className="discovery-symbol">{selectedEvent.company}</p>
+                  <h3>{selectedEvent.title}</h3>
+                </div>
+                <span className="chip">{formatTimestamp(selectedEvent.timestamp)}</span>
+              </div>
+
+              <p className="discovery-insight">{selectedEvent.summary}</p>
+
+              <div className="chip-row timeline-item-chips">
+                <span className={getTypeClass(selectedEvent.type)}>{selectedEvent.type}</span>
+                <span className={getImpactClass(selectedEvent.impact)}>
+                  {selectedEvent.impact} impact
+                </span>
+                <span className="chip">{selectedEvent.sourceLabel}</span>
+              </div>
+
+              <div className="timeline-bullets">
+                {selectedEvent.details.map((detail, index) => (
+                  <p key={`${selectedEvent.id}-detail-${index}`}>{detail}</p>
+                ))}
+              </div>
+
+              {selectedEvent.sourceUrl ? (
+                <a href={selectedEvent.sourceUrl} target="_blank" rel="noreferrer" className="secondary-btn timeline-link">
+                  Open Source Reference
+                </a>
+              ) : null}
+            </>
+          ) : (
+            <div className="list-item single-line">
+              <p>Select an event to view details.</p>
+            </div>
+          )}
+        </aside>
       </div>
     </section>
   );
