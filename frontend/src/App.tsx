@@ -33,6 +33,7 @@ import {
   WandSparkles,
   X,
 } from "lucide-react";
+import type { jsPDF as JsPdfType } from "jspdf";
 import {
   ApiError,
   fetchApiStatus,
@@ -160,11 +161,46 @@ interface FavoriteItem {
 }
 
 type ReportSectionId = "summary" | "risks" | "financials" | "themes";
+type ReportAudience = "retail" | "analyst";
 
 interface ReportSectionOption {
   id: ReportSectionId;
   label: string;
 }
+
+interface GeneratedReportSection {
+  id: ReportSectionId;
+  heading: string;
+  content: string;
+}
+
+interface GeneratedReport {
+  title: string;
+  generatedAt: string;
+  audience: ReportAudience;
+  audienceText: string;
+  symbol: string;
+  companyName: string;
+  dataMode: DataMode;
+  sections: GeneratedReportSection[];
+  body: string;
+}
+
+interface PdfTemplate {
+  coverLabel: string;
+  accent: [number, number, number];
+}
+
+const PDF_TEMPLATES: Record<ReportAudience, PdfTemplate> = {
+  retail: {
+    coverLabel: "Retail Brief",
+    accent: [15, 134, 186],
+  },
+  analyst: {
+    coverLabel: "Analyst Dossier",
+    accent: [17, 87, 131],
+  },
+};
 
 interface DashboardWidget {
   id: string;
@@ -835,6 +871,122 @@ function createInitialThread(promptText?: string): ChatThread {
     mode: "analyst",
     messages,
   };
+}
+
+function wrapPdfText(doc: JsPdfType, text: string, maxWidth: number): string[] {
+  return doc.splitTextToSize(text, maxWidth) as string[];
+}
+
+function renderPdfParagraph(
+  doc: JsPdfType,
+  text: string,
+  leftX: number,
+  rightX: number,
+  startY: number
+): number {
+  const lines = wrapPdfText(doc, text, rightX - leftX);
+  doc.text(lines, leftX, startY);
+  return startY + lines.length * 6 + 2;
+}
+
+async function exportReportAsPdf(report: GeneratedReport): Promise<void> {
+  const { jsPDF } = await import("jspdf");
+  const doc = new jsPDF({ unit: "mm", format: "a4" });
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
+  const marginLeft = 16;
+  const marginRight = pageWidth - 16;
+  const template = PDF_TEMPLATES[report.audience];
+
+  doc.setFillColor(template.accent[0], template.accent[1], template.accent[2]);
+  doc.rect(0, 0, pageWidth, 46, "F");
+
+  doc.setTextColor(255, 255, 255);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(24);
+  doc.text("EquityAI Research Report", marginLeft, 20);
+  doc.setFontSize(12);
+  doc.setFont("helvetica", "normal");
+  doc.text(template.coverLabel, marginLeft, 28);
+  doc.text(`${report.companyName} (${report.symbol})`, marginLeft, 35);
+
+  doc.setTextColor(18, 32, 45);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(16);
+  doc.text(report.title, marginLeft, 58);
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(10);
+  const metadataLines = [
+    `Generated: ${new Date(report.generatedAt).toLocaleString()}`,
+    `Audience: ${report.audience === "retail" ? "Retail" : "Analyst"}`,
+    `Data Mode: ${report.dataMode === "demo" ? "Demo Data" : "Live API"}`,
+  ];
+
+  let y = 66;
+  for (const line of metadataLines) {
+    doc.text(line, marginLeft, y);
+    y += 5.5;
+  }
+
+  doc.setDrawColor(210, 220, 230);
+  doc.line(marginLeft, y + 2, marginRight, y + 2);
+  y += 10;
+
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(12);
+  doc.text("Executive Framing", marginLeft, y);
+  y += 7;
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(10);
+  y = renderPdfParagraph(doc, report.audienceText, marginLeft, marginRight, y);
+
+  for (const section of report.sections) {
+    if (y > pageHeight - 30) {
+      doc.addPage();
+      y = 20;
+    }
+
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(12);
+    doc.text(section.heading, marginLeft, y);
+    y += 7;
+
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(10);
+
+    const lines = section.content.split("\n");
+    for (const line of lines) {
+      if (!line.trim()) {
+        y += 2;
+        continue;
+      }
+
+      if (y > pageHeight - 16) {
+        doc.addPage();
+        y = 20;
+      }
+
+      y = renderPdfParagraph(doc, line, marginLeft, marginRight, y);
+    }
+    y += 4;
+  }
+
+  const pageCount = doc.getNumberOfPages();
+  for (let page = 1; page <= pageCount; page += 1) {
+    doc.setPage(page);
+    doc.setFontSize(9);
+    doc.setTextColor(110, 122, 134);
+    doc.text(
+      `${report.symbol} · ${report.dataMode === "demo" ? "Demo" : "Live"} · Page ${page}/${pageCount}`,
+      marginLeft,
+      pageHeight - 8
+    );
+  }
+
+  const filename = `${report.symbol.toLowerCase()}-${report.audience}-report.pdf`;
+  doc.save(filename);
 }
 
 function getInitialChatThreads(): ChatThread[] {
@@ -1800,6 +1952,7 @@ export default function App() {
         return (
           <CompanyWorkspaceView
             dataMode={dataMode}
+            pushToast={pushToast}
             searchSelection={searchSelection}
             addFavorite={addFavorite}
             isFavorited={isFavorited}
@@ -1891,12 +2044,14 @@ export default function App() {
     favorites.length,
     goToView,
     isFavorited,
+    pushToast,
     resetDashboardPreferences,
     searchSelection,
     chatThreads,
     theme,
     toggleDashboardDensity,
     toggleDashboardWidget,
+    toggleDataMode,
     toggleTheme,
     unreadCount,
   ]);
@@ -2742,7 +2897,7 @@ function ChatView(props: {
     );
 
     setComposerText("");
-  }, [activeThread, composerText, props, props.dataMode]);
+  }, [activeThread, composerText, props]);
 
   const renameThread = useCallback(
     (threadId: string) => {
@@ -3182,6 +3337,7 @@ function ComparisonWorkspaceView(props: {
 
 function CompanyWorkspaceView(props: {
   dataMode: DataMode;
+  pushToast: (message: string, tone?: ToastTone) => void;
   searchSelection: SearchSelection | null;
   addFavorite: (favorite: Omit<FavoriteItem, "id" | "createdAt">) => void;
   isFavorited: (favorite: Pick<FavoriteItem, "type" | "title" | "symbol">) => boolean;
@@ -3199,7 +3355,7 @@ function CompanyWorkspaceView(props: {
     "financials",
     "themes",
   ]);
-  const [reportAudience, setReportAudience] = useState<"retail" | "analyst">("analyst");
+  const [reportAudience, setReportAudience] = useState<ReportAudience>("analyst");
   const [reportGeneratedAt, setReportGeneratedAt] = useState<string | null>(null);
 
   useEffect(() => {
@@ -3247,30 +3403,37 @@ function CompanyWorkspaceView(props: {
 
   const profileTitle = `${companyData.symbol} · ${companyData.name}`;
 
-  const generatedReport = useMemo(() => {
+  const generatedReport = useMemo<GeneratedReport | null>(() => {
     if (!reportGeneratedAt) return null;
 
     const topTheme = topThemes[0]?.[0] ?? "No clear dominant theme";
     const topThemeScore = topThemes[0]?.[1] ?? 0;
 
-    const sections: string[] = [];
+    const sections: GeneratedReportSection[] = [];
 
     if (reportSections.includes("summary")) {
-      sections.push(
-        `Executive Summary:\n${companyData.name} (${companyData.symbol}) currently shows strongest narrative strength in ${topTheme} with theme score ${topThemeScore}/100. Sector context remains ${companyData.sector}.`
-      );
+      sections.push({
+        id: "summary",
+        heading: "Executive Summary",
+        content: `${companyData.name} (${companyData.symbol}) currently shows strongest narrative strength in ${topTheme} with theme score ${topThemeScore}/100. Sector context remains ${companyData.sector}.`,
+      });
     }
 
     if (reportSections.includes("risks")) {
-      sections.push(
-        `Key Risks:\n1) Execution risk around near-term filings guidance.\n2) Valuation sensitivity if sector momentum cools.\n3) Sentiment volatility around macro updates.`
-      );
+      sections.push({
+        id: "risks",
+        heading: "Key Risks",
+        content:
+          "1) Execution risk around near-term filings guidance.\n2) Valuation sensitivity if sector momentum cools.\n3) Sentiment volatility around macro updates.",
+      });
     }
 
     if (reportSections.includes("financials")) {
-      sections.push(
-        `Financial Snapshot:\nMarket Cap: $${companyData.marketCapBn.toFixed(1)}B\nRecent timeline events: ${companyTimeline.length}\nPrimary sector: ${companyData.sector}`
-      );
+      sections.push({
+        id: "financials",
+        heading: "Financial Snapshot",
+        content: `Market Cap: $${companyData.marketCapBn.toFixed(1)}B\nRecent timeline events: ${companyTimeline.length}\nPrimary sector: ${companyData.sector}`,
+      });
     }
 
     if (reportSections.includes("themes")) {
@@ -3278,7 +3441,11 @@ function CompanyWorkspaceView(props: {
         ? topThemes.map(([theme, score]) => `${theme} (${score})`).join(", ")
         : "No theme signal available";
 
-      sections.push(`Theme Outlook:\nDominant theme signals: ${themeText}.`);
+      sections.push({
+        id: "themes",
+        heading: "Theme Outlook",
+        content: `Dominant theme signals: ${themeText}.`,
+      });
     }
 
     const audienceText =
@@ -3289,8 +3456,15 @@ function CompanyWorkspaceView(props: {
     return {
       title: reportTitle.trim() || `${companyData.symbol} Research Brief`,
       generatedAt: reportGeneratedAt,
+      audience: reportAudience,
       audienceText,
-      body: sections.join("\n\n"),
+      symbol: companyData.symbol,
+      companyName: companyData.name,
+      dataMode: props.dataMode,
+      sections,
+      body: sections
+        .map((section) => `${section.heading}:\n${section.content}`)
+        .join("\n\n"),
     };
   }, [
     companyData.marketCapBn,
@@ -3302,6 +3476,7 @@ function CompanyWorkspaceView(props: {
     reportGeneratedAt,
     reportSections,
     reportTitle,
+    props.dataMode,
     topThemes,
   ]);
 
@@ -3339,6 +3514,18 @@ function CompanyWorkspaceView(props: {
     anchor.click();
     anchor.remove();
     window.URL.revokeObjectURL(url);
+    props.pushToast("Text report downloaded", "success");
+  };
+
+  const exportReportPdf = async () => {
+    if (!generatedReport) return;
+    try {
+      props.pushToast("Preparing PDF export...", "info");
+      await exportReportAsPdf(generatedReport);
+      props.pushToast("PDF report downloaded", "success");
+    } catch {
+      props.pushToast("PDF export failed. Please try again.", "warning");
+    }
   };
 
   return (
@@ -3552,7 +3739,7 @@ function CompanyWorkspaceView(props: {
             <select
               className="type-select"
               value={reportAudience}
-              onChange={(event) => setReportAudience(event.target.value as "retail" | "analyst")}
+              onChange={(event) => setReportAudience(event.target.value as ReportAudience)}
             >
               <option value="analyst">Analyst</option>
               <option value="retail">Retail</option>
@@ -3585,12 +3772,23 @@ function CompanyWorkspaceView(props: {
           >
             Download .txt
           </button>
+          <button
+            type="button"
+            className="secondary-btn mini-btn"
+            onClick={exportReportPdf}
+            disabled={!generatedReport}
+          >
+            Download .pdf
+          </button>
         </div>
 
         {generatedReport ? (
           <div className="report-preview">
             <h4>{generatedReport.title}</h4>
             <p>{generatedReport.audienceText}</p>
+            <small>
+              Template: {generatedReport.audience === "retail" ? "Retail Brief" : "Analyst Dossier"}
+            </small>
             <small>Generated: {new Date(generatedReport.generatedAt).toLocaleString()}</small>
             <pre>{generatedReport.body}</pre>
           </div>

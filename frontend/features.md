@@ -63,17 +63,17 @@ Status: [x] Completed
 
 ### 3) Report Export Upgrade (PDF)
 
-Status: [ ] Pending
+Status: [x] Completed
 
 **Why now:** Report builder exists; PDF output makes it interview/viva ready.
 
 #### Scope
-- PDF export template (cover, summary, risks, financials, themes)
-- Two templates: `Retail` and `Analyst`
-- Include generation metadata (symbol/date/mode)
+- [x] PDF export template (cover, summary, risks, financials, themes)
+- [x] Two templates: `Retail` and `Analyst`
+- [x] Include generation metadata (symbol/date/mode)
 
 #### Acceptance
-- Downloaded report opens as professional PDF with consistent formatting
+- [x] Downloaded report opens as professional PDF with consistent formatting
 
 ---
 
