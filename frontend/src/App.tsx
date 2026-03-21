@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
+  ArrowUpRight,
   BarChart3,
   Bell,
   Bookmark,
   BookmarkCheck,
+  Building2,
   BookOpenText,
   Bot,
   CheckCheck,
@@ -44,6 +46,7 @@ import {
 type ViewKey =
   | "dashboard"
   | "chat"
+  | "company"
   | "discovery"
   | "portfolio"
   | "filings"
@@ -114,6 +117,7 @@ interface ToastItem {
 
 interface SearchSelection {
   stamp: number;
+  companySymbol?: string;
   discoveryQuery?: string;
   discoveryTheme?: string;
   filingsSymbol?: string;
@@ -404,6 +408,7 @@ interface NavItem {
 
 const navItems: NavItem[] = [
   { key: "dashboard", label: "Dashboard", icon: LayoutDashboard, caption: "Overview" },
+  { key: "company", label: "Company", icon: Building2, caption: "Workspace" },
   { key: "chat", label: "Iris Chat", icon: Bot, caption: "Copilot" },
   { key: "discovery", label: "Discovery", icon: Compass, caption: "Themes" },
   { key: "portfolio", label: "Portfolio", icon: Wallet, caption: "Exposure" },
@@ -932,6 +937,16 @@ export default function App() {
         action: () => goToView("dashboard"),
       },
       {
+        id: "go-company",
+        label: "Go to Company Workspace",
+        hint: "Navigation",
+        keywords: "company workspace symbol details",
+        action: () => {
+          setSearchSelection({ stamp: Date.now(), companySymbol: "RELIANCE" });
+          goToView("company");
+        },
+      },
+      {
         id: "go-chat",
         label: "Go to Iris Chat",
         hint: "Navigation",
@@ -1171,6 +1186,14 @@ export default function App() {
             onToggleDensity={toggleDashboardDensity}
             onToggleWidget={toggleDashboardWidget}
             onResetPreferences={resetDashboardPreferences}
+          />
+        );
+      case "company":
+        return (
+          <CompanyWorkspaceView
+            searchSelection={searchSelection}
+            addFavorite={addFavorite}
+            isFavorited={isFavorited}
           />
         );
       case "chat":
@@ -1965,6 +1988,255 @@ function ChatView(props: { searchSelection: SearchSelection | null }) {
           <button type="button" className="primary-btn">Send</button>
         </div>
       </article>
+    </section>
+  );
+}
+
+function CompanyWorkspaceView(props: {
+  searchSelection: SearchSelection | null;
+  addFavorite: (favorite: Omit<FavoriteItem, "id" | "createdAt">) => void;
+  isFavorited: (favorite: Pick<FavoriteItem, "type" | "title" | "symbol">) => boolean;
+}) {
+  const [lastSelectionStamp, setLastSelectionStamp] = useState<number>(0);
+  const [symbolInput, setSymbolInput] = useState("RELIANCE");
+  const [activeSymbol, setActiveSymbol] = useState("RELIANCE");
+  const [activeTab, setActiveTab] = useState<"overview" | "filings" | "sentiment" | "timeline" | "chat">(
+    "overview"
+  );
+
+  useEffect(() => {
+    if (!props.searchSelection) return;
+    if (props.searchSelection.stamp === lastSelectionStamp) return;
+
+    const symbol =
+      props.searchSelection.companySymbol ??
+      props.searchSelection.filingsSymbol ??
+      props.searchSelection.newsSymbol ??
+      props.searchSelection.discoveryQuery;
+
+    if (symbol) {
+      const normalized = symbol.toUpperCase();
+      setActiveSymbol(normalized);
+      setSymbolInput(normalized);
+    }
+
+    setLastSelectionStamp(props.searchSelection.stamp);
+  }, [lastSelectionStamp, props.searchSelection]);
+
+  const companyData = useMemo(() => {
+    const found = DISCOVERY_COMPANIES.find((company) => company.symbol === activeSymbol);
+    if (found) return found;
+
+    return {
+      symbol: activeSymbol,
+      name: `${activeSymbol} Corp`,
+      sector: "Unknown",
+      marketCapBn: 0,
+      insight: "No local company profile found yet. Add this symbol to discovery dataset.",
+      themeScores: {},
+    } as DiscoveryCompany;
+  }, [activeSymbol]);
+
+  const companyTimeline = useMemo(
+    () => TIMELINE_EVENTS.filter((event) => event.company === activeSymbol).slice(0, 6),
+    [activeSymbol]
+  );
+
+  const topThemes = useMemo(
+    () => Object.entries(companyData.themeScores).sort((a, b) => b[1] - a[1]).slice(0, 5),
+    [companyData.themeScores]
+  );
+
+  const profileTitle = `${companyData.symbol} · ${companyData.name}`;
+
+  return (
+    <section className="page-wrap">
+      <PageHeader
+        title="Company Workspace"
+        subtitle="One research cockpit per company: filings, sentiment, timeline, and company-context chat."
+        right={
+          <form
+            className="search-pill"
+            onSubmit={(event) => {
+              event.preventDefault();
+              const normalized = symbolInput.trim().toUpperCase();
+              if (normalized) {
+                setActiveSymbol(normalized);
+              }
+            }}
+          >
+            <Search size={14} />
+            <input
+              placeholder="Enter company symbol"
+              value={symbolInput}
+              onChange={(event) => setSymbolInput(event.target.value)}
+            />
+          </form>
+        }
+      />
+
+      <div className="company-header-card">
+        <div className="company-header-main">
+          <p className="discovery-symbol">{companyData.symbol}</p>
+          <h2>{companyData.name}</h2>
+          <p>{companyData.insight}</p>
+          <div className="chip-row">
+            <span className="chip">Sector: {companyData.sector}</span>
+            <span className="chip">Market Cap: ${companyData.marketCapBn.toFixed(1)}B</span>
+          </div>
+        </div>
+        <div className="company-header-actions">
+          <button
+            type="button"
+            className="secondary-btn mini-btn"
+            onClick={() =>
+              props.addFavorite({
+                type: "company",
+                symbol: companyData.symbol,
+                title: profileTitle,
+                subtitle: companyData.insight,
+              })
+            }
+          >
+            {props.isFavorited({ type: "company", symbol: companyData.symbol, title: profileTitle }) ? (
+              <>
+                <BookmarkCheck size={14} />
+                Saved
+              </>
+            ) : (
+              <>
+                <Bookmark size={14} />
+                Save Company
+              </>
+            )}
+          </button>
+          <button
+            type="button"
+            className="secondary-btn mini-btn"
+            onClick={() => {
+              setActiveTab("chat");
+            }}
+          >
+            <ArrowUpRight size={14} />
+            Ask Iris
+          </button>
+        </div>
+      </div>
+
+      <div className="company-tabs">
+        {[
+          ["overview", "Overview"],
+          ["filings", "Filings"],
+          ["sentiment", "Sentiment"],
+          ["timeline", "Timeline"],
+          ["chat", "Chat"],
+        ].map(([tabId, label]) => (
+          <button
+            key={tabId}
+            type="button"
+            className={`company-tab-btn ${activeTab === tabId ? "active" : ""}`}
+            onClick={() => setActiveTab(tabId as typeof activeTab)}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {activeTab === "overview" ? (
+        <div className="split-grid">
+          <article className="feature-card">
+            <div className="feature-head">
+              <Compass size={18} />
+              <h3>Theme Exposure</h3>
+            </div>
+            {topThemes.length ? (
+              <div className="chip-row">
+                {topThemes.map(([theme, score]) => (
+                  <span key={`${companyData.symbol}-${theme}`} className="chip discovery-theme-chip">
+                    {theme} · {score}
+                  </span>
+                ))}
+              </div>
+            ) : (
+              <p>No theme scores found for this symbol in local discovery set.</p>
+            )}
+          </article>
+
+          <article className="feature-card">
+            <div className="feature-head">
+              <Clock3 size={18} />
+              <h3>Recent Timeline Count</h3>
+            </div>
+            <p>{companyTimeline.length} recent events found for this company.</p>
+          </article>
+        </div>
+      ) : null}
+
+      {activeTab === "filings" ? (
+        <article className="feature-card">
+          <div className="feature-head">
+            <FileText size={18} />
+            <h3>Filings Snapshot ({companyData.symbol})</h3>
+          </div>
+          <p>
+            Open the full Filings page for deep drill-down. This workspace keeps the symbol context
+            pinned for quick navigation.
+          </p>
+        </article>
+      ) : null}
+
+      {activeTab === "sentiment" ? (
+        <article className="feature-card">
+          <div className="feature-head">
+            <TrendingUp size={18} />
+            <h3>Sentiment Snapshot ({companyData.symbol})</h3>
+          </div>
+          <p>
+            Use this tab as a context anchor, then jump to News for live headlines and sentiment feed
+            scoped to {companyData.symbol}.
+          </p>
+        </article>
+      ) : null}
+
+      {activeTab === "timeline" ? (
+        <article className="list-card">
+          {companyTimeline.length ? (
+            companyTimeline.map((event) => (
+              <div key={event.id} className="list-item">
+                <p>{event.title}</p>
+                <span>{new Date(event.timestamp).toLocaleString()}</span>
+              </div>
+            ))
+          ) : (
+            <div className="list-item single-line">
+              <p>No timeline events for {companyData.symbol} in local dataset.</p>
+            </div>
+          )}
+        </article>
+      ) : null}
+
+      {activeTab === "chat" ? (
+        <article className="chat-shell">
+          <div className="chat-messages">
+            <div className="message assistant">
+              <p>
+                You are now in {companyData.symbol} context. Ask company-specific questions to get
+                tighter research answers.
+              </p>
+              <div className="source-list">
+                <span className="source-chip">Company Workspace · Context mode</span>
+              </div>
+            </div>
+          </div>
+          <div className="chat-input-row">
+            <input
+              value={`What are the key risks and opportunities for ${companyData.symbol} this quarter?`}
+              readOnly
+            />
+            <button type="button" className="primary-btn">Send</button>
+          </div>
+        </article>
+      ) : null}
     </section>
   );
 }
