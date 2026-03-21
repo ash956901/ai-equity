@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import {
   BarChart3,
   Bot,
+  Compass,
   Command,
   FileText,
   LayoutDashboard,
@@ -31,8 +32,109 @@ import {
   type SentimentFeedResponse,
 } from "./lib/api";
 
-type ViewKey = "dashboard" | "chat" | "portfolio" | "filings" | "news" | "settings";
+type ViewKey =
+  | "dashboard"
+  | "chat"
+  | "discovery"
+  | "portfolio"
+  | "filings"
+  | "news"
+  | "settings";
 type Theme = "light" | "dark";
+
+interface DiscoveryCompany {
+  symbol: string;
+  name: string;
+  sector: string;
+  marketCapBn: number;
+  insight: string;
+  themeScores: Record<string, number>;
+}
+
+type MarketCapBucket = "all" | "mega" | "large" | "mid" | "small";
+
+const DISCOVERY_COMPANIES: DiscoveryCompany[] = [
+  {
+    symbol: "RELIANCE",
+    name: "Reliance Industries",
+    sector: "Conglomerate",
+    marketCapBn: 210,
+    insight: "Building strong optionality across AI infra, green energy, and retail data platforms.",
+    themeScores: { AI: 82, Renewable: 78, RetailTech: 71, Defense: 48 },
+  },
+  {
+    symbol: "TCS",
+    name: "Tata Consultancy Services",
+    sector: "IT Services",
+    marketCapBn: 170,
+    insight: "Enterprise AI transformation mandates remain dominant in large client deals.",
+    themeScores: { AI: 90, Cloud: 86, Cybersecurity: 68, Fintech: 59 },
+  },
+  {
+    symbol: "INFY",
+    name: "Infosys",
+    sector: "IT Services",
+    marketCapBn: 78,
+    insight: "AI-led digital modernization pipeline indicates sustained large-deal conversion.",
+    themeScores: { AI: 88, Cloud: 79, EnterpriseTech: 66, Fintech: 54 },
+  },
+  {
+    symbol: "HAL",
+    name: "Hindustan Aeronautics",
+    sector: "Aerospace & Defense",
+    marketCapBn: 32,
+    insight: "Defense electronics and aircraft order visibility continues to improve.",
+    themeScores: { Defense: 94, Aerospace: 89, AI: 52, Manufacturing: 74 },
+  },
+  {
+    symbol: "BEL",
+    name: "Bharat Electronics",
+    sector: "Aerospace & Defense",
+    marketCapBn: 18,
+    insight: "Mission systems and radar programs support medium-term earnings stability.",
+    themeScores: { Defense: 91, Aerospace: 76, AI: 57, Semiconductors: 50 },
+  },
+  {
+    symbol: "TATAPOWER",
+    name: "Tata Power",
+    sector: "Power & Utilities",
+    marketCapBn: 17,
+    insight: "Renewable capacity expansion and distribution turnaround are key catalysts.",
+    themeScores: { Renewable: 92, EV: 74, GridTech: 63, AI: 49 },
+  },
+  {
+    symbol: "ADANIGREEN",
+    name: "Adani Green Energy",
+    sector: "Power & Utilities",
+    marketCapBn: 31,
+    insight: "Scale in utility-scale solar and storage makes it a pure renewable momentum play.",
+    themeScores: { Renewable: 95, GridTech: 69, EV: 58, AI: 34 },
+  },
+  {
+    symbol: "M&M",
+    name: "Mahindra & Mahindra",
+    sector: "Automotive",
+    marketCapBn: 39,
+    insight: "EV product cadence and farm resilience create a balanced cyclical profile.",
+    themeScores: { EV: 86, Manufacturing: 73, RuralDemand: 70, AI: 43 },
+  },
+  {
+    symbol: "ZOMATO",
+    name: "Eternal (Zomato)",
+    sector: "Internet",
+    marketCapBn: 23,
+    insight: "Logistics intelligence and retention loops are strengthening operating leverage.",
+    themeScores: { RetailTech: 85, AI: 72, Fintech: 67, QuickCommerce: 88 },
+  },
+  {
+    symbol: "PAYTM",
+    name: "One97 Communications",
+    sector: "Fintech",
+    marketCapBn: 4.9,
+    insight: "Merchant monetization and compliance-led product redesign remain key watchpoints.",
+    themeScores: { Fintech: 90, AI: 63, DigitalPayments: 94, RetailTech: 56 },
+  },
+];
 
 interface CommandItem {
   id: string;
@@ -52,6 +154,7 @@ interface NavItem {
 const navItems: NavItem[] = [
   { key: "dashboard", label: "Dashboard", icon: LayoutDashboard, caption: "Overview" },
   { key: "chat", label: "Iris Chat", icon: Bot, caption: "Copilot" },
+  { key: "discovery", label: "Discovery", icon: Compass, caption: "Themes" },
   { key: "portfolio", label: "Portfolio", icon: Wallet, caption: "Exposure" },
   { key: "filings", label: "Filings", icon: FileText, caption: "Reports" },
   { key: "news", label: "News", icon: Newspaper, caption: "Sentiment" },
@@ -159,6 +262,13 @@ export default function App() {
         hint: "Navigation",
         keywords: "chat copilot iris assistant",
         action: () => goToView("chat"),
+      },
+      {
+        id: "go-discovery",
+        label: "Go to Discovery",
+        hint: "Navigation",
+        keywords: "discovery themes ai defense sectors",
+        action: () => goToView("discovery"),
       },
       {
         id: "go-portfolio",
@@ -290,6 +400,8 @@ export default function App() {
         return <DashboardView />;
       case "chat":
         return <ChatView />;
+      case "discovery":
+        return <DiscoveryView />;
       case "portfolio":
         return <PortfolioView />;
       case "filings":
@@ -573,6 +685,189 @@ function ChatView() {
           <button className="primary-btn">Send</button>
         </div>
       </article>
+    </section>
+  );
+}
+
+function DiscoveryView() {
+  const [query, setQuery] = useState("");
+  const [activeTheme, setActiveTheme] = useState<string>("all");
+  const [activeSector, setActiveSector] = useState<string>("all");
+  const [marketCapBucket, setMarketCapBucket] = useState<MarketCapBucket>("all");
+  const [minThemeScore, setMinThemeScore] = useState<number>(60);
+
+  const allThemes = useMemo(() => {
+    const set = new Set<string>();
+    for (const company of DISCOVERY_COMPANIES) {
+      for (const theme of Object.keys(company.themeScores)) {
+        set.add(theme);
+      }
+    }
+    return ["all", ...Array.from(set).sort((a, b) => a.localeCompare(b))];
+  }, []);
+
+  const allSectors = useMemo(() => {
+    const set = new Set(DISCOVERY_COMPANIES.map((company) => company.sector));
+    return ["all", ...Array.from(set).sort((a, b) => a.localeCompare(b))];
+  }, []);
+
+  const filteredCompanies = useMemo(() => {
+    const normalizedQuery = query.trim().toLowerCase();
+
+    return DISCOVERY_COMPANIES.filter((company) => {
+      const maxThemeScore = Math.max(...Object.values(company.themeScores));
+
+      const matchesQuery =
+        !normalizedQuery ||
+        `${company.symbol} ${company.name} ${company.sector} ${company.insight}`
+          .toLowerCase()
+          .includes(normalizedQuery);
+
+      const matchesTheme =
+        activeTheme === "all" || (company.themeScores[activeTheme] ?? 0) >= minThemeScore;
+
+      const matchesSector = activeSector === "all" || company.sector === activeSector;
+
+      const matchesMarketCap =
+        marketCapBucket === "all" ||
+        (marketCapBucket === "mega" && company.marketCapBn >= 120) ||
+        (marketCapBucket === "large" && company.marketCapBn >= 40 && company.marketCapBn < 120) ||
+        (marketCapBucket === "mid" && company.marketCapBn >= 10 && company.marketCapBn < 40) ||
+        (marketCapBucket === "small" && company.marketCapBn < 10);
+
+      const matchesMinimumThemeScore = maxThemeScore >= minThemeScore;
+
+      return (
+        matchesQuery &&
+        matchesTheme &&
+        matchesSector &&
+        matchesMarketCap &&
+        matchesMinimumThemeScore
+      );
+    }).sort((a, b) => {
+      const aTop = Math.max(...Object.values(a.themeScores));
+      const bTop = Math.max(...Object.values(b.themeScores));
+      return bTop - aTop;
+    });
+  }, [activeSector, activeTheme, marketCapBucket, minThemeScore, query]);
+
+  const summaryText = useMemo(() => {
+    if (!filteredCompanies.length) return "No companies match current discovery filters.";
+    const top = filteredCompanies[0];
+    const [topTheme, topScore] = Object.entries(top.themeScores).sort((a, b) => b[1] - a[1])[0];
+    return `${filteredCompanies.length} companies matched. Top signal: ${top.symbol} in ${topTheme} (${topScore}/100).`;
+  }, [filteredCompanies]);
+
+  return (
+    <section className="page-wrap">
+      <PageHeader
+        title="Thematic Discovery Engine"
+        subtitle="Discover companies by AI-native themes, sector relevance, and conviction scores."
+      />
+
+      <div className="discovery-panel">
+        <div className="search-pill discovery-search">
+          <Search size={14} />
+          <input
+            placeholder="Search AI companies, defense, EV, fintech..."
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+          />
+        </div>
+
+        <div className="discovery-controls">
+          <select
+            className="type-select"
+            value={activeTheme}
+            onChange={(event) => setActiveTheme(event.target.value)}
+          >
+            {allThemes.map((theme) => (
+              <option key={theme} value={theme}>
+                Theme: {theme === "all" ? "All" : theme}
+              </option>
+            ))}
+          </select>
+
+          <select
+            className="type-select"
+            value={activeSector}
+            onChange={(event) => setActiveSector(event.target.value)}
+          >
+            {allSectors.map((sector) => (
+              <option key={sector} value={sector}>
+                Sector: {sector === "all" ? "All" : sector}
+              </option>
+            ))}
+          </select>
+
+          <select
+            className="type-select"
+            value={marketCapBucket}
+            onChange={(event) => setMarketCapBucket(event.target.value as MarketCapBucket)}
+          >
+            <option value="all">Market Cap: All</option>
+            <option value="mega">Mega (&gt;= 120B)</option>
+            <option value="large">Large (40-120B)</option>
+            <option value="mid">Mid (10-40B)</option>
+            <option value="small">Small (&lt; 10B)</option>
+          </select>
+        </div>
+
+        <div className="discovery-score-row">
+          <label htmlFor="theme-score" className="results-title">
+            Minimum Theme Score: {minThemeScore}
+          </label>
+          <input
+            id="theme-score"
+            type="range"
+            min={40}
+            max={95}
+            step={1}
+            value={minThemeScore}
+            onChange={(event) => setMinThemeScore(Number(event.target.value))}
+            className="score-slider"
+          />
+        </div>
+      </div>
+
+      <div className="notice">{summaryText}</div>
+
+      <div className="discovery-grid">
+        {filteredCompanies.length ? (
+          filteredCompanies.map((company) => {
+            const sortedThemes = Object.entries(company.themeScores)
+              .sort((a, b) => b[1] - a[1])
+              .slice(0, 4);
+
+            return (
+              <article key={company.symbol} className="discovery-card">
+                <div className="discovery-card-head">
+                  <div>
+                    <p className="discovery-symbol">{company.symbol}</p>
+                    <h3>{company.name}</h3>
+                  </div>
+                  <span className="chip">${company.marketCapBn.toFixed(1)}B</span>
+                </div>
+
+                <p className="discovery-sector">{company.sector}</p>
+                <p className="discovery-insight">{company.insight}</p>
+
+                <div className="chip-row discovery-chips">
+                  {sortedThemes.map(([theme, score]) => (
+                    <span key={`${company.symbol}-${theme}`} className="chip discovery-theme-chip">
+                      {theme} · {score}
+                    </span>
+                  ))}
+                </div>
+              </article>
+            );
+          })
+        ) : (
+          <div className="list-item single-line">
+            <p>No discovery matches. Try lowering score or widening filters.</p>
+          </div>
+        )}
+      </div>
     </section>
   );
 }
