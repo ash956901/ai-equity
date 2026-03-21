@@ -12,12 +12,16 @@ import {
   Clock3,
   Compass,
   Command,
+  Database,
   FileText,
   Flame,
   GitCompareArrows,
   LayoutDashboard,
   Moon,
   Newspaper,
+  Pencil,
+  Pin,
+  Plus,
   Search,
   Settings,
   ShieldAlert,
@@ -58,6 +62,7 @@ type ViewKey =
   | "news"
   | "settings";
 type Theme = "light" | "dark";
+type DataMode = "live" | "demo";
 type DashboardDensity = "comfortable" | "compact";
 
 interface DashboardPreferences {
@@ -111,6 +116,16 @@ interface ChatMessage {
   role: "assistant" | "user";
   text: string;
   sources?: string[];
+}
+
+interface ChatThread {
+  id: string;
+  title: string;
+  pinned: boolean;
+  createdAt: string;
+  updatedAt: string;
+  mode: ExplanationMode;
+  messages: ChatMessage[];
 }
 
 interface ToastItem {
@@ -534,10 +549,75 @@ const navItems: NavItem[] = [
 ];
 
 const THEME_STORAGE_KEY = "equityai-theme";
+const DATA_MODE_STORAGE_KEY = "equityai-data-mode";
 const NOTIFICATIONS_STORAGE_KEY = "equityai-notifications";
 const FAVORITES_STORAGE_KEY = "equityai-favorites";
 const DASHBOARD_PREFERENCES_KEY = "equityai-dashboard-preferences";
 const ALERT_RULES_STORAGE_KEY = "equityai-alert-rules";
+const CHAT_THREADS_STORAGE_KEY = "equityai-chat-threads";
+const CHAT_ACTIVE_THREAD_STORAGE_KEY = "equityai-chat-active-thread";
+
+const DEMO_MARKET_HEADLINES: NewsDataResponse = {
+  status: "success",
+  totalResults: 6,
+  results: [
+    {
+      article_id: "demo-h1",
+      title: "Indian equities hold gains as IT and industrials lead intraday breadth",
+      source_name: "Demo Wire",
+      pubDate: "2026-03-22 09:15",
+      link: "#",
+    },
+    {
+      article_id: "demo-h2",
+      title: "Defense basket extends momentum after fresh procurement commentary",
+      source_name: "Demo Wire",
+      pubDate: "2026-03-22 08:40",
+      link: "#",
+    },
+    {
+      article_id: "demo-h3",
+      title: "Renewable developers in focus on capacity commissioning updates",
+      source_name: "Demo Wire",
+      pubDate: "2026-03-22 08:10",
+      link: "#",
+    },
+    {
+      article_id: "demo-h4",
+      title: "Banking sentiment mixed as deposit growth trackers stabilize",
+      source_name: "Demo Wire",
+      pubDate: "2026-03-22 07:35",
+      link: "#",
+    },
+    {
+      article_id: "demo-h5",
+      title: "Auto names gain on EV launch cadence and demand resilience",
+      source_name: "Demo Wire",
+      pubDate: "2026-03-22 07:00",
+      link: "#",
+    },
+    {
+      article_id: "demo-h6",
+      title: "Large-cap breadth improves as risk appetite rotates to cyclicals",
+      source_name: "Demo Wire",
+      pubDate: "2026-03-22 06:30",
+      link: "#",
+    },
+  ],
+};
+
+const DEMO_DASHBOARD_DATA = {
+  health: {
+    status: "healthy",
+    message: "Demo mode active. Serving deterministic local data.",
+  } as HealthResponse,
+  apiStatus: {
+    api_version: "demo-v1",
+    status: "operational",
+  } as ApiStatusResponse,
+  headlines: DEMO_MARKET_HEADLINES,
+  holdingsCount: PORTFOLIO_HOLDINGS.length,
+};
 
 type ViewTransitionCapable = {
   startViewTransition?: (updateCallback: () => void) => { finished: Promise<void> };
@@ -550,6 +630,12 @@ function getInitialTheme(): Theme {
   return window.matchMedia("(prefers-color-scheme: dark)").matches
     ? "dark"
     : "light";
+}
+
+function getInitialDataMode(): DataMode {
+  const saved = window.localStorage.getItem(DATA_MODE_STORAGE_KEY);
+  if (saved === "live" || saved === "demo") return saved;
+  return "live";
 }
 
 function getInitialNotifications(): NotificationItem[] {
@@ -649,9 +735,125 @@ function getInitialAlertRules(): AlertRule[] {
   }
 }
 
+function buildMockFilings(symbol: string, filingType?: string): SecFiling[] {
+  const normalized = symbol.toUpperCase();
+  const base = [
+    { type: "10-Q", title: `${normalized} quarterly update` },
+    { type: "8-K", title: `${normalized} strategic business update` },
+    { type: "10-K", title: `${normalized} annual report and guidance` },
+    { type: "8-K", title: `${normalized} investor presentation filing` },
+    { type: "10-Q", title: `${normalized} operating metrics release` },
+    { type: "8-K", title: `${normalized} board resolution disclosure` },
+    { type: "10-K", title: `${normalized} risk factors and governance update` },
+    { type: "8-K", title: `${normalized} segment performance commentary` },
+  ];
+
+  return base
+    .filter((item) => !filingType || item.type === filingType)
+    .map((item, index) => {
+      const filingDate = new Date(Date.now() - index * 86400000).toISOString();
+      return {
+        symbol: normalized,
+        type: item.type,
+        title: item.title,
+        filingDate,
+        acceptedDate: filingDate,
+        finalLink: "#",
+      };
+    });
+}
+
+function buildMockSentiment(symbol: string): SentimentFeedResponse {
+  const normalized = symbol.toUpperCase();
+  const sentiments = ["positive", "neutral", "negative", "positive", "neutral", "positive"];
+
+  const articles = sentiments.map((sentiment, index) => ({
+    article_id: `demo-${normalized}-${index}`,
+    title: `${normalized} sentiment pulse #${index + 1}`,
+    description: `${normalized} narrative update generated in demo mode.`,
+    source_name: "Iris Demo Feed",
+    pubDate: new Date(Date.now() - index * 3600000).toISOString(),
+    link: "#",
+    sentiment,
+  }));
+
+  return {
+    symbol: normalized,
+    total_results: articles.length,
+    articles,
+  };
+}
+
+function getMockCompanyResults(query: string, limit: number): CompanySearchResult[] {
+  const normalized = query.trim().toLowerCase();
+  return DISCOVERY_COMPANIES.filter((company) => {
+    if (!normalized) return true;
+    return `${company.symbol} ${company.name} ${company.sector}`.toLowerCase().includes(normalized);
+  })
+    .slice(0, limit)
+    .map((company) => ({
+      symbol: company.symbol,
+      name: company.name,
+      exchangeShortName: "NSE",
+      stockExchange: "National Stock Exchange",
+    }));
+}
+
+function createInitialThread(promptText?: string): ChatThread {
+  const now = new Date().toISOString();
+  const messageSeed = promptText?.trim();
+
+  const messages: ChatMessage[] = [
+    {
+      id: `assistant-${Date.now()}-intro`,
+      role: "assistant",
+      text: "Iris is ready. Start with filings, risk, sentiment, or a compare query.",
+      sources: ["Workspace context", "Timeline feed", "Discovery themes"],
+    },
+  ];
+
+  if (messageSeed) {
+    messages.push({
+      id: `user-${Date.now()}-seed`,
+      role: "user",
+      text: messageSeed,
+    });
+    messages.push({
+      id: `assistant-${Date.now()}-seed`,
+      role: "assistant",
+      text: `Got it. I will analyze: "${messageSeed}" and structure the answer with risks, catalysts, and next checks.`,
+      sources: ["Prompt intent parser", "Research heuristics"],
+    });
+  }
+
+  return {
+    id: `thread-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    title: messageSeed ? messageSeed.slice(0, 44) : "New thread",
+    pinned: false,
+    createdAt: now,
+    updatedAt: now,
+    mode: "analyst",
+    messages,
+  };
+}
+
+function getInitialChatThreads(): ChatThread[] {
+  const saved = window.localStorage.getItem(CHAT_THREADS_STORAGE_KEY);
+  if (!saved) return [createInitialThread()];
+
+  try {
+    const parsed = JSON.parse(saved) as ChatThread[];
+    if (!Array.isArray(parsed) || !parsed.length) return [createInitialThread()];
+    return parsed.filter((thread) => thread.id && Array.isArray(thread.messages));
+  } catch {
+    return [createInitialThread()];
+  }
+}
+
 export default function App() {
   const [activeView, setActiveView] = useState<ViewKey>("dashboard");
   const [theme, setTheme] = useState<Theme>(getInitialTheme);
+  const [dataMode, setDataMode] = useState<DataMode>(getInitialDataMode);
   const [dashboardPreferences, setDashboardPreferences] =
     useState<DashboardPreferences>(getInitialDashboardPreferences);
   const [searchSelection, setSearchSelection] = useState<SearchSelection | null>(null);
@@ -674,6 +876,8 @@ export default function App() {
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [paletteQuery, setPaletteQuery] = useState("");
   const [paletteActiveIndex, setPaletteActiveIndex] = useState(0);
+  const [chatThreads, setChatThreads] = useState<ChatThread[]>(getInitialChatThreads);
+  const [activeChatThreadId, setActiveChatThreadId] = useState("");
   const paletteInputRef = useRef<HTMLInputElement | null>(null);
   const globalSearchInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -690,12 +894,46 @@ export default function App() {
   }, [notifications]);
 
   useEffect(() => {
+    window.localStorage.setItem(DATA_MODE_STORAGE_KEY, dataMode);
+  }, [dataMode]);
+
+  useEffect(() => {
     window.localStorage.setItem(FAVORITES_STORAGE_KEY, JSON.stringify(favorites));
   }, [favorites]);
 
   useEffect(() => {
     window.localStorage.setItem(ALERT_RULES_STORAGE_KEY, JSON.stringify(alertRules));
   }, [alertRules]);
+
+  useEffect(() => {
+    window.localStorage.setItem(CHAT_THREADS_STORAGE_KEY, JSON.stringify(chatThreads));
+  }, [chatThreads]);
+
+  useEffect(() => {
+    if (!activeChatThreadId) return;
+    window.localStorage.setItem(CHAT_ACTIVE_THREAD_STORAGE_KEY, activeChatThreadId);
+  }, [activeChatThreadId]);
+
+  useEffect(() => {
+    if (!chatThreads.length) {
+      const thread = createInitialThread();
+      setChatThreads([thread]);
+      setActiveChatThreadId(thread.id);
+      return;
+    }
+
+    if (activeChatThreadId && chatThreads.some((thread) => thread.id === activeChatThreadId)) {
+      return;
+    }
+
+    const saved = window.localStorage.getItem(CHAT_ACTIVE_THREAD_STORAGE_KEY);
+    if (saved && chatThreads.some((thread) => thread.id === saved)) {
+      setActiveChatThreadId(saved);
+      return;
+    }
+
+    setActiveChatThreadId(chatThreads[0].id);
+  }, [activeChatThreadId, chatThreads]);
 
   useEffect(() => {
     window.localStorage.setItem(
@@ -872,6 +1110,14 @@ export default function App() {
       clearTransitionClass();
     }, 420);
   }, []);
+
+  const toggleDataMode = useCallback(() => {
+    setDataMode((current) => {
+      const next = current === "live" ? "demo" : "live";
+      pushToast(next === "demo" ? "Demo mode enabled" : "Live API mode enabled", "info");
+      return next;
+    });
+  }, [pushToast]);
 
   const goToView = useCallback((view: ViewKey) => {
     setActiveView(view);
@@ -1315,6 +1561,16 @@ export default function App() {
         },
       },
       {
+        id: "toggle-data-mode",
+        label: dataMode === "demo" ? "Switch to Live API Mode" : "Switch to Demo Data Mode",
+        hint: "Data",
+        keywords: "demo mock live api data mode",
+        action: () => {
+          toggleDataMode();
+          closePalette();
+        },
+      },
+      {
         id: "open-alert-rules",
         label: "Open Alert Rules Builder",
         hint: "Automation",
@@ -1364,7 +1620,9 @@ export default function App() {
       searchSelection?.discoveryQuery,
       searchSelection?.filingsSymbol,
       searchSelection?.newsSymbol,
+      dataMode,
       theme,
+      toggleDataMode,
       toggleTheme,
     ]
   );
@@ -1522,6 +1780,7 @@ export default function App() {
       case "dashboard":
         return (
           <DashboardView
+            dataMode={dataMode}
             preferences={dashboardPreferences}
             onToggleDensity={toggleDashboardDensity}
             onToggleWidget={toggleDashboardWidget}
@@ -1531,6 +1790,7 @@ export default function App() {
       case "compare":
         return (
           <ComparisonWorkspaceView
+            dataMode={dataMode}
             searchSelection={searchSelection}
             goToView={goToView}
             setSearchSelection={setSearchSelection}
@@ -1539,16 +1799,27 @@ export default function App() {
       case "company":
         return (
           <CompanyWorkspaceView
+            dataMode={dataMode}
             searchSelection={searchSelection}
             addFavorite={addFavorite}
             isFavorited={isFavorited}
           />
         );
       case "chat":
-        return <ChatView searchSelection={searchSelection} />;
+        return (
+          <ChatView
+            searchSelection={searchSelection}
+            dataMode={dataMode}
+            threads={chatThreads}
+            activeThreadId={activeChatThreadId}
+            setThreads={setChatThreads}
+            setActiveThreadId={setActiveChatThreadId}
+          />
+        );
       case "discovery":
         return (
           <DiscoveryView
+            dataMode={dataMode}
             searchSelection={searchSelection}
             addFavorite={addFavorite}
             isFavorited={isFavorited}
@@ -1557,11 +1828,12 @@ export default function App() {
           />
         );
       case "portfolio":
-        return <PortfolioView />;
+        return <PortfolioView dataMode={dataMode} />;
       case "filings":
         return (
           <FilingsView
             searchSelection={searchSelection}
+            dataMode={dataMode}
             addFavorite={addFavorite}
             isFavorited={isFavorited}
             goToView={goToView}
@@ -1571,6 +1843,7 @@ export default function App() {
       case "timeline":
         return (
           <TimelineView
+            dataMode={dataMode}
             searchSelection={searchSelection}
             goToView={goToView}
             setSearchSelection={setSearchSelection}
@@ -1580,6 +1853,7 @@ export default function App() {
         return (
           <NewsView
             searchSelection={searchSelection}
+            dataMode={dataMode}
             addFavorite={addFavorite}
             isFavorited={isFavorited}
             goToView={goToView}
@@ -1590,7 +1864,9 @@ export default function App() {
         return (
           <SettingsView
             theme={theme}
+            dataMode={dataMode}
             onToggleTheme={toggleTheme}
+            onToggleDataMode={toggleDataMode}
             favoritesCount={favorites.length}
             unreadNotifications={unreadCount}
           />
@@ -1598,6 +1874,7 @@ export default function App() {
       default:
         return (
           <DashboardView
+            dataMode={dataMode}
             preferences={dashboardPreferences}
             onToggleDensity={toggleDashboardDensity}
             onToggleWidget={toggleDashboardWidget}
@@ -1608,12 +1885,15 @@ export default function App() {
   }, [
     activeView,
     addFavorite,
+    activeChatThreadId,
     dashboardPreferences,
+    dataMode,
     favorites.length,
     goToView,
     isFavorited,
     resetDashboardPreferences,
     searchSelection,
+    chatThreads,
     theme,
     toggleDashboardDensity,
     toggleDashboardWidget,
@@ -1693,6 +1973,11 @@ export default function App() {
           <span>{theme === "dark" ? "Switch to light" : "Switch to dark"}</span>
         </button>
 
+        <button type="button" className="theme-toggle" onClick={toggleDataMode}>
+          <Database size={15} />
+          <span>{dataMode === "demo" ? "Mode: Demo Data" : "Mode: Live API"}</span>
+        </button>
+
         <button type="button" className="command-shortcut" onClick={openPalette}>
           <span className="command-shortcut-left">
             <Command size={14} />
@@ -1734,7 +2019,7 @@ export default function App() {
 
         <div className="side-footer">
           <p className="status-label">System Health</p>
-          <div className="status-pill">All services connected</div>
+          <div className="status-pill">{dataMode === "demo" ? "Demo mode active" : "Live API mode"}</div>
         </div>
       </aside>
 
@@ -2167,12 +2452,22 @@ export default function App() {
   );
 }
 
-function PageHeader(props: { title: string; subtitle: string; right?: ReactNode }) {
+function PageHeader(props: {
+  title: string;
+  subtitle: string;
+  dataMode?: DataMode;
+  right?: ReactNode;
+}) {
   return (
     <header className="page-header">
       <div>
         <h1>{props.title}</h1>
         <p>{props.subtitle}</p>
+        <div className="page-header-meta">
+          <span className={`chip data-mode-chip ${props.dataMode === "demo" ? "demo" : "live"}`}>
+            {props.dataMode === "demo" ? "Demo Data" : "Live API"}
+          </span>
+        </div>
       </div>
       {props.right ? <div>{props.right}</div> : null}
     </header>
@@ -2180,6 +2475,7 @@ function PageHeader(props: { title: string; subtitle: string; right?: ReactNode 
 }
 
 function DashboardView(props: {
+  dataMode: DataMode;
   preferences: DashboardPreferences;
   onToggleDensity: () => void;
   onToggleWidget: (widgetId: string) => void;
@@ -2195,6 +2491,18 @@ function DashboardView(props: {
   const loadDashboardData = useCallback(async () => {
     setLoading(true);
     setError(null);
+
+    if (props.dataMode === "demo") {
+      await new Promise((resolve) => {
+        window.setTimeout(resolve, 180);
+      });
+      setHealth(DEMO_DASHBOARD_DATA.health);
+      setApiStatus(DEMO_DASHBOARD_DATA.apiStatus);
+      setHeadlines(DEMO_DASHBOARD_DATA.headlines);
+      setHoldingsCount(DEMO_DASHBOARD_DATA.holdingsCount);
+      setLoading(false);
+      return;
+    }
 
     const [healthRes, apiRes, headlinesRes, holdingsRes] = await Promise.allSettled([
       fetchBackendHealth(),
@@ -2219,7 +2527,7 @@ function DashboardView(props: {
     }
 
     setLoading(false);
-  }, []);
+  }, [props.dataMode]);
 
   useEffect(() => {
     void loadDashboardData();
@@ -2240,6 +2548,7 @@ function DashboardView(props: {
       <PageHeader
         title="Market Command Center"
         subtitle="Track activity, spot risks, and jump into analysis flows quickly."
+        dataMode={props.dataMode}
         right={
           <div className="dashboard-actions">
             <button type="button" className="secondary-btn mini-btn" onClick={props.onToggleDensity}>
@@ -2331,11 +2640,18 @@ function DashboardView(props: {
   );
 }
 
-function ChatView(props: { searchSelection: SearchSelection | null }) {
+function ChatView(props: {
+  searchSelection: SearchSelection | null;
+  dataMode: DataMode;
+  threads: ChatThread[];
+  activeThreadId: string;
+  setThreads: React.Dispatch<React.SetStateAction<ChatThread[]>>;
+  setActiveThreadId: React.Dispatch<React.SetStateAction<string>>;
+}) {
   const [lastSelectionStamp, setLastSelectionStamp] = useState<number>(0);
-  const [explanationMode, setExplanationMode] = useState<ExplanationMode>("analyst");
   const [showSources, setShowSources] = useState(true);
   const [composerText, setComposerText] = useState("");
+  const [threadQuery, setThreadQuery] = useState("");
 
   const suggestions = [
     "What changed in RELIANCE latest filing?",
@@ -2344,90 +2660,189 @@ function ChatView(props: { searchSelection: SearchSelection | null }) {
     "Explain why defense theme is heating up this week.",
   ];
 
-  const chatMessages: ChatMessage[] =
-    explanationMode === "simple"
-      ? [
-          {
-            id: "assistant-simple-1",
-            role: "assistant",
-            text: "I checked your watchlist and saw one key thing: your top stocks are still strong, but one banking stock is slowing a bit. Nothing panic-worthy yet, just keep watching next updates.",
-            sources: [
-              "Timeline Feed · Risk monitor signal",
-              "Filings Tracker · Latest disclosures",
-            ],
-          },
-          {
-            id: "user-simple-1",
-            role: "user",
-            text: "Can you explain in plain language what I should do this week?",
-          },
-          {
-            id: "assistant-simple-2",
-            role: "assistant",
-            text: "Sure. Keep your portfolio mostly as-is, read two new filings (RELIANCE and TATAPOWER), and avoid big changes until the next bank update comes in.",
-            sources: [
-              "Notifications · Filing alerts",
-              "Discovery Engine · Theme score snapshots",
-            ],
-          },
-        ]
-      : [
-          {
-            id: "assistant-analyst-1",
-            role: "assistant",
-            text: "Portfolio risk posture remains moderate. Concentration in top holdings is elevated, but near-term narrative quality remains constructive due to stable filing commentary and improving sector momentum in defense and renewables.",
-            sources: [
-              "Dashboard · Portfolio concentration card",
-              "Timeline Feed · Sector event flow",
-            ],
-          },
-          {
-            id: "user-analyst-1",
-            role: "user",
-            text: "Summarize major risk signals for my top holdings this week.",
-          },
-          {
-            id: "assistant-analyst-2",
-            role: "assistant",
-            text: "Primary watchpoints: (1) moderation signal in banking credit momentum, (2) valuation sensitivity in high-theme momentum names, and (3) execution dependency on capex-to-margin conversion for conglomerate and utility exposures.",
-            sources: [
-              "Notifications · Risk monitor",
-              "News & Sentiment · Narrative drift",
-              "Filings Tracker · Quarterly disclosures",
-            ],
-          },
-        ];
+  const activeThread = useMemo(
+    () => props.threads.find((thread) => thread.id === props.activeThreadId) ?? props.threads[0] ?? null,
+    [props.activeThreadId, props.threads]
+  );
+
+  const sortedThreads = useMemo(() => {
+    return [...props.threads].sort((a, b) => {
+      if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
+      return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
+    });
+  }, [props.threads]);
+
+  const filteredThreads = useMemo(() => {
+    const query = threadQuery.trim().toLowerCase();
+    if (!query) return sortedThreads;
+
+    return sortedThreads.filter((thread) => {
+      const lastMessage = thread.messages[thread.messages.length - 1]?.text ?? "";
+      return `${thread.title} ${lastMessage}`.toLowerCase().includes(query);
+    });
+  }, [sortedThreads, threadQuery]);
+
+  const updateActiveThread = useCallback(
+    (updater: (thread: ChatThread) => ChatThread) => {
+      if (!activeThread) return;
+      props.setThreads((current) =>
+        current.map((thread) => (thread.id === activeThread.id ? updater(thread) : thread))
+      );
+    },
+    [activeThread, props]
+  );
+
+  const createThread = useCallback(
+    (initialPrompt?: string) => {
+      const thread = createInitialThread(initialPrompt);
+      props.setThreads((current) => [thread, ...current]);
+      props.setActiveThreadId(thread.id);
+      setThreadQuery("");
+      return thread;
+    },
+    [props]
+  );
+
+  const sendMessage = useCallback(() => {
+    const text = composerText.trim();
+    if (!text || !activeThread) return;
+
+    const now = new Date().toISOString();
+    const userMessage: ChatMessage = {
+      id: `user-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      role: "user",
+      text,
+    };
+
+    const assistantText =
+      activeThread.mode === "simple"
+        ? `Simple take: ${text.slice(0, 96)}. Focus on three actions this week: review latest filings, check sentiment drift, and avoid oversized one-day reallocations.`
+        : `Analyst take: ${text.slice(0, 110)}. Key lenses: filing delta, narrative momentum, and valuation-risk asymmetry across your tracked names.`;
+
+    const assistantMessage: ChatMessage = {
+      id: `assistant-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      role: "assistant",
+      text: assistantText,
+      sources:
+        props.dataMode === "demo"
+          ? ["Demo knowledge pack", "Timeline dataset", "Discovery theme scores"]
+          : ["Live workspace context", "Recent filings", "News sentiment feed"],
+    };
+
+    props.setThreads((current) =>
+      current.map((thread) => {
+        if (thread.id !== activeThread.id) return thread;
+        return {
+          ...thread,
+          title: thread.messages.length <= 1 ? text.slice(0, 44) : thread.title,
+          updatedAt: now,
+          messages: [...thread.messages, userMessage, assistantMessage],
+        };
+      })
+    );
+
+    setComposerText("");
+  }, [activeThread, composerText, props, props.dataMode]);
+
+  const renameThread = useCallback(
+    (threadId: string) => {
+      const target = props.threads.find((thread) => thread.id === threadId);
+      if (!target) return;
+      const next = window.prompt("Rename thread", target.title);
+      if (!next || !next.trim()) return;
+
+      props.setThreads((current) =>
+        current.map((thread) =>
+          thread.id === threadId
+            ? { ...thread, title: next.trim().slice(0, 60), updatedAt: new Date().toISOString() }
+            : thread
+        )
+      );
+    },
+    [props]
+  );
+
+  const deleteThread = useCallback(
+    (threadId: string) => {
+      if (props.threads.length <= 1) {
+        const replacement = createInitialThread();
+        props.setThreads([replacement]);
+        props.setActiveThreadId(replacement.id);
+        return;
+      }
+
+      const remaining = props.threads.filter((thread) => thread.id !== threadId);
+      props.setThreads(remaining);
+      if (props.activeThreadId === threadId) {
+        props.setActiveThreadId(remaining[0].id);
+      }
+    },
+    [props]
+  );
+
+  useEffect(() => {
+    if (!activeThread) return;
+    setComposerText((current) => (current ? current : ""));
+  }, [activeThread]);
 
   useEffect(() => {
     if (!props.searchSelection) return;
     if (props.searchSelection.stamp === lastSelectionStamp) return;
 
     if (props.searchSelection.chatPrompt) {
-      setComposerText(props.searchSelection.chatPrompt);
+      if (activeThread && activeThread.messages.length <= 1) {
+        setComposerText(props.searchSelection.chatPrompt);
+      } else {
+        const created = createThread(props.searchSelection.chatPrompt);
+        props.setActiveThreadId(created.id);
+        setComposerText("");
+      }
     }
 
     setLastSelectionStamp(props.searchSelection.stamp);
-  }, [lastSelectionStamp, props.searchSelection]);
+  }, [
+    activeThread,
+    createThread,
+    lastSelectionStamp,
+    props,
+    props.searchSelection,
+    props.setActiveThreadId,
+  ]);
+
+  if (!activeThread) return null;
 
   return (
     <section className="page-wrap">
       <PageHeader
         title="Iris Research Copilot"
-        subtitle="Ask focused questions across filings, portfolio, and market sentiment."
+        subtitle="Persistent threads with mode-aware responses and reusable prompts."
+        dataMode={props.dataMode}
         right={
           <div className="chat-controls">
             <button
               type="button"
-              className={`mode-pill ${explanationMode === "analyst" ? "active" : ""}`}
-              onClick={() => setExplanationMode("analyst")}
+              className={`mode-pill ${activeThread.mode === "analyst" ? "active" : ""}`}
+              onClick={() =>
+                updateActiveThread((thread) => ({
+                  ...thread,
+                  mode: "analyst",
+                  updatedAt: new Date().toISOString(),
+                }))
+              }
             >
               <BookOpenText size={14} />
               Analyst Mode
             </button>
             <button
               type="button"
-              className={`mode-pill ${explanationMode === "simple" ? "active" : ""}`}
-              onClick={() => setExplanationMode("simple")}
+              className={`mode-pill ${activeThread.mode === "simple" ? "active" : ""}`}
+              onClick={() =>
+                updateActiveThread((thread) => ({
+                  ...thread,
+                  mode: "simple",
+                  updatedAt: new Date().toISOString(),
+                }))
+              }
             >
               <WandSparkles size={14} />
               Explain Simply
@@ -2443,51 +2858,143 @@ function ChatView(props: { searchSelection: SearchSelection | null }) {
         }
       />
 
-      <div className="chat-suggestions">
-        {suggestions.map((suggestion) => (
-          <button
-            key={suggestion}
-            type="button"
-            className="chat-suggestion-chip"
-            onClick={() => setComposerText(suggestion)}
-          >
-            {suggestion}
-          </button>
-        ))}
-      </div>
+      <div className="chat-layout">
+        <aside className="chat-threads-panel">
+          <div className="chat-threads-head">
+            <p className="results-title">Thread History</p>
+            <button type="button" className="secondary-btn mini-btn" onClick={() => createThread()}>
+              <Plus size={13} />
+              New
+            </button>
+          </div>
 
-      <article className="chat-shell">
-        <div className="chat-messages">
-          {chatMessages.map((message) => (
-            <div key={message.id} className={`message ${message.role}`}>
-              <p>{message.text}</p>
-              {showSources && message.role === "assistant" && message.sources?.length ? (
-                <div className="source-list">
-                  {message.sources.map((source) => (
-                    <span key={`${message.id}-${source}`} className="source-chip">
-                      {source}
+          <div className="search-pill chat-thread-filter">
+            <Search size={13} />
+            <input
+              placeholder="Filter threads"
+              value={threadQuery}
+              onChange={(event) => setThreadQuery(event.target.value)}
+            />
+          </div>
+
+          <div className="chat-thread-list">
+            {filteredThreads.length ? (
+              filteredThreads.map((thread) => (
+                <div
+                  key={thread.id}
+                  className={`chat-thread-item ${thread.id === activeThread.id ? "active" : ""}`}
+                >
+                  <button
+                    type="button"
+                    className="chat-thread-main"
+                    onClick={() => props.setActiveThreadId(thread.id)}
+                  >
+                    <p>{thread.title || "Untitled thread"}</p>
+                    <span>
+                      {thread.messages.length} msgs · {new Date(thread.updatedAt).toLocaleDateString()}
                     </span>
-                  ))}
+                  </button>
+                  <div className="chat-thread-actions">
+                    <button
+                      type="button"
+                      className="favorite-icon-btn"
+                      onClick={() =>
+                        props.setThreads((current) =>
+                          current.map((item) =>
+                            item.id === thread.id
+                              ? {
+                                  ...item,
+                                  pinned: !item.pinned,
+                                  updatedAt: new Date().toISOString(),
+                                }
+                              : item
+                          )
+                        )
+                      }
+                      aria-label="Pin thread"
+                    >
+                      <Pin size={13} />
+                    </button>
+                    <button
+                      type="button"
+                      className="favorite-icon-btn"
+                      onClick={() => renameThread(thread.id)}
+                      aria-label="Rename thread"
+                    >
+                      <Pencil size={13} />
+                    </button>
+                    <button
+                      type="button"
+                      className="favorite-icon-btn"
+                      onClick={() => deleteThread(thread.id)}
+                      aria-label="Delete thread"
+                    >
+                      <Trash2 size={13} />
+                    </button>
+                  </div>
                 </div>
-              ) : null}
-            </div>
-          ))}
-        </div>
+              ))
+            ) : (
+              <p className="chat-thread-empty">No threads match this filter.</p>
+            )}
+          </div>
+        </aside>
 
-        <div className="chat-input-row">
-          <input
-            placeholder="Ask Iris anything about equities..."
-            value={composerText}
-            onChange={(event) => setComposerText(event.target.value)}
-          />
-          <button type="button" className="primary-btn">Send</button>
-        </div>
-      </article>
+        <article className="chat-shell">
+          <div className="chat-suggestions">
+            {suggestions.map((suggestion) => (
+              <button
+                key={suggestion}
+                type="button"
+                className="chat-suggestion-chip"
+                onClick={() => setComposerText(suggestion)}
+              >
+                {suggestion}
+              </button>
+            ))}
+          </div>
+
+          <div className="chat-messages">
+            {activeThread.messages.map((message) => (
+              <div key={message.id} className={`message ${message.role}`}>
+                <p>{message.text}</p>
+                {showSources && message.role === "assistant" && message.sources?.length ? (
+                  <div className="source-list">
+                    {message.sources.map((source) => (
+                      <span key={`${message.id}-${source}`} className="source-chip">
+                        {source}
+                      </span>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            ))}
+          </div>
+
+          <div className="chat-input-row">
+            <input
+              placeholder="Ask Iris anything about equities..."
+              value={composerText}
+              onChange={(event) => setComposerText(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  sendMessage();
+                }
+              }}
+            />
+            <button type="button" className="primary-btn" onClick={sendMessage}>
+              Send
+            </button>
+          </div>
+        </article>
+      </div>
     </section>
   );
 }
 
 function ComparisonWorkspaceView(props: {
+  dataMode: DataMode;
   searchSelection: SearchSelection | null;
   goToView: (view: ViewKey) => void;
   setSearchSelection: (selection: SearchSelection) => void;
@@ -2571,6 +3078,7 @@ function ComparisonWorkspaceView(props: {
       <PageHeader
         title="Comparison Workspace"
         subtitle="Compare companies side-by-side across themes, sector context, and qualitative signals."
+        dataMode={props.dataMode}
         right={
           <form
             className="search-pill"
@@ -2673,6 +3181,7 @@ function ComparisonWorkspaceView(props: {
 }
 
 function CompanyWorkspaceView(props: {
+  dataMode: DataMode;
   searchSelection: SearchSelection | null;
   addFavorite: (favorite: Omit<FavoriteItem, "id" | "createdAt">) => void;
   isFavorited: (favorite: Pick<FavoriteItem, "type" | "title" | "symbol">) => boolean;
@@ -2837,6 +3346,7 @@ function CompanyWorkspaceView(props: {
       <PageHeader
         title="Company Workspace"
         subtitle="One research cockpit per company: filings, sentiment, timeline, and company-context chat."
+        dataMode={props.dataMode}
         right={
           <form
             className="search-pill"
@@ -3095,6 +3605,7 @@ function CompanyWorkspaceView(props: {
 }
 
 function DiscoveryView(props: {
+  dataMode: DataMode;
   searchSelection: SearchSelection | null;
   addFavorite: (favorite: Omit<FavoriteItem, "id" | "createdAt">) => void;
   isFavorited: (favorite: Pick<FavoriteItem, "type" | "title" | "symbol">) => boolean;
@@ -3190,6 +3701,7 @@ function DiscoveryView(props: {
       <PageHeader
         title="Thematic Discovery Engine"
         subtitle="Discover companies by AI-native themes, sector relevance, and conviction scores."
+        dataMode={props.dataMode}
       />
 
       <div className="discovery-panel">
@@ -3352,7 +3864,7 @@ function DiscoveryView(props: {
   );
 }
 
-function PortfolioView() {
+function PortfolioView(props: { dataMode: DataMode }) {
   const totalWeight = useMemo(
     () => PORTFOLIO_HOLDINGS.reduce((acc, holding) => acc + holding.weight, 0),
     []
@@ -3409,6 +3921,7 @@ function PortfolioView() {
       <PageHeader
         title="Portfolio Intelligence"
         subtitle="Exposure, risk concentration, and opportunity signals at a glance."
+        dataMode={props.dataMode}
       />
 
       <div className="kpi-grid portfolio-kpi-grid">
@@ -3537,6 +4050,7 @@ function PortfolioView() {
 }
 
 function TimelineView(props: {
+  dataMode: DataMode;
   searchSelection: SearchSelection | null;
   goToView: (view: ViewKey) => void;
   setSearchSelection: (selection: SearchSelection) => void;
@@ -3616,6 +4130,7 @@ function TimelineView(props: {
       <PageHeader
         title="Research Timeline Feed"
         subtitle="Chronological filing and insight stream with quick detail drill-down."
+        dataMode={props.dataMode}
       />
 
       <div className="timeline-toolbar">
@@ -3744,6 +4259,7 @@ function TimelineView(props: {
 
 function FilingsView(props: {
   searchSelection: SearchSelection | null;
+  dataMode: DataMode;
   addFavorite: (favorite: Omit<FavoriteItem, "id" | "createdAt">) => void;
   isFavorited: (favorite: Pick<FavoriteItem, "type" | "title" | "symbol">) => boolean;
   goToView: (view: ViewKey) => void;
@@ -3767,6 +4283,15 @@ function FilingsView(props: {
     setLoading(true);
     setError(null);
 
+    if (props.dataMode === "demo") {
+      await new Promise((resolve) => {
+        window.setTimeout(resolve, 140);
+      });
+      setFilings(buildMockFilings(symbol, selectedType));
+      setLoading(false);
+      return;
+    }
+
     try {
       const data = await fetchSecFilings(symbol, 12, selectedType);
       setFilings(data);
@@ -3780,7 +4305,7 @@ function FilingsView(props: {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [props.dataMode]);
 
   useEffect(() => {
     void loadFilings(activeSymbol, filingType || undefined);
@@ -3809,6 +4334,15 @@ function FilingsView(props: {
     setSearchLoading(true);
     setSearchError(null);
 
+    if (props.dataMode === "demo") {
+      await new Promise((resolve) => {
+        window.setTimeout(resolve, 120);
+      });
+      setSearchResults(getMockCompanyResults(query, 6));
+      setSearchLoading(false);
+      return;
+    }
+
     try {
       const results = await searchCompanies(query, 6);
       setSearchResults(results);
@@ -3822,7 +4356,7 @@ function FilingsView(props: {
     } finally {
       setSearchLoading(false);
     }
-  }, [symbolInput]);
+  }, [props.dataMode, symbolInput]);
 
   const applySymbol = useCallback((symbol?: string) => {
     if (!symbol) return;
@@ -3843,6 +4377,7 @@ function FilingsView(props: {
       <PageHeader
         title="Filings Tracker"
         subtitle="Review latest results, corporate updates, and disclosure trends."
+        dataMode={props.dataMode}
         right={
           <form
             className="search-pill"
@@ -3988,6 +4523,7 @@ function FilingsView(props: {
 
 function NewsView(props: {
   searchSelection: SearchSelection | null;
+  dataMode: DataMode;
   addFavorite: (favorite: Omit<FavoriteItem, "id" | "createdAt">) => void;
   isFavorited: (favorite: Pick<FavoriteItem, "type" | "title" | "symbol">) => boolean;
   goToView: (view: ViewKey) => void;
@@ -4010,6 +4546,15 @@ function NewsView(props: {
     setLoadingHeadlines(true);
     setHeadlinesError(null);
 
+    if (props.dataMode === "demo") {
+      await new Promise((resolve) => {
+        window.setTimeout(resolve, 120);
+      });
+      setHeadlines(DEMO_MARKET_HEADLINES);
+      setLoadingHeadlines(false);
+      return;
+    }
+
     try {
       const data = await fetchMarketHeadlines();
       setHeadlines(data);
@@ -4022,11 +4567,20 @@ function NewsView(props: {
     } finally {
       setLoadingHeadlines(false);
     }
-  }, []);
+  }, [props.dataMode]);
 
   const loadSentiment = useCallback(async (symbol: string) => {
     setLoadingSentiment(true);
     setSentimentError(null);
+
+    if (props.dataMode === "demo") {
+      await new Promise((resolve) => {
+        window.setTimeout(resolve, 140);
+      });
+      setSentimentFeed(buildMockSentiment(symbol));
+      setLoadingSentiment(false);
+      return;
+    }
 
     try {
       const data = await fetchTickerSentiment(symbol, 24, 8);
@@ -4041,7 +4595,7 @@ function NewsView(props: {
     } finally {
       setLoadingSentiment(false);
     }
-  }, []);
+  }, [props.dataMode]);
 
   useEffect(() => {
     void loadHeadlines();
@@ -4078,6 +4632,7 @@ function NewsView(props: {
       <PageHeader
         title="News & Sentiment Radar"
         subtitle="Monitor market narratives and detect sector-level shifts quickly."
+        dataMode={props.dataMode}
         right={
           <form
             className="search-pill"
@@ -4279,7 +4834,9 @@ function NewsView(props: {
 
 function SettingsView(props: {
   theme: Theme;
+  dataMode: DataMode;
   onToggleTheme: () => void;
+  onToggleDataMode: () => void;
   favoritesCount: number;
   unreadNotifications: number;
 }) {
@@ -4288,6 +4845,7 @@ function SettingsView(props: {
       <PageHeader
         title="Workspace Settings"
         subtitle="Configure integrations, notifications, and assistant preferences."
+        dataMode={props.dataMode}
       />
 
       <div className="list-card">
@@ -4307,11 +4865,20 @@ function SettingsView(props: {
           <p>Theme & Layout</p>
           <span>{props.theme === "dark" ? "Aesthetic Dark" : "Modern Light"}</span>
         </div>
+        <div className="list-item">
+          <p>Data Mode</p>
+          <span>{props.dataMode === "demo" ? "Demo Data" : "Live API"}</span>
+        </div>
       </div>
 
-      <button type="button" className="secondary-btn" onClick={props.onToggleTheme}>
-        {props.theme === "dark" ? "Use Light Mode" : "Use Dark Mode"}
-      </button>
+      <div className="chip-row">
+        <button type="button" className="secondary-btn" onClick={props.onToggleTheme}>
+          {props.theme === "dark" ? "Use Light Mode" : "Use Dark Mode"}
+        </button>
+        <button type="button" className="secondary-btn" onClick={props.onToggleDataMode}>
+          {props.dataMode === "demo" ? "Switch to Live API" : "Switch to Demo Data"}
+        </button>
+      </div>
     </section>
   );
 }

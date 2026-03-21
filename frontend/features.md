@@ -1,278 +1,181 @@
-Alright Ashu — based on your **SRS + System Design + Synopsis**, your frontend should not be just “UI screens”, it should feel like an **AI-powered research terminal**.
+# Frontend Roadmap (Updated)
 
-I’ll break this into **core frontend features (must-have)** + **advanced features (to stand out)** — aligned exactly with your architecture.
-
----
-
-# 🧠 1. Core Frontend Modules (Directly from Design)
-
-## 1. 🔐 Authentication & User System
-
-From SRS:
-
-* Login / Signup (JWT based) 
-* Role-based UI (Retail / Analyst / Admin)
-
-### Features:
-
-* Clean auth pages (email/password)
-* Session persistence
-* Role-based UI rendering (important for demo)
+This document tracks **what is left to build** on frontend in **priority order**.
 
 ---
 
-## 2. 📊 Main Dashboard (Your “Control Center”)
+## ✅ Already Implemented (for context)
 
-From system design:
-
-> “dashboard provides overview of insights, filings, themes, portfolio” 
-
-### Features:
-
-* Portfolio summary (P/L, risk score)
-* Trending themes (AI, EV, Defense)
-* Recently analyzed companies
-* Latest filings summary (timeline preview)
-
-👉 Opinion: This is your **first impression screen** — make it visually strong (charts + cards).
-
----
-
-## 3. 💬 Iris Chat (MOST IMPORTANT FEATURE)
-
-From both SRS + synopsis:
-
-* RAG-based conversational AI 
-
-### Features:
-
-* Chat UI (like ChatGPT)
-* Streaming responses (WebSocket) 
-* Show **sources (citations from documents)**
-* Suggested queries (UX boost)
-
-Example:
-
-> “What is the revenue growth of TCS in FY24?”
-
-👉 This is your **core differentiator** — polish this heavily.
+- Themed app shell with light/dark mode and animated transition
+- Command palette (`Cmd/Ctrl + K`) + keyboard navigation
+- Global search (`Cmd/Ctrl + J`) with contextual navigation
+- Dashboard with live backend widgets + personalization (density + show/hide)
+- News & sentiment workspace (ticker-based)
+- Filings workspace (search + filter)
+- Thematic discovery workspace
+- Timeline/feed workspace
+- Notifications center + toasts
+- Alert rules builder (frontend simulation)
+- Favorites/watchlist-style saved items
+- Company workspace (per-symbol context)
+- Comparison workspace (side-by-side)
+- Report generation workspace (title/sections/audience + text export)
 
 ---
 
-## 4. 🔍 Thematic Discovery Engine
+## 🔴 Priority P0 (Build Next)
 
-From SRS:
+### 1) Demo/Mock Mode Toggle (Global)
 
-* Semantic classification & theme tagging 
+Status: [x] Completed
 
-### Features:
+**Why now:** Backend auth/config still causes intermittent 401s. Demo mode guarantees stable showcase.
 
-* Search bar: “AI companies”, “Defense stocks”
-* Filter by:
+#### Scope
+- [x] Global switch: `Live API` / `Demo Data`
+- [x] Deterministic mock providers for dashboard, filings, news, sentiment, portfolio, compare, company
+- [x] Visual badge showing current data mode
+- [x] Keep existing UI flows identical across modes
 
-  * Market cap
-  * Sector
-  * Theme score
-* Company cards with tags
-
-👉 Opinion: Add **cool tags UI (chips)** — makes it feel AI-native.
-
----
-
-## 5. 📈 Portfolio Analytics Dashboard
-
-From SRS:
-
-* Volatility, Beta, Sharpe, PE/PB 
-
-### Features:
-
-* Add portfolio (manual or CSV)
-* Charts:
-
-  * Risk vs Return
-  * Sector allocation
-* Metrics cards:
-
-  * Beta
-  * Sharpe ratio
-* Benchmark comparison (Nifty)
-
-👉 This is where **charts matter a lot (use Recharts/Chart.js)**
+#### Acceptance
+- [x] App is fully usable end-to-end with backend turned off
+- [x] No broken panels or empty dead-ends in demo mode
 
 ---
 
-## 6. 🕒 Timeline / Filing Feed
+### 2) Iris Chat Sessions + Thread History
 
-From SRS:
+Status: [x] Completed
 
-* <50 word summaries + chronological events 
+**Why now:** Chat is primary differentiator; needs persistent workflow.
 
-### Features:
+#### Scope
+- [x] Multiple chat threads
+- [x] Rename/delete/pin thread
+- [x] Persist threads in local storage
+- [x] Quick prompt library sidebar
+- [x] Thread search/filter in sidebar
 
-* Scrollable feed (like Twitter/X)
-* Each item:
-
-  * Company name
-  * Date
-  * AI summary
-* Click → opens detailed view
-
-👉 This makes your platform feel “alive”.
+#### Acceptance
+- [x] User can leave and return to prior chat sessions without losing context
 
 ---
 
-## 7. 🔔 Notifications System
+### 3) Report Export Upgrade (PDF)
 
-From SRS:
+Status: [ ] Pending
 
-* Filing alerts + portfolio alerts 
+**Why now:** Report builder exists; PDF output makes it interview/viva ready.
 
-### Features:
+#### Scope
+- PDF export template (cover, summary, risks, financials, themes)
+- Two templates: `Retail` and `Analyst`
+- Include generation metadata (symbol/date/mode)
 
-* Notification bell
-* Alerts:
-
-  * “New filing for Reliance”
-  * “Portfolio risk increased”
-
----
-
-# ⚙️ 2. Supporting UI Features (Important)
-
-## 📂 Company Detail Page
-
-When user clicks a stock:
-
-### Features:
-
-* Overview (Revenue, PAT, ratios)
-* Chat specific to that company
-* Documents section (PDFs)
-* Key insights (AI generated)
+#### Acceptance
+- Downloaded report opens as professional PDF with consistent formatting
 
 ---
 
-## 📄 Report Generation UI
+## 🟠 Priority P1 (High Value)
 
-From SRS:
+### 4) Comparison → Report Workflow
 
-* Downloadable reports
-
-### Features:
-
-* Generate PDF report
-* Sections:
-
-  * Summary
-  * Risks
-  * Financials
+#### Scope
+- Generate report from selected comparison symbols
+- Shared insights section: winners/laggards/risk spread
 
 ---
 
-## 🔎 Global Search
+### 5) Company Workspace Deep Data Tabs
 
-* Search anything:
-
-  * Company
-  * Theme
-  * Query
-
----
-
-# 🚀 3. Advanced Features (To Impress Evaluators)
-
-These are not mandatory — but HIGH IMPACT:
-
-### 🧠 1. “Explain Like I’m 5” Toggle
-
-* Converts financial jargon → simple English
-  👉 Great for retail users
+#### Scope
+- Replace placeholder tabs with richer data blocks:
+  - Filings detail list
+  - Sentiment timeline mini-chart
+  - Key ratio snapshot
+  - Contextual chat prompts tied to active tab
 
 ---
 
-### 📊 2. AI Insight Cards
+### 6) Portfolio Analytics v2 (Chart Library Integration)
 
-* “Revenue growing at 12% CAGR”
-* “Debt increasing risk”
-
-👉 Auto-generated highlights
-
----
-
-### 🧾 3. Document Viewer with Highlighting
-
-* Show PDF
-* Highlight sections used in answer
-
-👉 This = **next-level RAG UX**
+#### Scope
+- Integrate proper charting (Recharts/Chart.js)
+- Risk vs return scatter
+- Sector donut chart
+- Drawdown/volatility trends
 
 ---
 
-### 🔄 4. Real-time Chat Streaming
+### 7) Alert Rules v2 (Real Rule Engine UX)
 
-* Token-by-token response
-  👉 Feels premium
-
----
-
-### 🎯 5. Theme Heatmap
-
-* Visual clusters of themes
-* Example:
-
-  * AI 🔥
-  * Renewable 🌱
+#### Scope
+- Rule categories + severity levels + schedule frequency
+- Trigger history log per rule
+- Dry-run simulation panel for each rule
 
 ---
 
-# 🧩 4. Frontend Architecture (Recommended)
+## 🟡 Priority P2 (Product Maturity)
 
-Since you’re using Next.js:
+### 8) Authentication + Role-Based UI Shell
 
-### Stack:
-
-* Next.js (App Router)
-* Tailwind CSS
-* Zustand / Redux (state)
-* WebSocket (chat streaming)
-
-### Pages Structure:
-
-```
-/login
-/dashboard
-/chat
-/discovery
-/portfolio
-/timeline
-/company/[id]
-```
+#### Scope
+- Login/signup UI
+- Session persistence
+- Role-gated views (`Retail`, `Analyst`, `Admin`)
 
 ---
 
-# 🧠 Final Thought (Important)
+### 9) Document Viewer + Citation Highlighting (Frontend Shell)
 
-Ashu, I’ll be very honest:
-
-👉 Your backend is already **research-grade**
-👉 Your frontend should feel like **Bloomberg Terminal + ChatGPT**
-
-If you:
-
-* Nail **Iris Chat**
-* Add **clean dashboards**
-* Show **real financial insights**
-
-👉 Your project will stand out easily in viva + placements.
+#### Scope
+- PDF viewer panel
+- Highlight anchor placeholders for future backend citations
 
 ---
 
-If you want next:
-I can design for you:
+### 10) Accessibility + UX Hardening
 
-* 🎨 Exact UI layout (Figma-style structure)
-* ⚛️ Component breakdown (React)
-* 🔥 Or even full frontend code starter
+#### Scope
+- Keyboard nav audit for all overlays/drawers
+- Focus traps + aria labeling pass
+- Contrast + reduced-motion verification
 
-Just tell me 👍
+---
+
+## 🟢 Priority P3 (Showcase / Advanced)
+
+### 11) Theme Heatmap Visualization
+
+#### Scope
+- Grid/cluster visualization for hot themes
+- Company density overlays
+
+---
+
+### 12) Explainability Layer
+
+#### Scope
+- “Why this insight?” panel in compare/company/news cards
+- Confidence and assumption badges
+
+---
+
+### 13) Real-time Streaming Wiring (when backend-ai is ready)
+
+#### Scope
+- Token streaming in chat via WebSocket/SSE
+- Progressive render of sections + citation chips
+
+---
+
+## Suggested Build Sequence (short)
+
+1. Demo/Mock Mode Toggle  
+2. Chat Sessions  
+3. PDF Export  
+4. Comparison→Report  
+5. Company tabs deepening  
+6. Portfolio charts v2

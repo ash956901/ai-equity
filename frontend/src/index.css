@@ -956,6 +956,22 @@ html.theme-transitioning * {
   font-size: 0.9rem;
 }
 
+.page-header-meta {
+  margin-top: 8px;
+}
+
+.data-mode-chip.live {
+  color: color-mix(in srgb, var(--good) 82%, var(--ink));
+  border-color: color-mix(in srgb, var(--good) 35%, var(--line));
+  background: color-mix(in srgb, var(--good) 12%, var(--card));
+}
+
+.data-mode-chip.demo {
+  color: color-mix(in srgb, #ef8f36 82%, var(--ink));
+  border-color: color-mix(in srgb, #ef8f36 35%, var(--line));
+  background: color-mix(in srgb, #ef8f36 10%, var(--card));
+}
+
 .primary-btn,
 .secondary-btn {
   border: 0;
@@ -1367,6 +1383,96 @@ html.theme-transitioning * {
   display: flex;
   flex-direction: column;
   gap: 10px;
+}
+
+.chat-layout {
+  display: grid;
+  grid-template-columns: minmax(240px, 290px) minmax(0, 1fr);
+  gap: 12px;
+}
+
+.chat-threads-panel {
+  border: 1px solid color-mix(in srgb, var(--line) 90%, transparent);
+  background: color-mix(in srgb, var(--card) 94%, transparent);
+  border-radius: 12px;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.chat-threads-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.chat-threads-head .results-title {
+  margin: 0;
+}
+
+.chat-thread-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.chat-thread-item {
+  border: 1px solid color-mix(in srgb, var(--line) 90%, transparent);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--card) 92%, transparent);
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.chat-thread-item.active {
+  border-color: color-mix(in srgb, var(--brand) 42%, var(--line));
+  background: color-mix(in srgb, var(--brand-soft) 50%, transparent);
+}
+
+.chat-thread-main {
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  text-align: left;
+  padding: 2px;
+  cursor: pointer;
+}
+
+.chat-thread-main p {
+  margin: 0;
+  font-size: 0.8rem;
+  line-height: 1.35;
+}
+
+.chat-thread-main span {
+  margin-top: 3px;
+  display: inline-block;
+  font-size: 0.68rem;
+  color: var(--muted);
+}
+
+.chat-thread-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.chat-thread-filter {
+  min-width: 0;
+  width: 100%;
+}
+
+.chat-thread-empty {
+  margin: 0;
+  font-size: 0.76rem;
+  color: var(--muted);
+  border: 1px dashed color-mix(in srgb, var(--line) 90%, transparent);
+  border-radius: 10px;
+  padding: 10px;
 }
 
 .chat-controls {
@@ -2100,6 +2206,10 @@ html.theme-transitioning * {
   }
 
   .timeline-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .chat-layout {
     grid-template-columns: 1fr;
   }
 
