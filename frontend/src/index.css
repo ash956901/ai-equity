@@ -234,6 +234,65 @@ html.theme-transitioning * {
   background: color-mix(in srgb, var(--bad) 10%, var(--card));
 }
 
+.toast-stack {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 130;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: min(360px, calc(100vw - 24px));
+}
+
+.toast-item {
+  border: 1px solid color-mix(in srgb, var(--line) 88%, transparent);
+  background: color-mix(in srgb, var(--card) 96%, transparent);
+  border-radius: 10px;
+  padding: 10px;
+  box-shadow: 0 12px 24px rgba(3, 10, 18, 0.18);
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.toast-item p {
+  margin: 0;
+  font-size: 0.78rem;
+  line-height: 1.4;
+}
+
+.toast-close {
+  border: 1px solid color-mix(in srgb, var(--line) 88%, transparent);
+  background: color-mix(in srgb, var(--card) 92%, transparent);
+  color: var(--muted);
+  width: 24px;
+  height: 24px;
+  border-radius: 7px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.toast-close:hover {
+  color: var(--ink);
+  border-color: color-mix(in srgb, var(--brand) 35%, var(--line));
+}
+
+.toast-info {
+  border-color: color-mix(in srgb, var(--brand) 28%, var(--line));
+}
+
+.toast-success {
+  border-color: color-mix(in srgb, var(--good) 35%, var(--line));
+}
+
+.toast-warning {
+  border-color: color-mix(in srgb, var(--bad) 35%, var(--line));
+}
+
 .command-shortcut {
   border: 1px solid var(--line);
   background: color-mix(in srgb, var(--card) 92%, transparent);
@@ -1310,6 +1369,13 @@ html.theme-transitioning * {
 
   .notification-bell {
     justify-content: flex-start;
+  }
+
+  .toast-stack {
+    right: 12px;
+    left: 12px;
+    bottom: 12px;
+    width: auto;
   }
 
   .kbd-chip {

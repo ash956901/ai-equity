@@ -84,6 +84,14 @@ interface NotificationItem {
   read: boolean;
 }
 
+type ToastTone = "info" | "success" | "warning";
+
+interface ToastItem {
+  id: string;
+  message: string;
+  tone: ToastTone;
+}
+
 const DISCOVERY_COMPANIES: DiscoveryCompany[] = [
   {
     symbol: "RELIANCE",
@@ -366,6 +374,7 @@ export default function App() {
   const [notifications, setNotifications] = useState<NotificationItem[]>(getInitialNotifications);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [notificationFilter, setNotificationFilter] = useState<"all" | NotificationCategory>("all");
+  const [toasts, setToasts] = useState<ToastItem[]>([]);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [paletteQuery, setPaletteQuery] = useState("");
   const [paletteActiveIndex, setPaletteActiveIndex] = useState(0);
@@ -397,9 +406,23 @@ export default function App() {
     [notificationFilter, notifications]
   );
 
+  const pushToast = useCallback((message: string, tone: ToastTone = "info") => {
+    const id = `toast-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    setToasts((current) => [...current, { id, message, tone }]);
+
+    window.setTimeout(() => {
+      setToasts((current) => current.filter((toast) => toast.id !== id));
+    }, 3200);
+  }, []);
+
+  const removeToast = useCallback((id: string) => {
+    setToasts((current) => current.filter((toast) => toast.id !== id));
+  }, []);
+
   const markAllNotificationsRead = useCallback(() => {
     setNotifications((current) => current.map((notification) => ({ ...notification, read: true })));
-  }, []);
+    pushToast("All notifications marked as read", "success");
+  }, [pushToast]);
 
   const markNotificationRead = useCallback((id: string) => {
     setNotifications((current) =>
@@ -407,11 +430,28 @@ export default function App() {
         notification.id === id ? { ...notification, read: true } : notification
       )
     );
-  }, []);
+    pushToast("Notification marked as read", "success");
+  }, [pushToast]);
 
   const dismissNotification = useCallback((id: string) => {
     setNotifications((current) => current.filter((notification) => notification.id !== id));
-  }, []);
+    pushToast("Notification dismissed", "info");
+  }, [pushToast]);
+
+  const createNotification = useCallback(
+    (notification: Omit<NotificationItem, "id" | "timestamp" | "read">) => {
+      const entry: NotificationItem = {
+        ...notification,
+        id: `notif-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        timestamp: new Date().toISOString(),
+        read: false,
+      };
+
+      setNotifications((current) => [entry, ...current].slice(0, 30));
+      pushToast(notification.title, notification.severity === "high" ? "warning" : "info");
+    },
+    [pushToast]
+  );
 
   const toggleTheme = useCallback(() => {
     const root = document.documentElement;
@@ -456,7 +496,34 @@ export default function App() {
     setPaletteOpen(false);
     setPaletteQuery("");
     setPaletteActiveIndex(0);
-  }, []);
+
+    if (view === "filings") {
+      createNotification({
+        title: "Filings workspace opened",
+        message: "Track new regulatory disclosures and key updates from one place.",
+        category: "filing",
+        severity: "low",
+      });
+    }
+
+    if (view === "news") {
+      createNotification({
+        title: "News radar opened",
+        message: "Sentiment and headline monitoring is now active for quick scanning.",
+        category: "theme",
+        severity: "low",
+      });
+    }
+
+    if (view === "timeline") {
+      createNotification({
+        title: "Timeline feed opened",
+        message: "Chronological event stream is ready for review.",
+        category: "system",
+        severity: "low",
+      });
+    }
+  }, [createNotification]);
 
   const openPalette = useCallback(() => {
     setPaletteOpen(true);
@@ -714,7 +781,7 @@ export default function App() {
               <button
                 key={item.key}
                 type="button"
-                onClick={() => setActiveView(item.key)}
+                onClick={() => goToView(item.key)}
                 className={`nav-item ${isActive ? "active" : ""}`}
               >
                 <span className="nav-icon">
@@ -897,6 +964,24 @@ export default function App() {
               )}
             </div>
           </aside>
+        </div>
+      ) : null}
+
+      {toasts.length ? (
+        <div className="toast-stack" aria-live="polite" aria-atomic="false">
+          {toasts.map((toast) => (
+            <div key={toast.id} className={`toast-item toast-${toast.tone}`}>
+              <p>{toast.message}</p>
+              <button
+                type="button"
+                className="toast-close"
+                onClick={() => removeToast(toast.id)}
+                aria-label="Dismiss toast"
+              >
+                <X size={14} />
+              </button>
+            </div>
+          ))}
         </div>
       ) : null}
     </div>
