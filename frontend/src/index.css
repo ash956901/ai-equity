@@ -1566,6 +1566,10 @@ html.theme-transitioning * {
   color: var(--brand);
 }
 
+.open-company-btn {
+  margin-top: 4px;
+}
+
 .discovery-card-actions {
   display: inline-flex;
   align-items: center;

@@ -947,6 +947,22 @@ export default function App() {
         },
       },
       {
+        id: "go-company-from-context",
+        label: "Open Company from Current Context",
+        hint: "Navigation",
+        keywords: "company current symbol context",
+        action: () => {
+          const symbol =
+            searchSelection?.companySymbol ??
+            searchSelection?.filingsSymbol ??
+            searchSelection?.newsSymbol ??
+            searchSelection?.discoveryQuery ??
+            "RELIANCE";
+          setSearchSelection({ stamp: Date.now(), companySymbol: symbol });
+          goToView("company");
+        },
+      },
+      {
         id: "go-chat",
         label: "Go to Iris Chat",
         hint: "Navigation",
@@ -1026,7 +1042,17 @@ export default function App() {
         },
       },
     ],
-    [closePalette, goToView, markAllNotificationsRead, theme, toggleTheme]
+    [
+      closePalette,
+      goToView,
+      markAllNotificationsRead,
+      searchSelection?.companySymbol,
+      searchSelection?.discoveryQuery,
+      searchSelection?.filingsSymbol,
+      searchSelection?.newsSymbol,
+      theme,
+      toggleTheme,
+    ]
   );
 
   const filteredCommands = useMemo(() => {
@@ -1204,6 +1230,8 @@ export default function App() {
             searchSelection={searchSelection}
             addFavorite={addFavorite}
             isFavorited={isFavorited}
+            goToView={goToView}
+            setSearchSelection={setSearchSelection}
           />
         );
       case "portfolio":
@@ -1214,6 +1242,8 @@ export default function App() {
             searchSelection={searchSelection}
             addFavorite={addFavorite}
             isFavorited={isFavorited}
+            goToView={goToView}
+            setSearchSelection={setSearchSelection}
           />
         );
       case "timeline":
@@ -1224,6 +1254,8 @@ export default function App() {
             searchSelection={searchSelection}
             addFavorite={addFavorite}
             isFavorited={isFavorited}
+            goToView={goToView}
+            setSearchSelection={setSearchSelection}
           />
         );
       case "settings":
@@ -1250,6 +1282,7 @@ export default function App() {
     addFavorite,
     dashboardPreferences,
     favorites.length,
+    goToView,
     isFavorited,
     resetDashboardPreferences,
     searchSelection,
@@ -2245,6 +2278,8 @@ function DiscoveryView(props: {
   searchSelection: SearchSelection | null;
   addFavorite: (favorite: Omit<FavoriteItem, "id" | "createdAt">) => void;
   isFavorited: (favorite: Pick<FavoriteItem, "type" | "title" | "symbol">) => boolean;
+  goToView: (view: ViewKey) => void;
+  setSearchSelection: (selection: SearchSelection) => void;
 }) {
   const [lastSelectionStamp, setLastSelectionStamp] = useState<number>(0);
   const [query, setQuery] = useState("");
@@ -2443,6 +2478,20 @@ function DiscoveryView(props: {
                         <Bookmark size={14} />
                       )}
                     </button>
+                    <button
+                      type="button"
+                      className="favorite-icon-btn"
+                      aria-label={`Open ${company.symbol} company workspace`}
+                      onClick={() => {
+                        props.setSearchSelection({
+                          stamp: Date.now(),
+                          companySymbol: company.symbol,
+                        });
+                        props.goToView("company");
+                      }}
+                    >
+                      <ArrowUpRight size={14} />
+                    </button>
                   </div>
                 </div>
 
@@ -2456,6 +2505,20 @@ function DiscoveryView(props: {
                     </span>
                   ))}
                 </div>
+
+                <button
+                  type="button"
+                  className="secondary-btn mini-btn open-company-btn"
+                  onClick={() => {
+                    props.setSearchSelection({
+                      stamp: Date.now(),
+                      companySymbol: company.symbol,
+                    });
+                    props.goToView("company");
+                  }}
+                >
+                  Open Company
+                </button>
               </article>
             );
           })
@@ -2694,6 +2757,8 @@ function FilingsView(props: {
   searchSelection: SearchSelection | null;
   addFavorite: (favorite: Omit<FavoriteItem, "id" | "createdAt">) => void;
   isFavorited: (favorite: Pick<FavoriteItem, "type" | "title" | "symbol">) => boolean;
+  goToView: (view: ViewKey) => void;
+  setSearchSelection: (selection: SearchSelection) => void;
 }) {
   const [lastSelectionStamp, setLastSelectionStamp] = useState<number>(0);
   const [symbolInput, setSymbolInput] = useState("AAPL");
@@ -2907,6 +2972,23 @@ function FilingsView(props: {
                     <Bookmark size={14} />
                   )}
                 </button>
+                <button
+                  type="button"
+                  className="favorite-icon-btn"
+                  onClick={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    props.setSearchSelection({
+                      stamp: Date.now(),
+                      companySymbol: activeSymbol,
+                      filingsSymbol: activeSymbol,
+                    });
+                    props.goToView("company");
+                  }}
+                  aria-label="Open company workspace"
+                >
+                  <ArrowUpRight size={14} />
+                </button>
               </a>
             ))
           : null}
@@ -2919,6 +3001,8 @@ function NewsView(props: {
   searchSelection: SearchSelection | null;
   addFavorite: (favorite: Omit<FavoriteItem, "id" | "createdAt">) => void;
   isFavorited: (favorite: Pick<FavoriteItem, "type" | "title" | "symbol">) => boolean;
+  goToView: (view: ViewKey) => void;
+  setSearchSelection: (selection: SearchSelection) => void;
 }) {
   const [lastSelectionStamp, setLastSelectionStamp] = useState<number>(0);
   const [symbolInput, setSymbolInput] = useState("RELIANCE");
@@ -3098,6 +3182,21 @@ function NewsView(props: {
                       <Bookmark size={14} />
                     )}
                   </button>
+                  <button
+                    type="button"
+                    className="favorite-icon-btn"
+                    onClick={() => {
+                      props.setSearchSelection({
+                        stamp: Date.now(),
+                        companySymbol: activeSymbol,
+                        newsSymbol: activeSymbol,
+                      });
+                      props.goToView("company");
+                    }}
+                    aria-label="Open company workspace"
+                  >
+                    <ArrowUpRight size={14} />
+                  </button>
                 </div>
               ))}
               {!(headlines.results ?? []).length ? (
@@ -3160,6 +3259,21 @@ function NewsView(props: {
                     ) : (
                       <Bookmark size={14} />
                     )}
+                  </button>
+                  <button
+                    type="button"
+                    className="favorite-icon-btn"
+                    onClick={() => {
+                      props.setSearchSelection({
+                        stamp: Date.now(),
+                        companySymbol: activeSymbol,
+                        newsSymbol: activeSymbol,
+                      });
+                      props.goToView("company");
+                    }}
+                    aria-label="Open company workspace"
+                  >
+                    <ArrowUpRight size={14} />
                   </button>
                 </div>
               ))}
