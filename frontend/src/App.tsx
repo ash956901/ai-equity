@@ -153,6 +153,20 @@ interface DashboardWidget {
   label: string;
 }
 
+type AlertRuleType = "filing_event" | "risk_beta_above" | "theme_score_above";
+
+interface AlertRule {
+  id: string;
+  name: string;
+  type: AlertRuleType;
+  symbol: string;
+  threshold?: number;
+  enabled: boolean;
+  createdAt: string;
+  lastCheckedAt?: string;
+  lastTriggeredAt?: string;
+}
+
 interface PortfolioHolding {
   symbol: string;
   company: string;
@@ -519,6 +533,7 @@ const THEME_STORAGE_KEY = "equityai-theme";
 const NOTIFICATIONS_STORAGE_KEY = "equityai-notifications";
 const FAVORITES_STORAGE_KEY = "equityai-favorites";
 const DASHBOARD_PREFERENCES_KEY = "equityai-dashboard-preferences";
+const ALERT_RULES_STORAGE_KEY = "equityai-alert-rules";
 
 type ViewTransitionCapable = {
   startViewTransition?: (updateCallback: () => void) => { finished: Promise<void> };
@@ -586,6 +601,50 @@ function getInitialDashboardPreferences(): DashboardPreferences {
   }
 }
 
+function getInitialAlertRules(): AlertRule[] {
+  const saved = window.localStorage.getItem(ALERT_RULES_STORAGE_KEY);
+  if (!saved) {
+    return [
+      {
+        id: "rule-1",
+        name: "Reliance filing updates",
+        type: "filing_event",
+        symbol: "RELIANCE",
+        enabled: true,
+        createdAt: new Date().toISOString(),
+      },
+      {
+        id: "rule-2",
+        name: "Portfolio beta guardrail",
+        type: "risk_beta_above",
+        symbol: "PORTFOLIO",
+        threshold: 1.1,
+        enabled: true,
+        createdAt: new Date().toISOString(),
+      },
+      {
+        id: "rule-3",
+        name: "Defense theme momentum",
+        type: "theme_score_above",
+        symbol: "HAL",
+        threshold: 90,
+        enabled: false,
+        createdAt: new Date().toISOString(),
+      },
+    ];
+  }
+
+  try {
+    const parsed = JSON.parse(saved) as AlertRule[];
+    if (Array.isArray(parsed)) {
+      return parsed;
+    }
+    return [];
+  } catch {
+    return [];
+  }
+}
+
 export default function App() {
   const [activeView, setActiveView] = useState<ViewKey>("dashboard");
   const [theme, setTheme] = useState<Theme>(getInitialTheme);
@@ -593,12 +652,18 @@ export default function App() {
     useState<DashboardPreferences>(getInitialDashboardPreferences);
   const [searchSelection, setSearchSelection] = useState<SearchSelection | null>(null);
   const [favorites, setFavorites] = useState<FavoriteItem[]>(getInitialFavorites);
+  const [alertRules, setAlertRules] = useState<AlertRule[]>(getInitialAlertRules);
   const [favoritesOpen, setFavoritesOpen] = useState(false);
   const [favoriteFilter, setFavoriteFilter] = useState<"all" | FavoriteType>("all");
   const [notifications, setNotifications] = useState<NotificationItem[]>(getInitialNotifications);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [notificationFilter, setNotificationFilter] = useState<"all" | NotificationCategory>("all");
   const [toasts, setToasts] = useState<ToastItem[]>([]);
+  const [alertRulesOpen, setAlertRulesOpen] = useState(false);
+  const [ruleName, setRuleName] = useState("");
+  const [ruleType, setRuleType] = useState<AlertRuleType>("filing_event");
+  const [ruleSymbol, setRuleSymbol] = useState("RELIANCE");
+  const [ruleThreshold, setRuleThreshold] = useState("1.1");
   const [globalSearchOpen, setGlobalSearchOpen] = useState(false);
   const [globalSearchQuery, setGlobalSearchQuery] = useState("");
   const [globalSearchIndex, setGlobalSearchIndex] = useState(0);
@@ -623,6 +688,10 @@ export default function App() {
   useEffect(() => {
     window.localStorage.setItem(FAVORITES_STORAGE_KEY, JSON.stringify(favorites));
   }, [favorites]);
+
+  useEffect(() => {
+    window.localStorage.setItem(ALERT_RULES_STORAGE_KEY, JSON.stringify(alertRules));
+  }, [alertRules]);
 
   useEffect(() => {
     window.localStorage.setItem(
@@ -651,6 +720,11 @@ export default function App() {
         favoriteFilter === "all" ? true : favorite.type === favoriteFilter
       ),
     [favoriteFilter, favorites]
+  );
+
+  const activeRulesCount = useMemo(
+    () => alertRules.filter((rule) => rule.enabled).length,
+    [alertRules]
   );
 
   const pushToast = useCallback((message: string, tone: ToastTone = "info") => {
@@ -891,6 +965,114 @@ export default function App() {
     pushToast("Dashboard layout reset", "success");
   }, [pushToast]);
 
+  const createAlertRule = useCallback(() => {
+    const normalizedSymbol = ruleSymbol.trim().toUpperCase();
+    if (!ruleName.trim() || !normalizedSymbol) {
+      pushToast("Rule name and symbol are required", "warning");
+      return;
+    }
+
+    const thresholdValue = Number(ruleThreshold);
+    const needsThreshold = ruleType !== "filing_event";
+    const parsedThreshold = needsThreshold && Number.isFinite(thresholdValue) ? thresholdValue : undefined;
+
+    const newRule: AlertRule = {
+      id: `rule-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      name: ruleName.trim(),
+      type: ruleType,
+      symbol: normalizedSymbol,
+      threshold: parsedThreshold,
+      enabled: true,
+      createdAt: new Date().toISOString(),
+    };
+
+    setAlertRules((current) => [newRule, ...current].slice(0, 80));
+    pushToast("Alert rule created", "success");
+    setRuleName("");
+  }, [pushToast, ruleName, ruleSymbol, ruleThreshold, ruleType]);
+
+  const toggleAlertRule = useCallback((id: string) => {
+    setAlertRules((current) =>
+      current.map((rule) =>
+        rule.id === id
+          ? {
+              ...rule,
+              enabled: !rule.enabled,
+              lastCheckedAt: new Date().toISOString(),
+            }
+          : rule
+      )
+    );
+  }, []);
+
+  const deleteAlertRule = useCallback(
+    (id: string) => {
+      setAlertRules((current) => current.filter((rule) => rule.id !== id));
+      pushToast("Alert rule removed", "info");
+    },
+    [pushToast]
+  );
+
+  const runAlertRulesCheck = useCallback(() => {
+    const now = new Date().toISOString();
+
+    setAlertRules((current) => {
+      const updated = current.map((rule) => {
+        if (!rule.enabled) {
+          return { ...rule, lastCheckedAt: now };
+        }
+
+        let triggered = false;
+
+        if (rule.type === "filing_event") {
+          triggered = TIMELINE_EVENTS.some(
+            (event) =>
+              event.company === rule.symbol &&
+              event.type === "filing" &&
+              new Date(event.timestamp).getTime() > Date.now() - 1000 * 60 * 60 * 36
+          );
+        }
+
+        if (rule.type === "risk_beta_above") {
+          const holdings = rule.symbol === "PORTFOLIO"
+            ? PORTFOLIO_HOLDINGS
+            : PORTFOLIO_HOLDINGS.filter((holding) => holding.symbol === rule.symbol);
+
+          const threshold = rule.threshold ?? 1;
+          triggered = holdings.some((holding) => holding.beta >= threshold);
+        }
+
+        if (rule.type === "theme_score_above") {
+          const company = DISCOVERY_COMPANIES.find((item) => item.symbol === rule.symbol);
+          const threshold = rule.threshold ?? 80;
+          const maxThemeScore = company
+            ? Math.max(...Object.values(company.themeScores))
+            : 0;
+          triggered = maxThemeScore >= threshold;
+        }
+
+        if (triggered) {
+          createNotification({
+            title: `Rule Triggered: ${rule.name}`,
+            message: `${rule.symbol} matched ${rule.type.replace(/_/g, " ")} condition.`,
+            category: rule.type === "filing_event" ? "filing" : rule.type === "risk_beta_above" ? "risk" : "theme",
+            severity: "medium",
+          });
+        }
+
+        return {
+          ...rule,
+          lastCheckedAt: now,
+          lastTriggeredAt: triggered ? now : rule.lastTriggeredAt,
+        };
+      });
+
+      return updated;
+    });
+
+    pushToast("Alert rules evaluated", "info");
+  }, [createNotification, pushToast]);
+
   const globalSearchResults = useMemo<GlobalSearchResult[]>(() => {
     const query = globalSearchQuery.trim().toLowerCase();
     const results: GlobalSearchResult[] = [];
@@ -1119,6 +1301,26 @@ export default function App() {
         },
       },
       {
+        id: "open-alert-rules",
+        label: "Open Alert Rules Builder",
+        hint: "Automation",
+        keywords: "alert rules automation triggers notifications",
+        action: () => {
+          setAlertRulesOpen(true);
+          closePalette();
+        },
+      },
+      {
+        id: "run-alert-check",
+        label: "Run Alert Rules Check",
+        hint: "Automation",
+        keywords: "alert evaluate check now",
+        action: () => {
+          runAlertRulesCheck();
+          closePalette();
+        },
+      },
+      {
         id: "open-notifications",
         label: "Open Notifications",
         hint: "Inbox",
@@ -1143,6 +1345,7 @@ export default function App() {
       closePalette,
       goToView,
       markAllNotificationsRead,
+      runAlertRulesCheck,
       searchSelection?.companySymbol,
       searchSelection?.discoveryQuery,
       searchSelection?.filingsSymbol,
@@ -1421,6 +1624,21 @@ export default function App() {
           </span>
           <span className={`notification-count ${unreadCount ? "has-unread" : ""}`}>
             {unreadCount}
+          </span>
+        </button>
+
+        <button
+          type="button"
+          className="notification-bell"
+          onClick={() => setAlertRulesOpen(true)}
+          aria-label="Open alert rules"
+        >
+          <span className="notification-bell-left">
+            <ShieldAlert size={15} />
+            Alert Rules
+          </span>
+          <span className={`notification-count ${activeRulesCount ? "has-unread" : ""}`}>
+            {activeRulesCount}
           </span>
         </button>
 
@@ -1780,6 +1998,125 @@ export default function App() {
               ) : (
                 <div className="list-item single-line">
                   <p>No favorites saved yet.</p>
+                </div>
+              )}
+            </div>
+          </aside>
+        </div>
+      ) : null}
+
+      {alertRulesOpen ? (
+        <div className="favorites-overlay" role="dialog" aria-modal="true" aria-label="Alert rules panel">
+          <button
+            type="button"
+            className="favorites-backdrop"
+            onClick={() => setAlertRulesOpen(false)}
+          />
+
+          <aside className="favorites-panel">
+            <div className="notification-panel-head">
+              <div>
+                <p className="results-title">Automation</p>
+                <h3>Alert Rules Builder</h3>
+              </div>
+              <button
+                type="button"
+                className="notification-close"
+                onClick={() => setAlertRulesOpen(false)}
+                aria-label="Close alert rules panel"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <div className="rule-builder-form">
+              <input
+                className="rule-input"
+                placeholder="Rule name"
+                value={ruleName}
+                onChange={(event) => setRuleName(event.target.value)}
+              />
+
+              <select
+                className="type-select"
+                value={ruleType}
+                onChange={(event) => setRuleType(event.target.value as AlertRuleType)}
+              >
+                <option value="filing_event">Filing Event</option>
+                <option value="risk_beta_above">Risk: Beta Above</option>
+                <option value="theme_score_above">Theme Score Above</option>
+              </select>
+
+              <input
+                className="rule-input"
+                placeholder="Symbol (e.g. RELIANCE or PORTFOLIO)"
+                value={ruleSymbol}
+                onChange={(event) => setRuleSymbol(event.target.value)}
+              />
+
+              {ruleType !== "filing_event" ? (
+                <input
+                  className="rule-input"
+                  placeholder="Threshold"
+                  value={ruleThreshold}
+                  onChange={(event) => setRuleThreshold(event.target.value)}
+                />
+              ) : null}
+
+              <div className="rule-actions">
+                <button type="button" className="primary-btn" onClick={createAlertRule}>
+                  Add Rule
+                </button>
+                <button type="button" className="secondary-btn mini-btn" onClick={runAlertRulesCheck}>
+                  Run Check
+                </button>
+              </div>
+            </div>
+
+            <div className="notification-list">
+              {alertRules.length ? (
+                alertRules.map((rule) => (
+                  <article key={rule.id} className={`notification-item ${rule.enabled ? "unread" : "read"}`}>
+                    <div className="notification-item-head">
+                      <span className="chip notif-system">{rule.type.replace(/_/g, " ")}</span>
+                      <span className={`chip ${rule.enabled ? "positive" : ""}`}>
+                        {rule.enabled ? "enabled" : "disabled"}
+                      </span>
+                    </div>
+
+                    <h4>{rule.name}</h4>
+                    <p>
+                      Symbol: {rule.symbol}
+                      {rule.threshold !== undefined ? ` · threshold ${rule.threshold}` : ""}
+                    </p>
+                    <small>
+                      {rule.lastTriggeredAt
+                        ? `Last triggered: ${new Date(rule.lastTriggeredAt).toLocaleString()}`
+                        : "Not triggered yet"}
+                    </small>
+
+                    <div className="notification-item-actions">
+                      <button
+                        type="button"
+                        className="secondary-btn mini-btn"
+                        onClick={() => toggleAlertRule(rule.id)}
+                      >
+                        {rule.enabled ? "Disable" : "Enable"}
+                      </button>
+                      <button
+                        type="button"
+                        className="secondary-btn mini-btn"
+                        onClick={() => deleteAlertRule(rule.id)}
+                      >
+                        <Trash2 size={13} />
+                        Delete
+                      </button>
+                    </div>
+                  </article>
+                ))
+              ) : (
+                <div className="list-item single-line">
+                  <p>No alert rules created yet.</p>
                 </div>
               )}
             </div>
