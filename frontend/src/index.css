@@ -313,6 +313,105 @@ html.theme-transitioning * {
   transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
 
+.notice {
+  border-radius: 12px;
+  padding: 10px 12px;
+  font-size: 0.82rem;
+  border: 1px solid var(--line);
+  background: color-mix(in srgb, var(--card) 90%, transparent);
+}
+
+.notice.warning {
+  border-color: color-mix(in srgb, var(--bad) 35%, var(--line));
+  color: color-mix(in srgb, var(--bad) 78%, var(--ink));
+  background: color-mix(in srgb, var(--bad) 9%, var(--card));
+}
+
+.news-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.chip-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--line) 90%, transparent);
+  background: color-mix(in srgb, var(--card) 90%, transparent);
+  padding: 4px 10px;
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+
+.chip.positive {
+  color: var(--good);
+  border-color: color-mix(in srgb, var(--good) 35%, var(--line));
+}
+
+.chip.negative {
+  color: var(--bad);
+  border-color: color-mix(in srgb, var(--bad) 35%, var(--line));
+}
+
+.mini-btn {
+  padding: 7px 10px;
+  font-size: 0.75rem;
+}
+
+.news-panel {
+  min-height: 420px;
+}
+
+.feed-list {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.feed-item {
+  display: block;
+  border: 1px solid color-mix(in srgb, var(--line) 88%, transparent);
+  border-radius: 10px;
+  padding: 10px;
+  text-decoration: none;
+  color: inherit;
+  transition: border-color 0.2s ease, background-color 0.2s ease;
+}
+
+.feed-item:hover {
+  border-color: color-mix(in srgb, var(--brand) 45%, var(--line));
+  background: color-mix(in srgb, var(--brand-soft) 45%, transparent);
+}
+
+.feed-item p {
+  margin: 0;
+  font-size: 0.82rem;
+  line-height: 1.4;
+  color: var(--ink);
+}
+
+.feed-item span {
+  margin-top: 4px;
+  display: inline-block;
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+
+.sentiment-row {
+  margin-bottom: 6px;
+}
+
 .primary-btn {
   color: white;
   background: linear-gradient(
@@ -544,6 +643,53 @@ html.theme-transitioning * {
 .list-item span {
   color: var(--muted);
   font-size: 0.78rem;
+}
+
+.list-item.single-line {
+  grid-template-columns: 1fr;
+}
+
+.filing-item {
+  text-decoration: none;
+  color: inherit;
+  transition: border-color 0.2s ease, background-color 0.2s ease;
+}
+
+.filing-item:hover {
+  border-color: color-mix(in srgb, var(--brand) 45%, var(--line));
+  background: color-mix(in srgb, var(--brand-soft) 45%, transparent);
+}
+
+.type-select {
+  border: 1px solid var(--line);
+  background: var(--bg-elevated);
+  color: var(--ink);
+  border-radius: 10px;
+  padding: 7px 10px;
+  font: inherit;
+  font-size: 0.78rem;
+}
+
+.search-results-card {
+  border: 1px solid color-mix(in srgb, var(--line) 90%, transparent);
+  background: color-mix(in srgb, var(--card) 90%, transparent);
+  border-radius: 12px;
+  padding: 10px;
+}
+
+.results-title {
+  margin: 0 0 8px;
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+.pick-chip {
+  cursor: pointer;
+}
+
+.pick-chip:hover {
+  border-color: color-mix(in srgb, var(--brand) 45%, var(--line));
+  color: var(--brand);
 }
 
 @media (max-width: 1100px) {
