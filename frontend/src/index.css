@@ -209,6 +209,32 @@ html.theme-transitioning * {
   color: var(--brand);
 }
 
+.favorites-bell {
+  border: 1px solid var(--line);
+  background: color-mix(in srgb, var(--card) 92%, transparent);
+  color: var(--ink);
+  border-radius: 12px;
+  padding: 8px 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 0.74rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.25s ease;
+}
+
+.favorites-bell:hover {
+  border-color: var(--brand);
+  color: var(--brand);
+}
+
+.favorites-clear-btn {
+  align-self: stretch;
+  justify-content: center;
+}
+
 .notification-bell-left {
   display: inline-flex;
   align-items: center;
@@ -538,6 +564,35 @@ html.theme-transitioning * {
   color: color-mix(in srgb, var(--good) 80%, var(--ink));
 }
 
+.favorites-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 126;
+}
+
+.favorites-backdrop {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  background: color-mix(in srgb, #071018 58%, transparent);
+  backdrop-filter: blur(4px);
+}
+
+.favorites-panel {
+  position: absolute;
+  top: 0;
+  right: 0;
+  height: 100%;
+  width: min(440px, 100%);
+  border-left: 1px solid color-mix(in srgb, var(--line) 88%, transparent);
+  background: color-mix(in srgb, var(--card) 96%, transparent);
+  box-shadow: -10px 0 36px rgba(5, 13, 22, 0.22);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+}
+
 .notification-overlay {
   position: fixed;
   inset: 0;
@@ -700,6 +755,21 @@ html.theme-transitioning * {
 .chip.notif-severity-low {
   color: color-mix(in srgb, var(--good) 82%, var(--ink));
   border-color: color-mix(in srgb, var(--good) 35%, var(--line));
+}
+
+.chip.favorite-company {
+  color: color-mix(in srgb, var(--brand) 82%, var(--ink));
+  border-color: color-mix(in srgb, var(--brand) 35%, var(--line));
+}
+
+.chip.favorite-filing {
+  color: color-mix(in srgb, #ef8f36 72%, var(--ink));
+  border-color: color-mix(in srgb, #ef8f36 35%, var(--line));
+}
+
+.chip.favorite-headline {
+  color: color-mix(in srgb, #7f5af0 72%, var(--ink));
+  border-color: color-mix(in srgb, #7f5af0 35%, var(--line));
 }
 
 .nav-stack {
@@ -890,6 +960,12 @@ html.theme-transitioning * {
   margin-top: 8px;
   display: flex;
   flex-direction: column;
+  gap: 8px;
+}
+
+.feed-item-wrap {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   gap: 8px;
 }
 
@@ -1236,6 +1312,12 @@ html.theme-transitioning * {
   transition: border-color 0.2s ease, background-color 0.2s ease;
 }
 
+.filing-content-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
 .filing-item:hover {
   border-color: color-mix(in srgb, var(--brand) 45%, var(--line));
   background: color-mix(in srgb, var(--brand-soft) 45%, transparent);
@@ -1309,6 +1391,30 @@ html.theme-transitioning * {
   align-items: flex-start;
   justify-content: space-between;
   gap: 8px;
+}
+
+.discovery-card-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.favorite-icon-btn {
+  border: 1px solid color-mix(in srgb, var(--line) 90%, transparent);
+  background: color-mix(in srgb, var(--card) 92%, transparent);
+  color: var(--muted);
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.favorite-icon-btn:hover {
+  border-color: color-mix(in srgb, var(--brand) 35%, var(--line));
+  color: var(--brand);
 }
 
 .discovery-symbol {
@@ -1565,6 +1671,10 @@ html.theme-transitioning * {
   }
 
   .notification-bell {
+    justify-content: flex-start;
+  }
+
+  .favorites-bell {
     justify-content: flex-start;
   }
 

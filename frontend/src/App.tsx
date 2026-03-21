@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import {
   BarChart3,
   Bell,
+  Bookmark,
+  BookmarkCheck,
   BookOpenText,
   Bot,
   CheckCheck,
@@ -17,6 +19,7 @@ import {
   Sparkles,
   Sun,
   TrendingUp,
+  Trash2,
   Wallet,
   WandSparkles,
   X,
@@ -112,6 +115,18 @@ interface SearchSelection {
   timelineQuery?: string;
   timelineEventId?: string;
   chatPrompt?: string;
+}
+
+type FavoriteType = "company" | "filing" | "headline";
+
+interface FavoriteItem {
+  id: string;
+  type: FavoriteType;
+  symbol?: string;
+  title: string;
+  subtitle?: string;
+  url?: string;
+  createdAt: string;
 }
 
 type GlobalSearchResultType = "company" | "theme" | "event" | "query";
@@ -380,6 +395,7 @@ const navItems: NavItem[] = [
 
 const THEME_STORAGE_KEY = "equityai-theme";
 const NOTIFICATIONS_STORAGE_KEY = "equityai-notifications";
+const FAVORITES_STORAGE_KEY = "equityai-favorites";
 
 type ViewTransitionCapable = {
   startViewTransition?: (updateCallback: () => void) => { finished: Promise<void> };
@@ -409,10 +425,28 @@ function getInitialNotifications(): NotificationItem[] {
   }
 }
 
+function getInitialFavorites(): FavoriteItem[] {
+  const saved = window.localStorage.getItem(FAVORITES_STORAGE_KEY);
+  if (!saved) return [];
+
+  try {
+    const parsed = JSON.parse(saved) as FavoriteItem[];
+    if (Array.isArray(parsed)) {
+      return parsed;
+    }
+    return [];
+  } catch {
+    return [];
+  }
+}
+
 export default function App() {
   const [activeView, setActiveView] = useState<ViewKey>("dashboard");
   const [theme, setTheme] = useState<Theme>(getInitialTheme);
   const [searchSelection, setSearchSelection] = useState<SearchSelection | null>(null);
+  const [favorites, setFavorites] = useState<FavoriteItem[]>(getInitialFavorites);
+  const [favoritesOpen, setFavoritesOpen] = useState(false);
+  const [favoriteFilter, setFavoriteFilter] = useState<"all" | FavoriteType>("all");
   const [notifications, setNotifications] = useState<NotificationItem[]>(getInitialNotifications);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [notificationFilter, setNotificationFilter] = useState<"all" | NotificationCategory>("all");
@@ -438,6 +472,10 @@ export default function App() {
     window.localStorage.setItem(NOTIFICATIONS_STORAGE_KEY, JSON.stringify(notifications));
   }, [notifications]);
 
+  useEffect(() => {
+    window.localStorage.setItem(FAVORITES_STORAGE_KEY, JSON.stringify(favorites));
+  }, [favorites]);
+
   const unreadCount = useMemo(
     () => notifications.filter((notification) => !notification.read).length,
     [notifications]
@@ -450,6 +488,14 @@ export default function App() {
           notificationFilter === "all" || notification.category === notificationFilter
       ),
     [notificationFilter, notifications]
+  );
+
+  const filteredFavorites = useMemo(
+    () =>
+      favorites.filter((favorite) =>
+        favoriteFilter === "all" ? true : favorite.type === favoriteFilter
+      ),
+    [favoriteFilter, favorites]
   );
 
   const pushToast = useCallback((message: string, tone: ToastTone = "info") => {
@@ -483,6 +529,51 @@ export default function App() {
     setNotifications((current) => current.filter((notification) => notification.id !== id));
     pushToast("Notification dismissed", "info");
   }, [pushToast]);
+
+  const addFavorite = useCallback(
+    (favorite: Omit<FavoriteItem, "id" | "createdAt">) => {
+      const key = `${favorite.type}::${favorite.title}::${favorite.symbol ?? ""}`.toLowerCase();
+
+      setFavorites((current) => {
+        const exists = current.some(
+          (item) => `${item.type}::${item.title}::${item.symbol ?? ""}`.toLowerCase() === key
+        );
+
+        if (exists) {
+          pushToast("Already in favorites", "info");
+          return current;
+        }
+
+        const next: FavoriteItem = {
+          ...favorite,
+          id: `fav-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          createdAt: new Date().toISOString(),
+        };
+
+        pushToast("Saved to favorites", "success");
+        return [next, ...current].slice(0, 120);
+      });
+    },
+    [pushToast]
+  );
+
+  const removeFavorite = useCallback(
+    (id: string) => {
+      setFavorites((current) => current.filter((item) => item.id !== id));
+      pushToast("Removed from favorites", "info");
+    },
+    [pushToast]
+  );
+
+  const isFavorited = useCallback(
+    (favorite: Pick<FavoriteItem, "type" | "title" | "symbol">) => {
+      const key = `${favorite.type}::${favorite.title}::${favorite.symbol ?? ""}`.toLowerCase();
+      return favorites.some(
+        (item) => `${item.type}::${item.title}::${item.symbol ?? ""}`.toLowerCase() === key
+      );
+    },
+    [favorites]
+  );
 
   const createNotification = useCallback(
     (notification: Omit<NotificationItem, "id" | "timestamp" | "read">) => {
@@ -585,6 +676,37 @@ export default function App() {
       });
     }
   }, [createNotification]);
+
+  const handleFavoriteSelect = useCallback(
+    (favorite: FavoriteItem) => {
+      if (favorite.type === "company") {
+        setSearchSelection({
+          stamp: Date.now(),
+          discoveryQuery: favorite.symbol ?? favorite.title,
+          filingsSymbol: favorite.symbol,
+          newsSymbol: favorite.symbol,
+        });
+        goToView("discovery");
+      } else if (favorite.type === "filing") {
+        setSearchSelection({
+          stamp: Date.now(),
+          filingsSymbol: favorite.symbol,
+          discoveryQuery: favorite.symbol,
+        });
+        goToView("filings");
+      } else {
+        setSearchSelection({
+          stamp: Date.now(),
+          newsSymbol: favorite.symbol,
+        });
+        goToView("news");
+      }
+
+      setFavoritesOpen(false);
+      pushToast("Opened from favorites", "info");
+    },
+    [goToView, pushToast]
+  );
 
   const globalSearchResults = useMemo<GlobalSearchResult[]>(() => {
     const query = globalSearchQuery.trim().toLowerCase();
@@ -966,21 +1088,55 @@ export default function App() {
       case "chat":
         return <ChatView searchSelection={searchSelection} />;
       case "discovery":
-        return <DiscoveryView searchSelection={searchSelection} />;
+        return (
+          <DiscoveryView
+            searchSelection={searchSelection}
+            addFavorite={addFavorite}
+            isFavorited={isFavorited}
+          />
+        );
       case "portfolio":
         return <PortfolioView />;
       case "filings":
-        return <FilingsView />;
+        return (
+          <FilingsView
+            searchSelection={searchSelection}
+            addFavorite={addFavorite}
+            isFavorited={isFavorited}
+          />
+        );
       case "timeline":
         return <TimelineView searchSelection={searchSelection} />;
       case "news":
-        return <NewsView searchSelection={searchSelection} />;
+        return (
+          <NewsView
+            searchSelection={searchSelection}
+            addFavorite={addFavorite}
+            isFavorited={isFavorited}
+          />
+        );
       case "settings":
-        return <SettingsView theme={theme} onToggleTheme={toggleTheme} />;
+        return (
+          <SettingsView
+            theme={theme}
+            onToggleTheme={toggleTheme}
+            favoritesCount={favorites.length}
+            unreadNotifications={unreadCount}
+          />
+        );
       default:
         return <DashboardView />;
     }
-  }, [activeView, searchSelection, theme, toggleTheme]);
+  }, [
+    activeView,
+    addFavorite,
+    favorites.length,
+    isFavorited,
+    searchSelection,
+    theme,
+    toggleTheme,
+    unreadCount,
+  ]);
 
   return (
     <div className="app-shell">
@@ -1008,6 +1164,30 @@ export default function App() {
           <span className={`notification-count ${unreadCount ? "has-unread" : ""}`}>
             {unreadCount}
           </span>
+        </button>
+
+        <button
+          type="button"
+          className="favorites-bell"
+          onClick={() => setFavoritesOpen(true)}
+          aria-label="Open favorites"
+        >
+          <span className="notification-bell-left">
+            <BookmarkCheck size={15} />
+            Favorites
+          </span>
+          <span className="notification-count">{favorites.length}</span>
+        </button>
+
+        <button
+          type="button"
+          className="secondary-btn mini-btn favorites-clear-btn"
+          onClick={() => {
+            setFavorites([]);
+            pushToast("Favorites cleared", "info");
+          }}
+        >
+          Clear Favorites
         </button>
 
         <button type="button" className="theme-toggle" onClick={toggleTheme}>
@@ -1263,6 +1443,85 @@ export default function App() {
               ) : (
                 <div className="list-item single-line">
                   <p>No notifications in this category.</p>
+                </div>
+              )}
+            </div>
+          </aside>
+        </div>
+      ) : null}
+
+      {favoritesOpen ? (
+        <div className="favorites-overlay" role="dialog" aria-modal="true" aria-label="Favorites panel">
+          <button
+            type="button"
+            className="favorites-backdrop"
+            onClick={() => setFavoritesOpen(false)}
+          />
+
+          <aside className="favorites-panel">
+            <div className="notification-panel-head">
+              <div>
+                <p className="results-title">Saved Items</p>
+                <h3>Favorites</h3>
+              </div>
+              <button
+                type="button"
+                className="notification-close"
+                onClick={() => setFavoritesOpen(false)}
+                aria-label="Close favorites panel"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <div className="notification-panel-actions">
+              <select
+                className="type-select"
+                value={favoriteFilter}
+                onChange={(event) => setFavoriteFilter(event.target.value as "all" | FavoriteType)}
+              >
+                <option value="all">All favorites</option>
+                <option value="company">Company</option>
+                <option value="filing">Filing</option>
+                <option value="headline">Headline</option>
+              </select>
+            </div>
+
+            <div className="notification-list">
+              {filteredFavorites.length ? (
+                filteredFavorites.map((favorite) => (
+                  <article key={favorite.id} className="notification-item unread">
+                    <div className="notification-item-head">
+                      <span className={`chip favorite-${favorite.type}`}>{favorite.type}</span>
+                      <span className="chip">{new Date(favorite.createdAt).toLocaleDateString()}</span>
+                    </div>
+
+                    <h4>{favorite.title}</h4>
+                    {favorite.subtitle ? <p>{favorite.subtitle}</p> : null}
+                    {favorite.symbol ? <small>Symbol: {favorite.symbol}</small> : null}
+
+                    <div className="notification-item-actions">
+                      <button
+                        type="button"
+                        className="secondary-btn mini-btn"
+                        onClick={() => handleFavoriteSelect(favorite)}
+                      >
+                        Open
+                      </button>
+                      <button
+                        type="button"
+                        className="secondary-btn mini-btn"
+                        onClick={() => removeFavorite(favorite.id)}
+                      >
+                        <Trash2 size={13} />
+                        Remove
+                      </button>
+                    </div>
+                  </article>
+                ))
+              ) : (
+                <div className="list-item single-line">
+                  <p>No favorites saved yet.</p>
                 </div>
               )}
             </div>
@@ -1562,7 +1821,11 @@ function ChatView(props: { searchSelection: SearchSelection | null }) {
   );
 }
 
-function DiscoveryView(props: { searchSelection: SearchSelection | null }) {
+function DiscoveryView(props: {
+  searchSelection: SearchSelection | null;
+  addFavorite: (favorite: Omit<FavoriteItem, "id" | "createdAt">) => void;
+  isFavorited: (favorite: Pick<FavoriteItem, "type" | "title" | "symbol">) => boolean;
+}) {
   const [lastSelectionStamp, setLastSelectionStamp] = useState<number>(0);
   const [query, setQuery] = useState("");
   const [activeTheme, setActiveTheme] = useState<string>("all");
@@ -1735,7 +1998,32 @@ function DiscoveryView(props: { searchSelection: SearchSelection | null }) {
                     <p className="discovery-symbol">{company.symbol}</p>
                     <h3>{company.name}</h3>
                   </div>
-                  <span className="chip">${company.marketCapBn.toFixed(1)}B</span>
+                  <div className="discovery-card-actions">
+                    <span className="chip">${company.marketCapBn.toFixed(1)}B</span>
+                    <button
+                      type="button"
+                      className="favorite-icon-btn"
+                      aria-label={`Save ${company.symbol} to favorites`}
+                      onClick={() =>
+                        props.addFavorite({
+                          type: "company",
+                          symbol: company.symbol,
+                          title: `${company.symbol} · ${company.name}`,
+                          subtitle: company.insight,
+                        })
+                      }
+                    >
+                      {props.isFavorited({
+                        type: "company",
+                        title: `${company.symbol} · ${company.name}`,
+                        symbol: company.symbol,
+                      }) ? (
+                        <BookmarkCheck size={14} />
+                      ) : (
+                        <Bookmark size={14} />
+                      )}
+                    </button>
+                  </div>
                 </div>
 
                 <p className="discovery-sector">{company.sector}</p>
@@ -1982,7 +2270,12 @@ function TimelineView(props: { searchSelection: SearchSelection | null }) {
   );
 }
 
-function FilingsView() {
+function FilingsView(props: {
+  searchSelection: SearchSelection | null;
+  addFavorite: (favorite: Omit<FavoriteItem, "id" | "createdAt">) => void;
+  isFavorited: (favorite: Pick<FavoriteItem, "type" | "title" | "symbol">) => boolean;
+}) {
+  const [lastSelectionStamp, setLastSelectionStamp] = useState<number>(0);
   const [symbolInput, setSymbolInput] = useState("AAPL");
   const [activeSymbol, setActiveSymbol] = useState("AAPL");
   const [filingType, setFilingType] = useState("");
@@ -2018,6 +2311,19 @@ function FilingsView() {
   useEffect(() => {
     void loadFilings(activeSymbol, filingType || undefined);
   }, [activeSymbol, filingType, loadFilings]);
+
+  useEffect(() => {
+    if (!props.searchSelection) return;
+    if (props.searchSelection.stamp === lastSelectionStamp) return;
+
+    if (props.searchSelection.filingsSymbol) {
+      const normalized = props.searchSelection.filingsSymbol.toUpperCase();
+      setActiveSymbol(normalized);
+      setSymbolInput(normalized);
+    }
+
+    setLastSelectionStamp(props.searchSelection.stamp);
+  }, [lastSelectionStamp, props.searchSelection]);
 
   const handleSearch = useCallback(async () => {
     const query = symbolInput.trim();
@@ -2149,10 +2455,38 @@ function FilingsView() {
                 rel="noreferrer"
                 className="list-item filing-item"
               >
-                <p>
-                  {(filing.type ?? "Filing") + " · " + (filing.title ?? `${activeSymbol} filing`)}
-                </p>
-                <span>{formatFilingDate(filing.filingDate ?? filing.acceptedDate)}</span>
+                <div className="filing-content-wrap">
+                  <p>
+                    {(filing.type ?? "Filing") + " · " + (filing.title ?? `${activeSymbol} filing`)}
+                  </p>
+                  <span>{formatFilingDate(filing.filingDate ?? filing.acceptedDate)}</span>
+                </div>
+                <button
+                  type="button"
+                  className="favorite-icon-btn"
+                  onClick={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    props.addFavorite({
+                      type: "filing",
+                      symbol: activeSymbol,
+                      title: (filing.type ?? "Filing") + " · " + (filing.title ?? `${activeSymbol} filing`),
+                      subtitle: formatFilingDate(filing.filingDate ?? filing.acceptedDate),
+                      url: filing.finalLink ?? filing.url,
+                    });
+                  }}
+                  aria-label="Save filing to favorites"
+                >
+                  {props.isFavorited({
+                    type: "filing",
+                    symbol: activeSymbol,
+                    title: (filing.type ?? "Filing") + " · " + (filing.title ?? `${activeSymbol} filing`),
+                  }) ? (
+                    <BookmarkCheck size={14} />
+                  ) : (
+                    <Bookmark size={14} />
+                  )}
+                </button>
               </a>
             ))
           : null}
@@ -2161,7 +2495,11 @@ function FilingsView() {
   );
 }
 
-function NewsView(props: { searchSelection: SearchSelection | null }) {
+function NewsView(props: {
+  searchSelection: SearchSelection | null;
+  addFavorite: (favorite: Omit<FavoriteItem, "id" | "createdAt">) => void;
+  isFavorited: (favorite: Pick<FavoriteItem, "type" | "title" | "symbol">) => boolean;
+}) {
   const [lastSelectionStamp, setLastSelectionStamp] = useState<number>(0);
   const [symbolInput, setSymbolInput] = useState("RELIANCE");
   const [activeSymbol, setActiveSymbol] = useState("RELIANCE");
@@ -2303,19 +2641,44 @@ function NewsView(props: { searchSelection: SearchSelection | null }) {
           ) : (
             <div className="feed-list">
               {(headlines.results ?? []).slice(0, 8).map((article, index) => (
-                <a
-                  key={`${article.article_id ?? article.link ?? index}`}
-                  href={article.link ?? "#"}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="feed-item"
-                >
-                  <p>{article.title ?? "Untitled headline"}</p>
-                  <span>
-                    {article.source_name ?? "Unknown source"}
-                    {article.pubDate ? ` · ${article.pubDate}` : ""}
-                  </span>
-                </a>
+                <div key={`${article.article_id ?? article.link ?? index}`} className="feed-item-wrap">
+                  <a
+                    href={article.link ?? "#"}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="feed-item"
+                  >
+                    <p>{article.title ?? "Untitled headline"}</p>
+                    <span>
+                      {article.source_name ?? "Unknown source"}
+                      {article.pubDate ? ` · ${article.pubDate}` : ""}
+                    </span>
+                  </a>
+                  <button
+                    type="button"
+                    className="favorite-icon-btn"
+                    onClick={() =>
+                      props.addFavorite({
+                        type: "headline",
+                        symbol: activeSymbol,
+                        title: article.title ?? "Untitled headline",
+                        subtitle: article.source_name ?? "Unknown source",
+                        url: article.link,
+                      })
+                    }
+                    aria-label="Save headline to favorites"
+                  >
+                    {props.isFavorited({
+                      type: "headline",
+                      symbol: activeSymbol,
+                      title: article.title ?? "Untitled headline",
+                    }) ? (
+                      <BookmarkCheck size={14} />
+                    ) : (
+                      <Bookmark size={14} />
+                    )}
+                  </button>
+                </div>
               ))}
               {!(headlines.results ?? []).length ? (
                 <p>No headlines available for now.</p>
@@ -2341,19 +2704,44 @@ function NewsView(props: { searchSelection: SearchSelection | null }) {
           ) : (
             <div className="feed-list">
               {(sentimentFeed?.articles ?? []).slice(0, 8).map((article, index) => (
-                <a
-                  key={`${article.article_id ?? article.link ?? index}`}
-                  href={article.link ?? "#"}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="feed-item"
-                >
-                  <p>{article.title ?? "Untitled article"}</p>
-                  <span>
-                    {article.sentiment ?? "unknown"}
-                    {article.source_name ? ` · ${article.source_name}` : ""}
-                  </span>
-                </a>
+                <div key={`${article.article_id ?? article.link ?? index}`} className="feed-item-wrap">
+                  <a
+                    href={article.link ?? "#"}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="feed-item"
+                  >
+                    <p>{article.title ?? "Untitled article"}</p>
+                    <span>
+                      {article.sentiment ?? "unknown"}
+                      {article.source_name ? ` · ${article.source_name}` : ""}
+                    </span>
+                  </a>
+                  <button
+                    type="button"
+                    className="favorite-icon-btn"
+                    onClick={() =>
+                      props.addFavorite({
+                        type: "headline",
+                        symbol: activeSymbol,
+                        title: article.title ?? "Untitled article",
+                        subtitle: `${article.sentiment ?? "unknown"} · ${article.source_name ?? "Unknown source"}`,
+                        url: article.link,
+                      })
+                    }
+                    aria-label="Save sentiment article to favorites"
+                  >
+                    {props.isFavorited({
+                      type: "headline",
+                      symbol: activeSymbol,
+                      title: article.title ?? "Untitled article",
+                    }) ? (
+                      <BookmarkCheck size={14} />
+                    ) : (
+                      <Bookmark size={14} />
+                    )}
+                  </button>
+                </div>
               ))}
               {!(sentimentFeed?.articles ?? []).length ? (
                 <p>No sentiment articles available for this symbol.</p>
@@ -2366,7 +2754,12 @@ function NewsView(props: { searchSelection: SearchSelection | null }) {
   );
 }
 
-function SettingsView(props: { theme: Theme; onToggleTheme: () => void }) {
+function SettingsView(props: {
+  theme: Theme;
+  onToggleTheme: () => void;
+  favoritesCount: number;
+  unreadNotifications: number;
+}) {
   return (
     <section className="page-wrap">
       <PageHeader
@@ -2381,7 +2774,11 @@ function SettingsView(props: { theme: Theme; onToggleTheme: () => void }) {
         </div>
         <div className="list-item">
           <p>Notification Rules</p>
-          <span>3 active</span>
+          <span>{props.unreadNotifications} unread</span>
+        </div>
+        <div className="list-item">
+          <p>Saved Favorites</p>
+          <span>{props.favoritesCount} items</span>
         </div>
         <div className="list-item">
           <p>Theme & Layout</p>
