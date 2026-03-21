@@ -1026,6 +1026,92 @@ html.theme-transitioning * {
   background: color-mix(in srgb, var(--brand-soft) 60%, transparent);
 }
 
+.report-builder-card {
+  border: 1px solid color-mix(in srgb, var(--line) 90%, transparent);
+  background: color-mix(in srgb, var(--card) 92%, transparent);
+  border-radius: 12px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.report-builder-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.report-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.report-field span {
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+
+.report-field input {
+  border: 1px solid var(--line);
+  background: var(--bg-elevated);
+  color: var(--ink);
+  border-radius: 10px;
+  padding: 8px 10px;
+  font: inherit;
+}
+
+.report-section-chips {
+  margin-top: 2px;
+}
+
+.report-action-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.report-preview {
+  border: 1px solid color-mix(in srgb, var(--line) 88%, transparent);
+  border-radius: 10px;
+  padding: 10px;
+  background: color-mix(in srgb, var(--card) 94%, transparent);
+}
+
+.report-preview h4 {
+  margin: 0;
+  font-size: 0.92rem;
+}
+
+.report-preview p {
+  margin: 4px 0 0;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.report-preview small {
+  margin-top: 4px;
+  display: block;
+  font-size: 0.68rem;
+  color: var(--muted);
+}
+
+.report-preview pre {
+  margin: 10px 0 0;
+  white-space: pre-wrap;
+  font-family: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.72rem;
+  line-height: 1.5;
+  color: var(--ink);
+}
+
+.report-placeholder {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
 .widget-toggle-chip {
   border: 1px solid color-mix(in srgb, var(--line) 90%, transparent);
   background: color-mix(in srgb, var(--card) 90%, transparent);
@@ -1915,6 +2001,10 @@ html.theme-transitioning * {
   }
 
   .portfolio-kpi-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .report-builder-grid {
     grid-template-columns: 1fr;
   }
 

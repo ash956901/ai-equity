@@ -141,6 +141,13 @@ interface FavoriteItem {
   createdAt: string;
 }
 
+type ReportSectionId = "summary" | "risks" | "financials" | "themes";
+
+interface ReportSectionOption {
+  id: ReportSectionId;
+  label: string;
+}
+
 interface DashboardWidget {
   id: string;
   label: string;
@@ -184,6 +191,13 @@ const DASHBOARD_WIDGETS: DashboardWidget[] = [
   { id: "kpi-api", label: "API Version" },
   { id: "feature-concentration", label: "Portfolio Concentration" },
   { id: "feature-headline", label: "Latest Market Headline" },
+];
+
+const REPORT_SECTION_OPTIONS: ReportSectionOption[] = [
+  { id: "summary", label: "Executive Summary" },
+  { id: "risks", label: "Key Risks" },
+  { id: "financials", label: "Financial Snapshot" },
+  { id: "themes", label: "Theme Outlook" },
 ];
 
 const PORTFOLIO_HOLDINGS: PortfolioHolding[] = [
@@ -2125,6 +2139,15 @@ function CompanyWorkspaceView(props: {
   const [activeTab, setActiveTab] = useState<"overview" | "filings" | "sentiment" | "timeline" | "chat">(
     "overview"
   );
+  const [reportTitle, setReportTitle] = useState("");
+  const [reportSections, setReportSections] = useState<ReportSectionId[]>([
+    "summary",
+    "risks",
+    "financials",
+    "themes",
+  ]);
+  const [reportAudience, setReportAudience] = useState<"retail" | "analyst">("analyst");
+  const [reportGeneratedAt, setReportGeneratedAt] = useState<string | null>(null);
 
   useEffect(() => {
     if (!props.searchSelection) return;
@@ -2170,6 +2193,100 @@ function CompanyWorkspaceView(props: {
   );
 
   const profileTitle = `${companyData.symbol} · ${companyData.name}`;
+
+  const generatedReport = useMemo(() => {
+    if (!reportGeneratedAt) return null;
+
+    const topTheme = topThemes[0]?.[0] ?? "No clear dominant theme";
+    const topThemeScore = topThemes[0]?.[1] ?? 0;
+
+    const sections: string[] = [];
+
+    if (reportSections.includes("summary")) {
+      sections.push(
+        `Executive Summary:\n${companyData.name} (${companyData.symbol}) currently shows strongest narrative strength in ${topTheme} with theme score ${topThemeScore}/100. Sector context remains ${companyData.sector}.`
+      );
+    }
+
+    if (reportSections.includes("risks")) {
+      sections.push(
+        `Key Risks:\n1) Execution risk around near-term filings guidance.\n2) Valuation sensitivity if sector momentum cools.\n3) Sentiment volatility around macro updates.`
+      );
+    }
+
+    if (reportSections.includes("financials")) {
+      sections.push(
+        `Financial Snapshot:\nMarket Cap: $${companyData.marketCapBn.toFixed(1)}B\nRecent timeline events: ${companyTimeline.length}\nPrimary sector: ${companyData.sector}`
+      );
+    }
+
+    if (reportSections.includes("themes")) {
+      const themeText = topThemes.length
+        ? topThemes.map(([theme, score]) => `${theme} (${score})`).join(", ")
+        : "No theme signal available";
+
+      sections.push(`Theme Outlook:\nDominant theme signals: ${themeText}.`);
+    }
+
+    const audienceText =
+      reportAudience === "retail"
+        ? "Retail framing: keep explanations concise and action oriented."
+        : "Analyst framing: include context, assumptions, and scenario sensitivity.";
+
+    return {
+      title: reportTitle.trim() || `${companyData.symbol} Research Brief`,
+      generatedAt: reportGeneratedAt,
+      audienceText,
+      body: sections.join("\n\n"),
+    };
+  }, [
+    companyData.marketCapBn,
+    companyData.name,
+    companyData.sector,
+    companyData.symbol,
+    companyTimeline.length,
+    reportAudience,
+    reportGeneratedAt,
+    reportSections,
+    reportTitle,
+    topThemes,
+  ]);
+
+  const toggleReportSection = (sectionId: ReportSectionId) => {
+    setReportSections((current) => {
+      if (current.includes(sectionId)) {
+        const next = current.filter((id) => id !== sectionId);
+        return next.length ? next : current;
+      }
+      return [...current, sectionId];
+    });
+  };
+
+  const triggerReportGeneration = () => {
+    setReportGeneratedAt(new Date().toISOString());
+  };
+
+  const exportReportAsText = () => {
+    if (!generatedReport) return;
+
+    const payload = [
+      generatedReport.title,
+      `Generated: ${new Date(generatedReport.generatedAt).toLocaleString()}`,
+      generatedReport.audienceText,
+      "",
+      generatedReport.body,
+    ].join("\n");
+
+    const blob = new Blob([payload], { type: "text/plain;charset=utf-8" });
+    const url = window.URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `${companyData.symbol.toLowerCase()}-report.txt`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    window.URL.revokeObjectURL(url);
+  };
 
   return (
     <section className="page-wrap">
@@ -2359,6 +2476,76 @@ function CompanyWorkspaceView(props: {
           </div>
         </article>
       ) : null}
+
+      <article className="report-builder-card">
+        <div className="feature-head">
+          <FileText size={18} />
+          <h3>Report Generation Workspace</h3>
+        </div>
+
+        <div className="report-builder-grid">
+          <label className="report-field">
+            <span>Report title</span>
+            <input
+              value={reportTitle}
+              onChange={(event) => setReportTitle(event.target.value)}
+              placeholder={`${companyData.symbol} quarterly research brief`}
+            />
+          </label>
+
+          <label className="report-field">
+            <span>Audience</span>
+            <select
+              className="type-select"
+              value={reportAudience}
+              onChange={(event) => setReportAudience(event.target.value as "retail" | "analyst")}
+            >
+              <option value="analyst">Analyst</option>
+              <option value="retail">Retail</option>
+            </select>
+          </label>
+        </div>
+
+        <div className="chip-row report-section-chips">
+          {REPORT_SECTION_OPTIONS.map((section) => (
+            <button
+              key={section.id}
+              type="button"
+              className={`widget-toggle-chip ${reportSections.includes(section.id) ? "active" : ""}`}
+              onClick={() => toggleReportSection(section.id)}
+            >
+              {section.label}
+            </button>
+          ))}
+        </div>
+
+        <div className="report-action-row">
+          <button type="button" className="primary-btn" onClick={triggerReportGeneration}>
+            Generate Report
+          </button>
+          <button
+            type="button"
+            className="secondary-btn mini-btn"
+            onClick={exportReportAsText}
+            disabled={!generatedReport}
+          >
+            Download .txt
+          </button>
+        </div>
+
+        {generatedReport ? (
+          <div className="report-preview">
+            <h4>{generatedReport.title}</h4>
+            <p>{generatedReport.audienceText}</p>
+            <small>Generated: {new Date(generatedReport.generatedAt).toLocaleString()}</small>
+            <pre>{generatedReport.body}</pre>
+          </div>
+        ) : (
+          <p className="report-placeholder">
+            Select sections and click Generate Report to build a company-specific brief.
+          </p>
+        )}
+      </article>
     </section>
   );
 }
