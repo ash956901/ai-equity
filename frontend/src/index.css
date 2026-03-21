@@ -599,6 +599,35 @@ html.theme-transitioning * {
   z-index: 125;
 }
 
+.favorites-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 126;
+}
+
+.favorites-backdrop {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  background: color-mix(in srgb, #071018 58%, transparent);
+  backdrop-filter: blur(4px);
+}
+
+.favorites-panel {
+  position: absolute;
+  top: 0;
+  right: 0;
+  height: 100%;
+  width: min(440px, 100%);
+  border-left: 1px solid color-mix(in srgb, var(--line) 88%, transparent);
+  background: color-mix(in srgb, var(--card) 96%, transparent);
+  box-shadow: -10px 0 36px rgba(5, 13, 22, 0.22);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+}
+
 .notification-backdrop {
   position: absolute;
   inset: 0;
@@ -772,6 +801,21 @@ html.theme-transitioning * {
   border-color: color-mix(in srgb, #7f5af0 35%, var(--line));
 }
 
+.chip.favorite-company {
+  color: color-mix(in srgb, var(--brand) 82%, var(--ink));
+  border-color: color-mix(in srgb, var(--brand) 35%, var(--line));
+}
+
+.chip.favorite-filing {
+  color: color-mix(in srgb, #ef8f36 72%, var(--ink));
+  border-color: color-mix(in srgb, #ef8f36 35%, var(--line));
+}
+
+.chip.favorite-headline {
+  color: color-mix(in srgb, #7f5af0 72%, var(--ink));
+  border-color: color-mix(in srgb, #7f5af0 35%, var(--line));
+}
+
 .nav-stack {
   display: flex;
   flex-direction: column;
@@ -919,6 +963,48 @@ html.theme-transitioning * {
   flex-wrap: wrap;
 }
 
+.dashboard-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.dashboard-widget-toggles {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.widget-toggle-chip {
+  border: 1px solid color-mix(in srgb, var(--line) 90%, transparent);
+  background: color-mix(in srgb, var(--card) 90%, transparent);
+  color: var(--muted);
+  border-radius: 999px;
+  padding: 6px 10px;
+  font-size: 0.72rem;
+  cursor: pointer;
+}
+
+.widget-toggle-chip.active {
+  border-color: color-mix(in srgb, var(--brand) 42%, var(--line));
+  color: var(--brand);
+  background: color-mix(in srgb, var(--brand-soft) 60%, transparent);
+}
+
+.card-compact {
+  padding: 10px;
+}
+
+.card-compact h2 {
+  font-size: 1.05rem;
+  margin-top: 6px;
+}
+
+.card-compact p,
+.card-compact small {
+  font-size: 0.74rem;
+}
+
 .chip-row {
   display: flex;
   gap: 8px;
@@ -960,6 +1046,12 @@ html.theme-transitioning * {
   margin-top: 8px;
   display: flex;
   flex-direction: column;
+  gap: 8px;
+}
+
+.feed-item-wrap {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   gap: 8px;
 }
 
@@ -1318,6 +1410,12 @@ html.theme-transitioning * {
   gap: 2px;
 }
 
+.filing-content-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
 .filing-item:hover {
   border-color: color-mix(in srgb, var(--brand) 45%, var(--line));
   background: color-mix(in srgb, var(--brand-soft) 45%, transparent);
@@ -1391,6 +1489,30 @@ html.theme-transitioning * {
   align-items: flex-start;
   justify-content: space-between;
   gap: 8px;
+}
+
+.discovery-card-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.favorite-icon-btn {
+  border: 1px solid color-mix(in srgb, var(--line) 90%, transparent);
+  background: color-mix(in srgb, var(--card) 92%, transparent);
+  color: var(--muted);
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.favorite-icon-btn:hover {
+  border-color: color-mix(in srgb, var(--brand) 35%, var(--line));
+  color: var(--brand);
 }
 
 .discovery-card-actions {
@@ -1671,6 +1793,14 @@ html.theme-transitioning * {
   }
 
   .notification-bell {
+    justify-content: flex-start;
+  }
+
+  .favorites-bell {
+    justify-content: flex-start;
+  }
+
+  .dashboard-actions {
     justify-content: flex-start;
   }
 

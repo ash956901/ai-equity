@@ -51,6 +51,12 @@ type ViewKey =
   | "news"
   | "settings";
 type Theme = "light" | "dark";
+type DashboardDensity = "comfortable" | "compact";
+
+interface DashboardPreferences {
+  density: DashboardDensity;
+  hiddenWidgets: string[];
+}
 
 interface DiscoveryCompany {
   symbol: string;
@@ -129,6 +135,11 @@ interface FavoriteItem {
   createdAt: string;
 }
 
+interface DashboardWidget {
+  id: string;
+  label: string;
+}
+
 type GlobalSearchResultType = "company" | "theme" | "event" | "query";
 
 interface GlobalSearchResult {
@@ -146,6 +157,15 @@ const QUICK_QUERY_TEMPLATES = [
   "What changed in defense theme this week?",
   "Give a 5-point summary for my timeline events.",
   "Which themes look overheated right now?",
+];
+
+const DASHBOARD_WIDGETS: DashboardWidget[] = [
+  { id: "kpi-portfolio", label: "Portfolio Companies" },
+  { id: "kpi-headlines", label: "Live Headlines" },
+  { id: "kpi-health", label: "Backend Health" },
+  { id: "kpi-api", label: "API Version" },
+  { id: "feature-concentration", label: "Portfolio Concentration" },
+  { id: "feature-headline", label: "Latest Market Headline" },
 ];
 
 const DISCOVERY_COMPANIES: DiscoveryCompany[] = [
@@ -396,6 +416,7 @@ const navItems: NavItem[] = [
 const THEME_STORAGE_KEY = "equityai-theme";
 const NOTIFICATIONS_STORAGE_KEY = "equityai-notifications";
 const FAVORITES_STORAGE_KEY = "equityai-favorites";
+const DASHBOARD_PREFERENCES_KEY = "equityai-dashboard-preferences";
 
 type ViewTransitionCapable = {
   startViewTransition?: (updateCallback: () => void) => { finished: Promise<void> };
@@ -440,9 +461,34 @@ function getInitialFavorites(): FavoriteItem[] {
   }
 }
 
+function getInitialDashboardPreferences(): DashboardPreferences {
+  const saved = window.localStorage.getItem(DASHBOARD_PREFERENCES_KEY);
+  if (!saved) {
+    return {
+      density: "comfortable",
+      hiddenWidgets: [],
+    };
+  }
+
+  try {
+    const parsed = JSON.parse(saved) as DashboardPreferences;
+    if (parsed && (parsed.density === "comfortable" || parsed.density === "compact")) {
+      return {
+        density: parsed.density,
+        hiddenWidgets: Array.isArray(parsed.hiddenWidgets) ? parsed.hiddenWidgets : [],
+      };
+    }
+    return { density: "comfortable", hiddenWidgets: [] };
+  } catch {
+    return { density: "comfortable", hiddenWidgets: [] };
+  }
+}
+
 export default function App() {
   const [activeView, setActiveView] = useState<ViewKey>("dashboard");
   const [theme, setTheme] = useState<Theme>(getInitialTheme);
+  const [dashboardPreferences, setDashboardPreferences] =
+    useState<DashboardPreferences>(getInitialDashboardPreferences);
   const [searchSelection, setSearchSelection] = useState<SearchSelection | null>(null);
   const [favorites, setFavorites] = useState<FavoriteItem[]>(getInitialFavorites);
   const [favoritesOpen, setFavoritesOpen] = useState(false);
@@ -475,6 +521,13 @@ export default function App() {
   useEffect(() => {
     window.localStorage.setItem(FAVORITES_STORAGE_KEY, JSON.stringify(favorites));
   }, [favorites]);
+
+  useEffect(() => {
+    window.localStorage.setItem(
+      DASHBOARD_PREFERENCES_KEY,
+      JSON.stringify(dashboardPreferences)
+    );
+  }, [dashboardPreferences]);
 
   const unreadCount = useMemo(
     () => notifications.filter((notification) => !notification.read).length,
@@ -707,6 +760,34 @@ export default function App() {
     },
     [goToView, pushToast]
   );
+
+  const toggleDashboardDensity = useCallback(() => {
+    setDashboardPreferences((current) => ({
+      ...current,
+      density: current.density === "comfortable" ? "compact" : "comfortable",
+    }));
+  }, []);
+
+  const toggleDashboardWidget = useCallback((widgetId: string) => {
+    setDashboardPreferences((current) => {
+      const hidden = new Set(current.hiddenWidgets);
+      if (hidden.has(widgetId)) {
+        hidden.delete(widgetId);
+      } else {
+        hidden.add(widgetId);
+      }
+
+      return {
+        ...current,
+        hiddenWidgets: Array.from(hidden),
+      };
+    });
+  }, []);
+
+  const resetDashboardPreferences = useCallback(() => {
+    setDashboardPreferences({ density: "comfortable", hiddenWidgets: [] });
+    pushToast("Dashboard layout reset", "success");
+  }, [pushToast]);
 
   const globalSearchResults = useMemo<GlobalSearchResult[]>(() => {
     const query = globalSearchQuery.trim().toLowerCase();
@@ -1084,7 +1165,14 @@ export default function App() {
   const page = useMemo(() => {
     switch (activeView) {
       case "dashboard":
-        return <DashboardView />;
+        return (
+          <DashboardView
+            preferences={dashboardPreferences}
+            onToggleDensity={toggleDashboardDensity}
+            onToggleWidget={toggleDashboardWidget}
+            onResetPreferences={resetDashboardPreferences}
+          />
+        );
       case "chat":
         return <ChatView searchSelection={searchSelection} />;
       case "discovery":
@@ -1125,15 +1213,26 @@ export default function App() {
           />
         );
       default:
-        return <DashboardView />;
+        return (
+          <DashboardView
+            preferences={dashboardPreferences}
+            onToggleDensity={toggleDashboardDensity}
+            onToggleWidget={toggleDashboardWidget}
+            onResetPreferences={resetDashboardPreferences}
+          />
+        );
     }
   }, [
     activeView,
     addFavorite,
+    dashboardPreferences,
     favorites.length,
     isFavorited,
+    resetDashboardPreferences,
     searchSelection,
     theme,
+    toggleDashboardDensity,
+    toggleDashboardWidget,
     toggleTheme,
     unreadCount,
   ]);
@@ -1562,7 +1661,12 @@ function PageHeader(props: { title: string; subtitle: string; right?: ReactNode 
   );
 }
 
-function DashboardView() {
+function DashboardView(props: {
+  preferences: DashboardPreferences;
+  onToggleDensity: () => void;
+  onToggleWidget: (widgetId: string) => void;
+  onResetPreferences: () => void;
+}) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [health, setHealth] = useState<HealthResponse>({});
@@ -1603,6 +1707,13 @@ function DashboardView() {
     void loadDashboardData();
   }, [loadDashboardData]);
 
+  const isWidgetVisible = useCallback(
+    (id: string) => !props.preferences.hiddenWidgets.includes(id),
+    [props.preferences.hiddenWidgets]
+  );
+
+  const cardDensityClass = props.preferences.density === "compact" ? "card-compact" : "";
+
   const headlineCount = headlines.results?.length ?? headlines.totalResults ?? 0;
   const latestHeadline = headlines.results?.[0]?.title ?? "No headlines yet";
 
@@ -1612,54 +1723,91 @@ function DashboardView() {
         title="Market Command Center"
         subtitle="Track activity, spot risks, and jump into analysis flows quickly."
         right={
-          <button type="button" className="primary-btn" onClick={() => void loadDashboardData()}>
-            {loading ? "Refreshing..." : "Refresh Data"}
-          </button>
+          <div className="dashboard-actions">
+            <button type="button" className="secondary-btn mini-btn" onClick={props.onToggleDensity}>
+              Density: {props.preferences.density}
+            </button>
+            <button type="button" className="secondary-btn mini-btn" onClick={props.onResetPreferences}>
+              Reset Layout
+            </button>
+            <button type="button" className="primary-btn" onClick={() => void loadDashboardData()}>
+              {loading ? "Refreshing..." : "Refresh Data"}
+            </button>
+          </div>
         }
       />
+
+      <div className="dashboard-widget-toggles">
+        {DASHBOARD_WIDGETS.map((widget) => (
+          <button
+            key={widget.id}
+            type="button"
+            className={`widget-toggle-chip ${isWidgetVisible(widget.id) ? "active" : ""}`}
+            onClick={() => props.onToggleWidget(widget.id)}
+          >
+            {widget.label}
+          </button>
+        ))}
+      </div>
 
       {error ? <div className="notice warning">{error}</div> : null}
 
       <div className="kpi-grid">
-        <article className="kpi-card">
-          <p>Portfolio Companies</p>
-          <h2>{loading ? "--" : holdingsCount}</h2>
-          <small>From Upstox holdings</small>
-        </article>
-        <article className="kpi-card">
-          <p>Live Headlines</p>
-          <h2>{loading ? "--" : headlineCount}</h2>
-          <small>From NewsData market feed</small>
-        </article>
-        <article className="kpi-card">
-          <p>Backend Health</p>
-          <h2>{loading ? "--" : (health.status ?? "unknown")}</h2>
-          <small>{health.message ?? "No status message"}</small>
-        </article>
-        <article className="kpi-card">
-          <p>API Version</p>
-          <h2>{loading ? "--" : (apiStatus.api_version ?? "n/a")}</h2>
-          <small>Status: {apiStatus.status ?? "unknown"}</small>
-        </article>
+        {isWidgetVisible("kpi-portfolio") ? (
+          <article className={`kpi-card ${cardDensityClass}`}>
+            <p>Portfolio Companies</p>
+            <h2>{loading ? "--" : holdingsCount}</h2>
+            <small>From Upstox holdings</small>
+          </article>
+        ) : null}
+
+        {isWidgetVisible("kpi-headlines") ? (
+          <article className={`kpi-card ${cardDensityClass}`}>
+            <p>Live Headlines</p>
+            <h2>{loading ? "--" : headlineCount}</h2>
+            <small>From NewsData market feed</small>
+          </article>
+        ) : null}
+
+        {isWidgetVisible("kpi-health") ? (
+          <article className={`kpi-card ${cardDensityClass}`}>
+            <p>Backend Health</p>
+            <h2>{loading ? "--" : (health.status ?? "unknown")}</h2>
+            <small>{health.message ?? "No status message"}</small>
+          </article>
+        ) : null}
+
+        {isWidgetVisible("kpi-api") ? (
+          <article className={`kpi-card ${cardDensityClass}`}>
+            <p>API Version</p>
+            <h2>{loading ? "--" : (apiStatus.api_version ?? "n/a")}</h2>
+            <small>Status: {apiStatus.status ?? "unknown"}</small>
+          </article>
+        ) : null}
       </div>
 
       <div className="split-grid">
-        <article className="feature-card">
-          <div className="feature-head">
-            <BarChart3 size={18} />
-            <h3>Portfolio Concentration</h3>
-          </div>
-          <p>
-            Top 3 positions account for 47% of capital. Consider rebalancing to reduce concentration risk.
-          </p>
-        </article>
-        <article className="feature-card">
-          <div className="feature-head">
-            <TrendingUp size={18} />
-            <h3>Latest Market Headline</h3>
-          </div>
-          <p>{loading ? "Loading latest headline..." : latestHeadline}</p>
-        </article>
+        {isWidgetVisible("feature-concentration") ? (
+          <article className={`feature-card ${cardDensityClass}`}>
+            <div className="feature-head">
+              <BarChart3 size={18} />
+              <h3>Portfolio Concentration</h3>
+            </div>
+            <p>
+              Top 3 positions account for 47% of capital. Consider rebalancing to reduce concentration risk.
+            </p>
+          </article>
+        ) : null}
+
+        {isWidgetVisible("feature-headline") ? (
+          <article className={`feature-card ${cardDensityClass}`}>
+            <div className="feature-head">
+              <TrendingUp size={18} />
+              <h3>Latest Market Headline</h3>
+            </div>
+            <p>{loading ? "Loading latest headline..." : latestHeadline}</p>
+          </article>
+        ) : null}
       </div>
     </section>
   );
