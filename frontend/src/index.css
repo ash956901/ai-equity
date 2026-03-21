@@ -309,6 +309,27 @@ html.theme-transitioning * {
   transition: all 0.25s ease;
 }
 
+.global-search-shortcut {
+  border: 1px solid var(--line);
+  background: color-mix(in srgb, var(--card) 92%, transparent);
+  color: var(--ink);
+  border-radius: 12px;
+  padding: 8px 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 0.74rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.25s ease;
+}
+
+.global-search-shortcut:hover {
+  border-color: var(--brand);
+  color: var(--brand);
+}
+
 .command-shortcut:hover {
   border-color: var(--brand);
   color: var(--brand);
@@ -414,6 +435,107 @@ html.theme-transitioning * {
   padding: 10px;
   color: var(--muted);
   font-size: 0.8rem;
+}
+
+.global-search-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 124;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding: 10vh 16px 16px;
+}
+
+.global-search-backdrop {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  background: color-mix(in srgb, #071018 58%, transparent);
+  backdrop-filter: blur(4px);
+}
+
+.global-search-panel {
+  position: relative;
+  width: min(760px, 100%);
+  border-radius: 14px;
+  border: 1px solid color-mix(in srgb, var(--line) 88%, transparent);
+  background: color-mix(in srgb, var(--card) 96%, transparent);
+  box-shadow: 0 20px 42px rgba(5, 13, 22, 0.28);
+  overflow: hidden;
+}
+
+.global-search-head {
+  padding: 10px 12px 0;
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  align-items: center;
+}
+
+.global-search-results {
+  max-height: 420px;
+  overflow-y: auto;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.global-search-item {
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--ink);
+  border-radius: 10px;
+  padding: 9px 10px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.global-search-item p {
+  margin: 0;
+  font-size: 0.82rem;
+}
+
+.global-search-item span {
+  margin-top: 2px;
+  display: inline-block;
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+
+.global-search-item.active,
+.global-search-item:hover {
+  border-color: color-mix(in srgb, var(--brand) 35%, var(--line));
+  background: color-mix(in srgb, var(--brand-soft) 55%, transparent);
+}
+
+.global-search-type {
+  text-transform: capitalize;
+}
+
+.global-search-type.company {
+  border-color: color-mix(in srgb, var(--brand) 35%, var(--line));
+  color: color-mix(in srgb, var(--brand) 80%, var(--ink));
+}
+
+.global-search-type.theme {
+  border-color: color-mix(in srgb, #7f5af0 35%, var(--line));
+  color: color-mix(in srgb, #7f5af0 72%, var(--ink));
+}
+
+.global-search-type.event {
+  border-color: color-mix(in srgb, #ef8f36 35%, var(--line));
+  color: color-mix(in srgb, #ef8f36 72%, var(--ink));
+}
+
+.global-search-type.query {
+  border-color: color-mix(in srgb, var(--good) 35%, var(--line));
+  color: color-mix(in srgb, var(--good) 80%, var(--ink));
 }
 
 .notification-overlay {
@@ -1435,6 +1557,10 @@ html.theme-transitioning * {
   }
 
   .command-shortcut {
+    justify-content: flex-start;
+  }
+
+  .global-search-shortcut {
     justify-content: flex-start;
   }
 

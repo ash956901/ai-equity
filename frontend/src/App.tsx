@@ -103,6 +103,36 @@ interface ToastItem {
   tone: ToastTone;
 }
 
+interface SearchSelection {
+  stamp: number;
+  discoveryQuery?: string;
+  discoveryTheme?: string;
+  filingsSymbol?: string;
+  newsSymbol?: string;
+  timelineQuery?: string;
+  timelineEventId?: string;
+  chatPrompt?: string;
+}
+
+type GlobalSearchResultType = "company" | "theme" | "event" | "query";
+
+interface GlobalSearchResult {
+  id: string;
+  type: GlobalSearchResultType;
+  title: string;
+  subtitle: string;
+  onSelect: () => void;
+}
+
+const QUICK_QUERY_TEMPLATES = [
+  "Summarize the latest filing impact for RELIANCE.",
+  "Explain top portfolio risks in simple language.",
+  "Compare sentiment momentum: TCS vs INFY.",
+  "What changed in defense theme this week?",
+  "Give a 5-point summary for my timeline events.",
+  "Which themes look overheated right now?",
+];
+
 const DISCOVERY_COMPANIES: DiscoveryCompany[] = [
   {
     symbol: "RELIANCE",
@@ -382,14 +412,19 @@ function getInitialNotifications(): NotificationItem[] {
 export default function App() {
   const [activeView, setActiveView] = useState<ViewKey>("dashboard");
   const [theme, setTheme] = useState<Theme>(getInitialTheme);
+  const [searchSelection, setSearchSelection] = useState<SearchSelection | null>(null);
   const [notifications, setNotifications] = useState<NotificationItem[]>(getInitialNotifications);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [notificationFilter, setNotificationFilter] = useState<"all" | NotificationCategory>("all");
   const [toasts, setToasts] = useState<ToastItem[]>([]);
+  const [globalSearchOpen, setGlobalSearchOpen] = useState(false);
+  const [globalSearchQuery, setGlobalSearchQuery] = useState("");
+  const [globalSearchIndex, setGlobalSearchIndex] = useState(0);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [paletteQuery, setPaletteQuery] = useState("");
   const [paletteActiveIndex, setPaletteActiveIndex] = useState(0);
   const paletteInputRef = useRef<HTMLInputElement | null>(null);
+  const globalSearchInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     const root = document.documentElement;
@@ -464,6 +499,18 @@ export default function App() {
     [pushToast]
   );
 
+  const openGlobalSearch = useCallback(() => {
+    setGlobalSearchOpen(true);
+    setGlobalSearchQuery("");
+    setGlobalSearchIndex(0);
+  }, []);
+
+  const closeGlobalSearch = useCallback(() => {
+    setGlobalSearchOpen(false);
+    setGlobalSearchQuery("");
+    setGlobalSearchIndex(0);
+  }, []);
+
   const toggleTheme = useCallback(() => {
     const root = document.documentElement;
     const startViewTransition = (document as unknown as ViewTransitionCapable).startViewTransition;
@@ -507,6 +554,9 @@ export default function App() {
     setPaletteOpen(false);
     setPaletteQuery("");
     setPaletteActiveIndex(0);
+    setGlobalSearchOpen(false);
+    setGlobalSearchQuery("");
+    setGlobalSearchIndex(0);
 
     if (view === "filings") {
       createNotification({
@@ -535,6 +585,129 @@ export default function App() {
       });
     }
   }, [createNotification]);
+
+  const globalSearchResults = useMemo<GlobalSearchResult[]>(() => {
+    const query = globalSearchQuery.trim().toLowerCase();
+    const results: GlobalSearchResult[] = [];
+
+    if (!query) {
+      results.push(
+        {
+          id: "hint-company",
+          type: "company",
+          title: "Search company symbols",
+          subtitle: "Examples: RELIANCE, TCS, INFY",
+          onSelect: () => {
+            setSearchSelection({ stamp: Date.now(), discoveryQuery: "RELIANCE" });
+            goToView("discovery");
+          },
+        },
+        {
+          id: "hint-theme",
+          type: "theme",
+          title: "Jump to themes",
+          subtitle: "Examples: AI, Defense, Renewable",
+          onSelect: () => {
+            setSearchSelection({ stamp: Date.now(), discoveryTheme: "AI" });
+            goToView("discovery");
+          },
+        },
+        {
+          id: "hint-query",
+          type: "query",
+          title: "Ask Iris quickly",
+          subtitle: "Open chat with a prepared prompt",
+          onSelect: () => {
+            setSearchSelection({
+              stamp: Date.now(),
+              chatPrompt: "Summarize portfolio risk in simple language.",
+            });
+            goToView("chat");
+          },
+        }
+      );
+      return results;
+    }
+
+    for (const company of DISCOVERY_COMPANIES) {
+      const searchable = `${company.symbol} ${company.name} ${company.sector}`.toLowerCase();
+      if (!searchable.includes(query)) continue;
+
+      results.push({
+        id: `company-${company.symbol}`,
+        type: "company",
+        title: `${company.symbol} · ${company.name}`,
+        subtitle: `Open filings and discovery for ${company.symbol}`,
+        onSelect: () => {
+          setSearchSelection({
+            stamp: Date.now(),
+            discoveryQuery: company.symbol,
+            filingsSymbol: company.symbol,
+            newsSymbol: company.symbol,
+          });
+          goToView("filings");
+        },
+      });
+    }
+
+    const themeSet = new Set<string>();
+    for (const company of DISCOVERY_COMPANIES) {
+      for (const theme of Object.keys(company.themeScores)) {
+        if (theme.toLowerCase().includes(query)) {
+          themeSet.add(theme);
+        }
+      }
+    }
+
+    for (const theme of themeSet) {
+      results.push({
+        id: `theme-${theme}`,
+        type: "theme",
+        title: `Theme: ${theme}`,
+        subtitle: "Open Discovery with theme filter",
+        onSelect: () => {
+          setSearchSelection({ stamp: Date.now(), discoveryTheme: theme });
+          goToView("discovery");
+        },
+      });
+    }
+
+    for (const event of TIMELINE_EVENTS) {
+      const searchable = `${event.company} ${event.title} ${event.summary} ${event.sourceLabel}`.toLowerCase();
+      if (!searchable.includes(query)) continue;
+
+      results.push({
+        id: `event-${event.id}`,
+        type: "event",
+        title: `${event.company} · ${event.title}`,
+        subtitle: "Open in timeline details",
+        onSelect: () => {
+          setSearchSelection({
+            stamp: Date.now(),
+            timelineQuery: event.company,
+            timelineEventId: event.id,
+          });
+          goToView("timeline");
+        },
+      });
+    }
+
+    for (const template of QUICK_QUERY_TEMPLATES) {
+      if (!template.toLowerCase().includes(query)) continue;
+      results.push({
+        id: `query-${template}`,
+        type: "query",
+        title: template,
+        subtitle: "Use as chat starter",
+        onSelect: () => {
+          setSearchSelection({ stamp: Date.now(), chatPrompt: template });
+          goToView("chat");
+        },
+      });
+    }
+
+    return results.slice(0, 18);
+  }, [globalSearchQuery, goToView]);
 
   const openPalette = useCallback(() => {
     setPaletteOpen(true);
@@ -656,8 +829,19 @@ export default function App() {
   }, [paletteOpen]);
 
   useEffect(() => {
+    if (!globalSearchOpen) return;
+    window.requestAnimationFrame(() => {
+      globalSearchInputRef.current?.focus();
+    });
+  }, [globalSearchOpen]);
+
+  useEffect(() => {
     setPaletteActiveIndex(0);
   }, [paletteQuery]);
+
+  useEffect(() => {
+    setGlobalSearchIndex(0);
+  }, [globalSearchQuery]);
 
   useEffect(() => {
     const handleGlobalShortcuts = (event: KeyboardEvent) => {
@@ -670,6 +854,52 @@ export default function App() {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
         event.preventDefault();
         setPaletteOpen((current) => !current);
+        return;
+      }
+
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "j") {
+        event.preventDefault();
+        setGlobalSearchOpen((current) => {
+          if (current) {
+            setGlobalSearchQuery("");
+            setGlobalSearchIndex(0);
+            return false;
+          }
+          return true;
+        });
+        return;
+      }
+
+      if (globalSearchOpen) {
+        if (event.key === "Escape") {
+          event.preventDefault();
+          closeGlobalSearch();
+          return;
+        }
+
+        if (event.key === "ArrowDown") {
+          event.preventDefault();
+          setGlobalSearchIndex((current) =>
+            globalSearchResults.length ? (current + 1) % globalSearchResults.length : 0
+          );
+          return;
+        }
+
+        if (event.key === "ArrowUp") {
+          event.preventDefault();
+          setGlobalSearchIndex((current) =>
+            globalSearchResults.length
+              ? (current - 1 + globalSearchResults.length) % globalSearchResults.length
+              : 0
+          );
+          return;
+        }
+
+        if (event.key === "Enter") {
+          event.preventDefault();
+          const result = globalSearchResults[globalSearchIndex] ?? globalSearchResults[0];
+          result?.onSelect();
+        }
         return;
       }
 
@@ -718,30 +948,39 @@ export default function App() {
     return () => {
       window.removeEventListener("keydown", handleGlobalShortcuts);
     };
-  }, [closePalette, filteredCommands, paletteActiveIndex, paletteOpen]);
+  }, [
+    closeGlobalSearch,
+    closePalette,
+    filteredCommands,
+    globalSearchIndex,
+    globalSearchOpen,
+    globalSearchResults,
+    paletteActiveIndex,
+    paletteOpen,
+  ]);
 
   const page = useMemo(() => {
     switch (activeView) {
       case "dashboard":
         return <DashboardView />;
       case "chat":
-        return <ChatView />;
+        return <ChatView searchSelection={searchSelection} />;
       case "discovery":
-        return <DiscoveryView />;
+        return <DiscoveryView searchSelection={searchSelection} />;
       case "portfolio":
         return <PortfolioView />;
       case "filings":
         return <FilingsView />;
       case "timeline":
-        return <TimelineView />;
+        return <TimelineView searchSelection={searchSelection} />;
       case "news":
-        return <NewsView />;
+        return <NewsView searchSelection={searchSelection} />;
       case "settings":
         return <SettingsView theme={theme} onToggleTheme={toggleTheme} />;
       default:
         return <DashboardView />;
     }
-  }, [activeView, theme, toggleTheme]);
+  }, [activeView, searchSelection, theme, toggleTheme]);
 
   return (
     <div className="app-shell">
@@ -782,6 +1021,14 @@ export default function App() {
             Command Palette
           </span>
           <span className="kbd-chip">Ctrl/Cmd + K</span>
+        </button>
+
+        <button type="button" className="global-search-shortcut" onClick={openGlobalSearch}>
+          <span className="command-shortcut-left">
+            <Search size={14} />
+            Global Search
+          </span>
+          <span className="kbd-chip">Ctrl/Cmd + J</span>
         </button>
 
         <nav className="nav-stack">
@@ -879,6 +1126,51 @@ export default function App() {
                 ))
               ) : (
                 <p className="command-empty">No matching commands.</p>
+              )}
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {globalSearchOpen ? (
+        <div className="global-search-overlay" role="dialog" aria-modal="true" aria-label="Global search">
+          <button type="button" className="global-search-backdrop" onClick={closeGlobalSearch} />
+
+          <div className="global-search-panel">
+            <div className="global-search-head">
+              <p className="results-title">Global Search</p>
+              <span className="chip">Search company, theme, event, or query</span>
+            </div>
+
+            <div className="command-input-row">
+              <Search size={15} />
+              <input
+                ref={globalSearchInputRef}
+                value={globalSearchQuery}
+                onChange={(event) => setGlobalSearchQuery(event.target.value)}
+                placeholder="Try: RELIANCE, defense, AI, risk..."
+              />
+            </div>
+
+            <div className="global-search-results">
+              {globalSearchResults.length ? (
+                globalSearchResults.map((result, index) => (
+                  <button
+                    type="button"
+                    key={result.id}
+                    className={`global-search-item ${index === globalSearchIndex ? "active" : ""}`}
+                    onMouseEnter={() => setGlobalSearchIndex(index)}
+                    onClick={result.onSelect}
+                  >
+                    <div>
+                      <p>{result.title}</p>
+                      <span>{result.subtitle}</span>
+                    </div>
+                    <span className={`chip global-search-type ${result.type}`}>{result.type}</span>
+                  </button>
+                ))
+              ) : (
+                <p className="command-empty">No matches found.</p>
               )}
             </div>
           </div>
@@ -1114,7 +1406,8 @@ function DashboardView() {
   );
 }
 
-function ChatView() {
+function ChatView(props: { searchSelection: SearchSelection | null }) {
+  const [lastSelectionStamp, setLastSelectionStamp] = useState<number>(0);
   const [explanationMode, setExplanationMode] = useState<ExplanationMode>("analyst");
   const [showSources, setShowSources] = useState(true);
   const [composerText, setComposerText] = useState("");
@@ -1179,6 +1472,17 @@ function ChatView() {
             ],
           },
         ];
+
+  useEffect(() => {
+    if (!props.searchSelection) return;
+    if (props.searchSelection.stamp === lastSelectionStamp) return;
+
+    if (props.searchSelection.chatPrompt) {
+      setComposerText(props.searchSelection.chatPrompt);
+    }
+
+    setLastSelectionStamp(props.searchSelection.stamp);
+  }, [lastSelectionStamp, props.searchSelection]);
 
   return (
     <section className="page-wrap">
@@ -1258,12 +1562,28 @@ function ChatView() {
   );
 }
 
-function DiscoveryView() {
+function DiscoveryView(props: { searchSelection: SearchSelection | null }) {
+  const [lastSelectionStamp, setLastSelectionStamp] = useState<number>(0);
   const [query, setQuery] = useState("");
   const [activeTheme, setActiveTheme] = useState<string>("all");
   const [activeSector, setActiveSector] = useState<string>("all");
   const [marketCapBucket, setMarketCapBucket] = useState<MarketCapBucket>("all");
   const [minThemeScore, setMinThemeScore] = useState<number>(60);
+
+  useEffect(() => {
+    if (!props.searchSelection) return;
+    if (props.searchSelection.stamp === lastSelectionStamp) return;
+
+    if (props.searchSelection.discoveryQuery) {
+      setQuery(props.searchSelection.discoveryQuery);
+    }
+
+    if (props.searchSelection.discoveryTheme) {
+      setActiveTheme(props.searchSelection.discoveryTheme);
+    }
+
+    setLastSelectionStamp(props.searchSelection.stamp);
+  }, [lastSelectionStamp, props.searchSelection]);
 
   const allThemes = useMemo(() => {
     const set = new Set<string>();
@@ -1474,11 +1794,27 @@ function PortfolioView() {
   );
 }
 
-function TimelineView() {
+function TimelineView(props: { searchSelection: SearchSelection | null }) {
+  const [lastSelectionStamp, setLastSelectionStamp] = useState<number>(0);
   const [query, setQuery] = useState("");
   const [typeFilter, setTypeFilter] = useState<"all" | TimelineEvent["type"]>("all");
   const [impactFilter, setImpactFilter] = useState<"all" | TimelineEvent["impact"]>("all");
   const [selectedEventId, setSelectedEventId] = useState<string>(TIMELINE_EVENTS[0]?.id ?? "");
+
+  useEffect(() => {
+    if (!props.searchSelection) return;
+    if (props.searchSelection.stamp === lastSelectionStamp) return;
+
+    if (props.searchSelection.timelineQuery) {
+      setQuery(props.searchSelection.timelineQuery);
+    }
+
+    if (props.searchSelection.timelineEventId) {
+      setSelectedEventId(props.searchSelection.timelineEventId);
+    }
+
+    setLastSelectionStamp(props.searchSelection.stamp);
+  }, [lastSelectionStamp, props.searchSelection]);
 
   const filteredEvents = useMemo(() => {
     const normalized = query.trim().toLowerCase();
@@ -1825,7 +2161,8 @@ function FilingsView() {
   );
 }
 
-function NewsView() {
+function NewsView(props: { searchSelection: SearchSelection | null }) {
+  const [lastSelectionStamp, setLastSelectionStamp] = useState<number>(0);
   const [symbolInput, setSymbolInput] = useState("RELIANCE");
   const [activeSymbol, setActiveSymbol] = useState("RELIANCE");
 
@@ -1882,6 +2219,19 @@ function NewsView() {
   useEffect(() => {
     void loadSentiment(activeSymbol);
   }, [activeSymbol, loadSentiment]);
+
+  useEffect(() => {
+    if (!props.searchSelection) return;
+    if (props.searchSelection.stamp === lastSelectionStamp) return;
+
+    if (props.searchSelection.newsSymbol) {
+      const normalized = props.searchSelection.newsSymbol.toUpperCase();
+      setSymbolInput(normalized);
+      setActiveSymbol(normalized);
+    }
+
+    setLastSelectionStamp(props.searchSelection.stamp);
+  }, [lastSelectionStamp, props.searchSelection]);
 
   const sentimentCounts = {
     positive:
