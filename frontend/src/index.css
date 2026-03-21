@@ -16,7 +16,8 @@
   --bg-gradient-b: rgba(62, 168, 118, 0.12);
 }
 
-:root[data-theme="dark"] {
+:root[data-theme="dark"],
+:root.theme-dark {
   --bg: #070d14;
   --bg-elevated: #101923;
   --ink: #e6f0f7;
@@ -53,6 +54,62 @@ body {
     radial-gradient(760px 360px at 110% -22%, var(--bg-gradient-b), transparent 52%),
     linear-gradient(180deg, var(--bg) 0%, color-mix(in srgb, var(--bg) 86%, black 14%) 100%);
   transition: background 0.35s ease, color 0.35s ease;
+}
+
+html.theme-transitioning,
+html.theme-transitioning * {
+  transition-property:
+    background,
+    background-color,
+    color,
+    border-color,
+    box-shadow,
+    fill,
+    stroke;
+  transition-duration: 0.45s;
+  transition-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@supports (view-transition-name: root) {
+  :root {
+    view-transition-name: root;
+  }
+
+  ::view-transition-old(root),
+  ::view-transition-new(root) {
+    animation-duration: 0.42s;
+    animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  ::view-transition-old(root) {
+    animation-name: theme-fade-out;
+  }
+
+  ::view-transition-new(root) {
+    animation-name: theme-fade-in;
+  }
+}
+
+@keyframes theme-fade-out {
+  from {
+    opacity: 1;
+    filter: saturate(1) brightness(1);
+  }
+  to {
+    opacity: 0;
+    filter: saturate(1.08) brightness(0.96);
+  }
+}
+
+@keyframes theme-fade-in {
+  from {
+    opacity: 0;
+    filter: saturate(1.12) brightness(1.04);
+  }
+  to {
+    opacity: 1;
+    filter: saturate(1) brightness(1);
+  }
 }
 
 .app-shell {
@@ -294,6 +351,20 @@ body {
   border-radius: var(--radius);
   box-shadow: var(--panel-shadow);
   transition: background 0.35s ease, border-color 0.35s ease, box-shadow 0.35s ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html.theme-transitioning,
+  html.theme-transitioning * {
+    transition: none;
+  }
+
+  @supports (view-transition-name: root) {
+    ::view-transition-old(root),
+    ::view-transition-new(root) {
+      animation: none;
+    }
+  }
 }
 
 .kpi-card {

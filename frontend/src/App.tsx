@@ -35,6 +35,10 @@ const navItems: NavItem[] = [
 
 const THEME_STORAGE_KEY = "equityai-theme";
 
+type ViewTransitionCapable = {
+  startViewTransition?: (updateCallback: () => void) => { finished: Promise<void> };
+};
+
 function getInitialTheme(): Theme {
   const saved = window.localStorage.getItem(THEME_STORAGE_KEY);
   if (saved === "light" || saved === "dark") return saved;
@@ -49,12 +53,49 @@ export default function App() {
   const [theme, setTheme] = useState<Theme>(getInitialTheme);
 
   useEffect(() => {
-    document.documentElement.dataset.theme = theme;
+    const root = document.documentElement;
+    root.dataset.theme = theme;
+    root.classList.toggle("theme-dark", theme === "dark");
+    root.classList.toggle("theme-light", theme === "light");
     window.localStorage.setItem(THEME_STORAGE_KEY, theme);
   }, [theme]);
 
   const toggleTheme = useCallback(() => {
-    setTheme((current) => (current === "light" ? "dark" : "light"));
+    const root = document.documentElement;
+    const startViewTransition = (document as unknown as ViewTransitionCapable).startViewTransition;
+    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const clearTransitionClass = () => {
+      root.classList.remove("theme-transitioning");
+    };
+    const applyThemeToggle = () => {
+      setTheme((current) => (current === "light" ? "dark" : "light"));
+    };
+
+    root.classList.add("theme-transitioning");
+
+    if (!reducedMotion && typeof startViewTransition === "function") {
+      try {
+        const transition = startViewTransition(() => {
+          applyThemeToggle();
+        });
+
+        if (transition && "finished" in transition) {
+          transition.finished.finally(clearTransitionClass);
+        } else {
+          window.setTimeout(clearTransitionClass, 420);
+        }
+        return;
+      } catch {
+        applyThemeToggle();
+        window.setTimeout(clearTransitionClass, 420);
+        return;
+      }
+    }
+
+    applyThemeToggle();
+    window.setTimeout(() => {
+      clearTransitionClass();
+    }, 420);
   }, []);
 
   const page = useMemo(() => {
