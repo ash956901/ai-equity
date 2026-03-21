@@ -1765,6 +1765,66 @@ html.theme-transitioning * {
   border-style: dashed;
 }
 
+.comparison-toolbar {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.comparison-table-card {
+  border: 1px solid color-mix(in srgb, var(--line) 90%, transparent);
+  background: color-mix(in srgb, var(--card) 92%, transparent);
+  border-radius: 12px;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.comparison-table-head,
+.comparison-row {
+  display: grid;
+  grid-template-columns: 1.2fr repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  align-items: center;
+}
+
+.comparison-table-head {
+  border-bottom: 1px solid color-mix(in srgb, var(--line) 90%, transparent);
+  padding-bottom: 6px;
+}
+
+.comparison-table-head span {
+  font-size: 0.74rem;
+  color: var(--muted);
+}
+
+.comparison-theme {
+  font-size: 0.8rem;
+  color: var(--ink);
+}
+
+.comparison-value {
+  font-size: 0.76rem;
+  color: var(--muted);
+  border: 1px solid color-mix(in srgb, var(--line) 88%, transparent);
+  border-radius: 8px;
+  padding: 6px 8px;
+  text-align: center;
+}
+
+.comparison-value.leading {
+  border-color: color-mix(in srgb, var(--brand) 42%, var(--line));
+  color: var(--brand);
+  background: color-mix(in srgb, var(--brand-soft) 55%, transparent);
+}
+
+.comparison-cards-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
 .discovery-card-actions {
   display: inline-flex;
   align-items: center;
@@ -2021,7 +2081,13 @@ html.theme-transitioning * {
 @media (max-width: 760px) {
   .split-grid,
   .kpi-grid,
-  .discovery-grid {
+  .discovery-grid,
+  .comparison-cards-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .comparison-table-head,
+  .comparison-row {
     grid-template-columns: 1fr;
   }
 
