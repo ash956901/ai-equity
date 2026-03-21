@@ -188,6 +188,52 @@ html.theme-transitioning * {
   color: var(--brand);
 }
 
+.notification-bell {
+  border: 1px solid var(--line);
+  background: color-mix(in srgb, var(--card) 92%, transparent);
+  color: var(--ink);
+  border-radius: 12px;
+  padding: 8px 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 0.74rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.25s ease;
+}
+
+.notification-bell:hover {
+  border-color: var(--brand);
+  color: var(--brand);
+}
+
+.notification-bell-left {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.notification-count {
+  min-width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.68rem;
+  border: 1px solid color-mix(in srgb, var(--line) 85%, transparent);
+  color: var(--muted);
+  background: color-mix(in srgb, var(--bg-elevated) 88%, transparent);
+}
+
+.notification-count.has-unread {
+  color: color-mix(in srgb, var(--bad) 86%, var(--ink));
+  border-color: color-mix(in srgb, var(--bad) 35%, var(--line));
+  background: color-mix(in srgb, var(--bad) 10%, var(--card));
+}
+
 .command-shortcut {
   border: 1px solid var(--line);
   background: color-mix(in srgb, var(--card) 92%, transparent);
@@ -309,6 +355,170 @@ html.theme-transitioning * {
   padding: 10px;
   color: var(--muted);
   font-size: 0.8rem;
+}
+
+.notification-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 125;
+}
+
+.notification-backdrop {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  background: color-mix(in srgb, #071018 58%, transparent);
+  backdrop-filter: blur(4px);
+}
+
+.notification-panel {
+  position: absolute;
+  top: 0;
+  right: 0;
+  height: 100%;
+  width: min(440px, 100%);
+  border-left: 1px solid color-mix(in srgb, var(--line) 88%, transparent);
+  background: color-mix(in srgb, var(--card) 96%, transparent);
+  box-shadow: -10px 0 36px rgba(5, 13, 22, 0.22);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+}
+
+.notification-panel-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.notification-panel-head h3 {
+  margin: 2px 0 0;
+  font-size: 1.02rem;
+}
+
+.notification-close {
+  border: 1px solid color-mix(in srgb, var(--line) 85%, transparent);
+  background: color-mix(in srgb, var(--card) 92%, transparent);
+  color: var(--muted);
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.notification-close:hover {
+  color: var(--ink);
+  border-color: color-mix(in srgb, var(--brand) 35%, var(--line));
+}
+
+.notification-panel-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.notification-panel-actions .mini-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.notification-list {
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-right: 2px;
+}
+
+.notification-item {
+  border: 1px solid color-mix(in srgb, var(--line) 90%, transparent);
+  background: color-mix(in srgb, var(--card) 94%, transparent);
+  border-radius: 10px;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.notification-item.unread {
+  border-color: color-mix(in srgb, var(--brand) 32%, var(--line));
+}
+
+.notification-item.read {
+  opacity: 0.9;
+}
+
+.notification-item-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.notification-item h4 {
+  margin: 0;
+  font-size: 0.86rem;
+  line-height: 1.3;
+}
+
+.notification-item p {
+  margin: 0;
+  font-size: 0.78rem;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.notification-item small {
+  font-size: 0.68rem;
+  color: var(--muted);
+}
+
+.notification-item-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.chip.notif-filing {
+  color: color-mix(in srgb, var(--brand) 80%, var(--ink));
+  border-color: color-mix(in srgb, var(--brand) 35%, var(--line));
+}
+
+.chip.notif-risk {
+  color: color-mix(in srgb, var(--bad) 82%, var(--ink));
+  border-color: color-mix(in srgb, var(--bad) 35%, var(--line));
+}
+
+.chip.notif-theme {
+  color: color-mix(in srgb, #7f5af0 72%, var(--ink));
+  border-color: color-mix(in srgb, #7f5af0 35%, var(--line));
+}
+
+.chip.notif-system {
+  color: color-mix(in srgb, var(--muted) 80%, var(--ink));
+  border-color: color-mix(in srgb, var(--line) 95%, transparent);
+}
+
+.chip.notif-severity-high {
+  color: color-mix(in srgb, var(--bad) 86%, var(--ink));
+  border-color: color-mix(in srgb, var(--bad) 35%, var(--line));
+}
+
+.chip.notif-severity-medium {
+  color: color-mix(in srgb, #ef8f36 72%, var(--ink));
+  border-color: color-mix(in srgb, #ef8f36 35%, var(--line));
+}
+
+.chip.notif-severity-low {
+  color: color-mix(in srgb, var(--good) 82%, var(--ink));
+  border-color: color-mix(in srgb, var(--good) 35%, var(--line));
 }
 
 .nav-stack {
@@ -1095,6 +1305,10 @@ html.theme-transitioning * {
   }
 
   .command-shortcut {
+    justify-content: flex-start;
+  }
+
+  .notification-bell {
     justify-content: flex-start;
   }
 

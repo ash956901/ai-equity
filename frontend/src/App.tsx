@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   BarChart3,
+  Bell,
   Bot,
+  CheckCheck,
   Clock3,
   Compass,
   Command,
@@ -15,6 +17,7 @@ import {
   Sun,
   TrendingUp,
   Wallet,
+  X,
 } from "lucide-react";
 import {
   ApiError,
@@ -66,6 +69,19 @@ interface TimelineEvent {
   sourceLabel: string;
   sourceUrl?: string;
   details: string[];
+}
+
+type NotificationCategory = "filing" | "risk" | "theme" | "system";
+type NotificationSeverity = "high" | "medium" | "low";
+
+interface NotificationItem {
+  id: string;
+  title: string;
+  message: string;
+  category: NotificationCategory;
+  severity: NotificationSeverity;
+  timestamp: string;
+  read: boolean;
 }
 
 const DISCOVERY_COMPANIES: DiscoveryCompany[] = [
@@ -248,6 +264,45 @@ const TIMELINE_EVENTS: TimelineEvent[] = [
   },
 ];
 
+const DEFAULT_NOTIFICATIONS: NotificationItem[] = [
+  {
+    id: "notif-1",
+    title: "New filing detected for RELIANCE",
+    message: "Quarterly update added to feed. Review margin and capex commentary.",
+    category: "filing",
+    severity: "high",
+    timestamp: "2026-03-21T19:15:00+05:30",
+    read: false,
+  },
+  {
+    id: "notif-2",
+    title: "Portfolio risk signal changed",
+    message: "Your risk monitor moved from stable to watch for one banking position.",
+    category: "risk",
+    severity: "medium",
+    timestamp: "2026-03-21T16:00:00+05:30",
+    read: false,
+  },
+  {
+    id: "notif-3",
+    title: "Theme momentum alert: Defense",
+    message: "Defense theme score crossed 90 in discovery engine for 2 tracked companies.",
+    category: "theme",
+    severity: "medium",
+    timestamp: "2026-03-21T14:10:00+05:30",
+    read: true,
+  },
+  {
+    id: "notif-4",
+    title: "System sync completed",
+    message: "Local cache refreshed successfully. Data sources are ready for the next run.",
+    category: "system",
+    severity: "low",
+    timestamp: "2026-03-21T09:30:00+05:30",
+    read: true,
+  },
+];
+
 interface CommandItem {
   id: string;
   label: string;
@@ -275,6 +330,7 @@ const navItems: NavItem[] = [
 ];
 
 const THEME_STORAGE_KEY = "equityai-theme";
+const NOTIFICATIONS_STORAGE_KEY = "equityai-notifications";
 
 type ViewTransitionCapable = {
   startViewTransition?: (updateCallback: () => void) => { finished: Promise<void> };
@@ -289,9 +345,27 @@ function getInitialTheme(): Theme {
     : "light";
 }
 
+function getInitialNotifications(): NotificationItem[] {
+  const saved = window.localStorage.getItem(NOTIFICATIONS_STORAGE_KEY);
+  if (!saved) return DEFAULT_NOTIFICATIONS;
+
+  try {
+    const parsed = JSON.parse(saved) as NotificationItem[];
+    if (Array.isArray(parsed)) {
+      return parsed;
+    }
+    return DEFAULT_NOTIFICATIONS;
+  } catch {
+    return DEFAULT_NOTIFICATIONS;
+  }
+}
+
 export default function App() {
   const [activeView, setActiveView] = useState<ViewKey>("dashboard");
   const [theme, setTheme] = useState<Theme>(getInitialTheme);
+  const [notifications, setNotifications] = useState<NotificationItem[]>(getInitialNotifications);
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [notificationFilter, setNotificationFilter] = useState<"all" | NotificationCategory>("all");
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [paletteQuery, setPaletteQuery] = useState("");
   const [paletteActiveIndex, setPaletteActiveIndex] = useState(0);
@@ -304,6 +378,40 @@ export default function App() {
     root.classList.toggle("theme-light", theme === "light");
     window.localStorage.setItem(THEME_STORAGE_KEY, theme);
   }, [theme]);
+
+  useEffect(() => {
+    window.localStorage.setItem(NOTIFICATIONS_STORAGE_KEY, JSON.stringify(notifications));
+  }, [notifications]);
+
+  const unreadCount = useMemo(
+    () => notifications.filter((notification) => !notification.read).length,
+    [notifications]
+  );
+
+  const filteredNotifications = useMemo(
+    () =>
+      notifications.filter(
+        (notification) =>
+          notificationFilter === "all" || notification.category === notificationFilter
+      ),
+    [notificationFilter, notifications]
+  );
+
+  const markAllNotificationsRead = useCallback(() => {
+    setNotifications((current) => current.map((notification) => ({ ...notification, read: true })));
+  }, []);
+
+  const markNotificationRead = useCallback((id: string) => {
+    setNotifications((current) =>
+      current.map((notification) =>
+        notification.id === id ? { ...notification, read: true } : notification
+      )
+    );
+  }, []);
+
+  const dismissNotification = useCallback((id: string) => {
+    setNotifications((current) => current.filter((notification) => notification.id !== id));
+  }, []);
 
   const toggleTheme = useCallback(() => {
     const root = document.documentElement;
@@ -428,8 +536,28 @@ export default function App() {
           closePalette();
         },
       },
+      {
+        id: "open-notifications",
+        label: "Open Notifications",
+        hint: "Inbox",
+        keywords: "notifications alerts inbox bell",
+        action: () => {
+          setNotificationsOpen(true);
+          closePalette();
+        },
+      },
+      {
+        id: "mark-all-read",
+        label: "Mark All Notifications Read",
+        hint: "Inbox",
+        keywords: "notifications read clear alerts",
+        action: () => {
+          markAllNotificationsRead();
+          closePalette();
+        },
+      },
     ],
-    [closePalette, goToView, theme, toggleTheme]
+    [closePalette, goToView, markAllNotificationsRead, theme, toggleTheme]
   );
 
   const filteredCommands = useMemo(() => {
@@ -550,6 +678,21 @@ export default function App() {
           </div>
         </div>
 
+        <button
+          type="button"
+          className="notification-bell"
+          onClick={() => setNotificationsOpen(true)}
+          aria-label="Open notifications"
+        >
+          <span className="notification-bell-left">
+            <Bell size={15} />
+            Notifications
+          </span>
+          <span className={`notification-count ${unreadCount ? "has-unread" : ""}`}>
+            {unreadCount}
+          </span>
+        </button>
+
         <button type="button" className="theme-toggle" onClick={toggleTheme}>
           {theme === "dark" ? <Sun size={15} /> : <Moon size={15} />}
           <span>{theme === "dark" ? "Switch to light" : "Switch to dark"}</span>
@@ -661,6 +804,99 @@ export default function App() {
               )}
             </div>
           </div>
+        </div>
+      ) : null}
+
+      {notificationsOpen ? (
+        <div className="notification-overlay" role="dialog" aria-modal="true" aria-label="Notifications panel">
+          <button
+            type="button"
+            className="notification-backdrop"
+            onClick={() => setNotificationsOpen(false)}
+          />
+
+          <aside className="notification-panel">
+            <div className="notification-panel-head">
+              <div>
+                <p className="results-title">Alerts Center</p>
+                <h3>Notifications</h3>
+              </div>
+              <button
+                type="button"
+                className="notification-close"
+                onClick={() => setNotificationsOpen(false)}
+                aria-label="Close notifications panel"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <div className="notification-panel-actions">
+              <select
+                className="type-select"
+                value={notificationFilter}
+                onChange={(event) =>
+                  setNotificationFilter(event.target.value as "all" | NotificationCategory)
+                }
+              >
+                <option value="all">All categories</option>
+                <option value="filing">Filing</option>
+                <option value="risk">Risk</option>
+                <option value="theme">Theme</option>
+                <option value="system">System</option>
+              </select>
+
+              <button type="button" className="secondary-btn mini-btn" onClick={markAllNotificationsRead}>
+                <CheckCheck size={14} />
+                Mark all read
+              </button>
+            </div>
+
+            <div className="notification-list">
+              {filteredNotifications.length ? (
+                filteredNotifications.map((notification) => (
+                  <article
+                    key={notification.id}
+                    className={`notification-item ${notification.read ? "read" : "unread"}`}
+                  >
+                    <div className="notification-item-head">
+                      <span className={`chip notif-${notification.category}`}>{notification.category}</span>
+                      <span className={`chip notif-severity-${notification.severity}`}>
+                        {notification.severity}
+                      </span>
+                    </div>
+
+                    <h4>{notification.title}</h4>
+                    <p>{notification.message}</p>
+                    <small>{new Date(notification.timestamp).toLocaleString()}</small>
+
+                    <div className="notification-item-actions">
+                      {!notification.read ? (
+                        <button
+                          type="button"
+                          className="secondary-btn mini-btn"
+                          onClick={() => markNotificationRead(notification.id)}
+                        >
+                          Mark read
+                        </button>
+                      ) : null}
+                      <button
+                        type="button"
+                        className="secondary-btn mini-btn"
+                        onClick={() => dismissNotification(notification.id)}
+                      >
+                        Dismiss
+                      </button>
+                    </div>
+                  </article>
+                ))
+              ) : (
+                <div className="list-item single-line">
+                  <p>No notifications in this category.</p>
+                </div>
+              )}
+            </div>
+          </aside>
         </div>
       ) : null}
     </div>
