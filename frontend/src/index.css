@@ -1570,6 +1570,90 @@ html.theme-transitioning * {
   margin-top: 4px;
 }
 
+.portfolio-kpi-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.portfolio-grid-extended {
+  align-items: stretch;
+}
+
+.allocation-list,
+.risk-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.allocation-item,
+.risk-item {
+  border: 1px solid color-mix(in srgb, var(--line) 88%, transparent);
+  border-radius: 10px;
+  padding: 8px;
+}
+
+.allocation-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.allocation-track {
+  width: 100%;
+  height: 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--line) 70%, transparent);
+}
+
+.allocation-fill {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--brand) 90%, #067db2),
+    color-mix(in srgb, var(--brand) 72%, #2ed4ff)
+  );
+}
+
+.risk-item p {
+  margin: 0;
+  font-size: 0.82rem;
+  color: var(--ink);
+}
+
+.risk-item span {
+  margin-top: 2px;
+  display: inline-block;
+  font-size: 0.74rem;
+  color: var(--muted);
+}
+
+.portfolio-row span:first-child,
+.factor-row span:first-child {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.portfolio-row span:first-child small {
+  font-size: 0.68rem;
+  color: var(--muted);
+}
+
+.factor-row span:nth-child(2),
+.factor-row span:nth-child(3) {
+  font-size: 0.76rem;
+  color: var(--muted);
+}
+
+.benchmark-note {
+  border-style: dashed;
+}
+
 .discovery-card-actions {
   display: inline-flex;
   align-items: center;
@@ -1716,6 +1800,18 @@ html.theme-transitioning * {
   line-height: 1.4;
 }
 
+.timeline-open-company {
+  margin-top: 8px;
+  display: inline-flex;
+  width: fit-content;
+  border: 1px solid color-mix(in srgb, var(--brand) 35%, var(--line));
+  color: var(--brand);
+  background: color-mix(in srgb, var(--brand-soft) 55%, transparent);
+  border-radius: 999px;
+  padding: 4px 8px;
+  font-size: 0.68rem;
+}
+
 .timeline-item-chips {
   margin-top: 8px;
 }
@@ -1815,6 +1911,10 @@ html.theme-transitioning * {
   .split-grid,
   .kpi-grid,
   .discovery-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .portfolio-kpi-grid {
     grid-template-columns: 1fr;
   }
 

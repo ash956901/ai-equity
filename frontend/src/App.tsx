@@ -13,11 +13,13 @@ import {
   Compass,
   Command,
   FileText,
+  Flame,
   LayoutDashboard,
   Moon,
   Newspaper,
   Search,
   Settings,
+  ShieldAlert,
   Sparkles,
   Sun,
   TrendingUp,
@@ -144,6 +146,18 @@ interface DashboardWidget {
   label: string;
 }
 
+interface PortfolioHolding {
+  symbol: string;
+  company: string;
+  sector: string;
+  weight: number;
+  returnPct: number;
+  beta: number;
+  pe: number;
+  pb: number;
+  volatility: number;
+}
+
 type GlobalSearchResultType = "company" | "theme" | "event" | "query";
 
 interface GlobalSearchResult {
@@ -170,6 +184,75 @@ const DASHBOARD_WIDGETS: DashboardWidget[] = [
   { id: "kpi-api", label: "API Version" },
   { id: "feature-concentration", label: "Portfolio Concentration" },
   { id: "feature-headline", label: "Latest Market Headline" },
+];
+
+const PORTFOLIO_HOLDINGS: PortfolioHolding[] = [
+  {
+    symbol: "RELIANCE",
+    company: "Reliance Industries",
+    sector: "Energy & Conglomerate",
+    weight: 22.4,
+    returnPct: 2.8,
+    beta: 1.08,
+    pe: 23.5,
+    pb: 2.2,
+    volatility: 18.4,
+  },
+  {
+    symbol: "TCS",
+    company: "Tata Consultancy Services",
+    sector: "IT Services",
+    weight: 14.1,
+    returnPct: 1.2,
+    beta: 0.84,
+    pe: 27.4,
+    pb: 11.5,
+    volatility: 14.9,
+  },
+  {
+    symbol: "HDFCBANK",
+    company: "HDFC Bank",
+    sector: "Banking",
+    weight: 10.9,
+    returnPct: -0.6,
+    beta: 0.92,
+    pe: 18.1,
+    pb: 2.9,
+    volatility: 16.2,
+  },
+  {
+    symbol: "HAL",
+    company: "Hindustan Aeronautics",
+    sector: "Defense",
+    weight: 9.2,
+    returnPct: 3.4,
+    beta: 1.16,
+    pe: 31.2,
+    pb: 8.1,
+    volatility: 25.4,
+  },
+  {
+    symbol: "TATAPOWER",
+    company: "Tata Power",
+    sector: "Utilities",
+    weight: 8.5,
+    returnPct: 1.9,
+    beta: 1.22,
+    pe: 24.6,
+    pb: 3.6,
+    volatility: 22.1,
+  },
+  {
+    symbol: "M&M",
+    company: "Mahindra & Mahindra",
+    sector: "Automotive",
+    weight: 7.8,
+    returnPct: 0.7,
+    beta: 1.03,
+    pe: 26.3,
+    pb: 3.4,
+    volatility: 19.8,
+  },
 ];
 
 const DISCOVERY_COMPANIES: DiscoveryCompany[] = [
@@ -1247,7 +1330,13 @@ export default function App() {
           />
         );
       case "timeline":
-        return <TimelineView searchSelection={searchSelection} />;
+        return (
+          <TimelineView
+            searchSelection={searchSelection}
+            goToView={goToView}
+            setSearchSelection={setSearchSelection}
+          />
+        );
       case "news":
         return (
           <NewsView
@@ -2533,6 +2622,57 @@ function DiscoveryView(props: {
 }
 
 function PortfolioView() {
+  const totalWeight = useMemo(
+    () => PORTFOLIO_HOLDINGS.reduce((acc, holding) => acc + holding.weight, 0),
+    []
+  );
+
+  const weightedReturn = useMemo(
+    () =>
+      PORTFOLIO_HOLDINGS.reduce((acc, holding) => acc + (holding.returnPct * holding.weight) / 100, 0),
+    []
+  );
+
+  const portfolioBeta = useMemo(
+    () =>
+      PORTFOLIO_HOLDINGS.reduce((acc, holding) => acc + (holding.beta * holding.weight) / totalWeight, 0),
+    [totalWeight]
+  );
+
+  const portfolioVolatility = useMemo(
+    () =>
+      PORTFOLIO_HOLDINGS.reduce(
+        (acc, holding) => acc + (holding.volatility * holding.weight) / totalWeight,
+        0
+      ),
+    [totalWeight]
+  );
+
+  const riskFreeRate = 6.4;
+  const benchmarkReturn = 1.1;
+  const sharpeRatio = useMemo(
+    () => ((weightedReturn - riskFreeRate / 12) / Math.max(portfolioVolatility / 10, 0.01)).toFixed(2),
+    [portfolioVolatility, weightedReturn]
+  );
+
+  const benchmarkRelative = weightedReturn - benchmarkReturn;
+
+  const sectorWeights = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const holding of PORTFOLIO_HOLDINGS) {
+      map.set(holding.sector, (map.get(holding.sector) ?? 0) + holding.weight);
+    }
+    return Array.from(map.entries())
+      .map(([sector, weight]) => ({ sector, weight }))
+      .sort((a, b) => b.weight - a.weight);
+  }, []);
+
+  const riskAlerts = useMemo(() => {
+    return PORTFOLIO_HOLDINGS.filter((holding) => holding.beta > 1.15 || holding.volatility > 22);
+  }, []);
+
+  const maxSectorWeight = sectorWeights[0]?.weight ?? 1;
+
   return (
     <section className="page-wrap">
       <PageHeader
@@ -2540,32 +2680,136 @@ function PortfolioView() {
         subtitle="Exposure, risk concentration, and opportunity signals at a glance."
       />
 
+      <div className="kpi-grid portfolio-kpi-grid">
+        <article className="kpi-card">
+          <p>Portfolio Return (MTD)</p>
+          <h2 className={weightedReturn >= 0 ? "positive" : "negative"}>{weightedReturn.toFixed(2)}%</h2>
+          <small>Weighted by current allocation</small>
+        </article>
+        <article className="kpi-card">
+          <p>Portfolio Beta</p>
+          <h2>{portfolioBeta.toFixed(2)}</h2>
+          <small>Benchmark beta reference = 1.00</small>
+        </article>
+        <article className="kpi-card">
+          <p>Sharpe Ratio (Proxy)</p>
+          <h2>{sharpeRatio}</h2>
+          <small>Risk-free rate assumed at {riskFreeRate}%</small>
+        </article>
+        <article className="kpi-card">
+          <p>Vs Nifty Benchmark</p>
+          <h2 className={benchmarkRelative >= 0 ? "positive" : "negative"}>
+            {benchmarkRelative >= 0 ? "+" : ""}
+            {benchmarkRelative.toFixed(2)}%
+          </h2>
+          <small>Nifty assumed return {benchmarkReturn.toFixed(2)}%</small>
+        </article>
+      </div>
+
+      <div className="split-grid portfolio-grid-extended">
+        <article className="feature-card">
+          <div className="feature-head">
+            <BarChart3 size={18} />
+            <h3>Sector Allocation</h3>
+          </div>
+          <div className="allocation-list">
+            {sectorWeights.map((sectorItem) => (
+              <div key={sectorItem.sector} className="allocation-item">
+                <div className="allocation-meta">
+                  <span>{sectorItem.sector}</span>
+                  <span>{sectorItem.weight.toFixed(1)}%</span>
+                </div>
+                <div className="allocation-track">
+                  <span
+                    className="allocation-fill"
+                    style={{ width: `${(sectorItem.weight / maxSectorWeight) * 100}%` }}
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+        </article>
+
+        <article className="feature-card">
+          <div className="feature-head">
+            <ShieldAlert size={18} />
+            <h3>Risk Watchlist</h3>
+          </div>
+          {riskAlerts.length ? (
+            <div className="risk-list">
+              {riskAlerts.map((holding) => (
+                <div key={holding.symbol} className="risk-item">
+                  <p>{holding.symbol}</p>
+                  <span>
+                    Beta {holding.beta.toFixed(2)} · Vol {holding.volatility.toFixed(1)}%
+                  </span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p>No elevated risk flags in current holdings.</p>
+          )}
+        </article>
+      </div>
+
       <div className="table-card">
         <div className="table-head">
           <h3>Top Holdings</h3>
-          <span>Updated now</span>
+          <span>Analytics view</span>
         </div>
-        <div className="table-row">
-          <span>RELIANCE</span>
-          <span>22.4%</span>
-          <span className="positive">+2.8%</span>
-        </div>
-        <div className="table-row">
-          <span>TCS</span>
-          <span>14.1%</span>
-          <span className="positive">+1.2%</span>
-        </div>
-        <div className="table-row">
-          <span>HDFCBANK</span>
-          <span>10.9%</span>
-          <span className="negative">-0.6%</span>
-        </div>
+
+        {PORTFOLIO_HOLDINGS.map((holding) => (
+          <div key={holding.symbol} className="table-row portfolio-row">
+            <span>
+              {holding.symbol}
+              <small>{holding.company}</small>
+            </span>
+            <span>{holding.weight.toFixed(1)}%</span>
+            <span className={holding.returnPct >= 0 ? "positive" : "negative"}>
+              {holding.returnPct >= 0 ? "+" : ""}
+              {holding.returnPct.toFixed(1)}%
+            </span>
+          </div>
+        ))}
       </div>
+
+      <div className="table-card">
+        <div className="table-head">
+          <h3>Valuation & Risk Factors</h3>
+          <span>PE / PB / Volatility</span>
+        </div>
+
+        {PORTFOLIO_HOLDINGS.map((holding) => (
+          <div key={`${holding.symbol}-factors`} className="table-row factor-row">
+            <span>{holding.symbol}</span>
+            <span>PE {holding.pe.toFixed(1)} | PB {holding.pb.toFixed(1)}</span>
+            <span>Vol {holding.volatility.toFixed(1)}%</span>
+          </div>
+        ))}
+      </div>
+
+      <article className="feature-card benchmark-note">
+        <div className="feature-head">
+          <Flame size={18} />
+          <h3>Benchmark Context</h3>
+        </div>
+        <p>
+          Portfolio is currently {benchmarkRelative >= 0 ? "outperforming" : "underperforming"} the
+          benchmark by {Math.abs(benchmarkRelative).toFixed(2)}%. Highest concentration risk remains in
+          {" "}
+          {sectorWeights[0]?.sector ?? "top sector"} with {sectorWeights[0]?.weight.toFixed(1) ?? "0"}%
+          allocation.
+        </p>
+      </article>
     </section>
   );
 }
 
-function TimelineView(props: { searchSelection: SearchSelection | null }) {
+function TimelineView(props: {
+  searchSelection: SearchSelection | null;
+  goToView: (view: ViewKey) => void;
+  setSearchSelection: (selection: SearchSelection) => void;
+}) {
   const [lastSelectionStamp, setLastSelectionStamp] = useState<number>(0);
   const [query, setQuery] = useState("");
   const [typeFilter, setTypeFilter] = useState<"all" | TimelineEvent["type"]>("all");
@@ -2700,6 +2944,20 @@ function TimelineView(props: { searchSelection: SearchSelection | null }) {
                   <span className={getTypeClass(event.type)}>{event.type}</span>
                   <span className={getImpactClass(event.impact)}>{event.impact} impact</span>
                 </div>
+                <span
+                  className="timeline-open-company"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    props.setSearchSelection({
+                      stamp: Date.now(),
+                      companySymbol: event.company,
+                      timelineEventId: event.id,
+                    });
+                    props.goToView("company");
+                  }}
+                >
+                  Open Company
+                </span>
               </button>
             ))
           ) : (
