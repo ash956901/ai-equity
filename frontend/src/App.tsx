@@ -1,18 +1,21 @@
-import { useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   BarChart3,
   Bot,
   FileText,
   LayoutDashboard,
+  Moon,
   Newspaper,
   Search,
   Settings,
   Sparkles,
+  Sun,
   TrendingUp,
   Wallet,
 } from "lucide-react";
 
 type ViewKey = "dashboard" | "chat" | "portfolio" | "filings" | "news" | "settings";
+type Theme = "light" | "dark";
 
 interface NavItem {
   key: ViewKey;
@@ -30,8 +33,29 @@ const navItems: NavItem[] = [
   { key: "settings", label: "Settings", icon: Settings, caption: "Preferences" },
 ];
 
+const THEME_STORAGE_KEY = "equityai-theme";
+
+function getInitialTheme(): Theme {
+  const saved = window.localStorage.getItem(THEME_STORAGE_KEY);
+  if (saved === "light" || saved === "dark") return saved;
+
+  return window.matchMedia("(prefers-color-scheme: dark)").matches
+    ? "dark"
+    : "light";
+}
+
 export default function App() {
   const [activeView, setActiveView] = useState<ViewKey>("dashboard");
+  const [theme, setTheme] = useState<Theme>(getInitialTheme);
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    window.localStorage.setItem(THEME_STORAGE_KEY, theme);
+  }, [theme]);
+
+  const toggleTheme = useCallback(() => {
+    setTheme((current) => (current === "light" ? "dark" : "light"));
+  }, []);
 
   const page = useMemo(() => {
     switch (activeView) {
@@ -46,11 +70,11 @@ export default function App() {
       case "news":
         return <NewsView />;
       case "settings":
-        return <SettingsView />;
+        return <SettingsView theme={theme} onToggleTheme={toggleTheme} />;
       default:
         return <DashboardView />;
     }
-  }, [activeView]);
+  }, [activeView, theme, toggleTheme]);
 
   return (
     <div className="app-shell">
@@ -64,6 +88,11 @@ export default function App() {
             <p className="brand-subtitle">Research Console</p>
           </div>
         </div>
+
+        <button type="button" className="theme-toggle" onClick={toggleTheme}>
+          {theme === "dark" ? <Sun size={15} /> : <Moon size={15} />}
+          <span>{theme === "dark" ? "Switch to light" : "Switch to dark"}</span>
+        </button>
 
         <nav className="nav-stack">
           {navItems.map((item) => {
@@ -289,7 +318,7 @@ function NewsView() {
   );
 }
 
-function SettingsView() {
+function SettingsView(props: { theme: Theme; onToggleTheme: () => void }) {
   return (
     <section className="page-wrap">
       <PageHeader
@@ -308,9 +337,13 @@ function SettingsView() {
         </div>
         <div className="list-item">
           <p>Theme & Layout</p>
-          <span>Modern Light</span>
+          <span>{props.theme === "dark" ? "Aesthetic Dark" : "Modern Light"}</span>
         </div>
       </div>
+
+      <button type="button" className="secondary-btn" onClick={props.onToggleTheme}>
+        {props.theme === "dark" ? "Use Light Mode" : "Use Dark Mode"}
+      </button>
     </section>
   );
 }
