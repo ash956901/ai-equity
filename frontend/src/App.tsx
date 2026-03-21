@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import {
   BarChart3,
   Bell,
+  BookOpenText,
   Bot,
   CheckCheck,
   Clock3,
@@ -17,6 +18,7 @@ import {
   Sun,
   TrendingUp,
   Wallet,
+  WandSparkles,
   X,
 } from "lucide-react";
 import {
@@ -85,6 +87,15 @@ interface NotificationItem {
 }
 
 type ToastTone = "info" | "success" | "warning";
+
+type ExplanationMode = "analyst" | "simple";
+
+interface ChatMessage {
+  id: string;
+  role: "assistant" | "user";
+  text: string;
+  sources?: string[];
+}
 
 interface ToastItem {
   id: string;
@@ -1104,28 +1115,143 @@ function DashboardView() {
 }
 
 function ChatView() {
+  const [explanationMode, setExplanationMode] = useState<ExplanationMode>("analyst");
+  const [showSources, setShowSources] = useState(true);
+  const [composerText, setComposerText] = useState("");
+
+  const suggestions = [
+    "What changed in RELIANCE latest filing?",
+    "Summarize risk signals for my portfolio in simple terms.",
+    "Compare IT services sentiment: TCS vs INFY.",
+    "Explain why defense theme is heating up this week.",
+  ];
+
+  const chatMessages: ChatMessage[] =
+    explanationMode === "simple"
+      ? [
+          {
+            id: "assistant-simple-1",
+            role: "assistant",
+            text: "I checked your watchlist and saw one key thing: your top stocks are still strong, but one banking stock is slowing a bit. Nothing panic-worthy yet, just keep watching next updates.",
+            sources: [
+              "Timeline Feed · Risk monitor signal",
+              "Filings Tracker · Latest disclosures",
+            ],
+          },
+          {
+            id: "user-simple-1",
+            role: "user",
+            text: "Can you explain in plain language what I should do this week?",
+          },
+          {
+            id: "assistant-simple-2",
+            role: "assistant",
+            text: "Sure. Keep your portfolio mostly as-is, read two new filings (RELIANCE and TATAPOWER), and avoid big changes until the next bank update comes in.",
+            sources: [
+              "Notifications · Filing alerts",
+              "Discovery Engine · Theme score snapshots",
+            ],
+          },
+        ]
+      : [
+          {
+            id: "assistant-analyst-1",
+            role: "assistant",
+            text: "Portfolio risk posture remains moderate. Concentration in top holdings is elevated, but near-term narrative quality remains constructive due to stable filing commentary and improving sector momentum in defense and renewables.",
+            sources: [
+              "Dashboard · Portfolio concentration card",
+              "Timeline Feed · Sector event flow",
+            ],
+          },
+          {
+            id: "user-analyst-1",
+            role: "user",
+            text: "Summarize major risk signals for my top holdings this week.",
+          },
+          {
+            id: "assistant-analyst-2",
+            role: "assistant",
+            text: "Primary watchpoints: (1) moderation signal in banking credit momentum, (2) valuation sensitivity in high-theme momentum names, and (3) execution dependency on capex-to-margin conversion for conglomerate and utility exposures.",
+            sources: [
+              "Notifications · Risk monitor",
+              "News & Sentiment · Narrative drift",
+              "Filings Tracker · Quarterly disclosures",
+            ],
+          },
+        ];
+
   return (
     <section className="page-wrap">
       <PageHeader
         title="Iris Research Copilot"
         subtitle="Ask focused questions across filings, portfolio, and market sentiment."
+        right={
+          <div className="chat-controls">
+            <button
+              type="button"
+              className={`mode-pill ${explanationMode === "analyst" ? "active" : ""}`}
+              onClick={() => setExplanationMode("analyst")}
+            >
+              <BookOpenText size={14} />
+              Analyst Mode
+            </button>
+            <button
+              type="button"
+              className={`mode-pill ${explanationMode === "simple" ? "active" : ""}`}
+              onClick={() => setExplanationMode("simple")}
+            >
+              <WandSparkles size={14} />
+              Explain Simply
+            </button>
+            <button
+              type="button"
+              className={`mode-pill ${showSources ? "active" : ""}`}
+              onClick={() => setShowSources((current) => !current)}
+            >
+              Sources {showSources ? "On" : "Off"}
+            </button>
+          </div>
+        }
       />
+
+      <div className="chat-suggestions">
+        {suggestions.map((suggestion) => (
+          <button
+            key={suggestion}
+            type="button"
+            className="chat-suggestion-chip"
+            onClick={() => setComposerText(suggestion)}
+          >
+            {suggestion}
+          </button>
+        ))}
+      </div>
 
       <article className="chat-shell">
         <div className="chat-messages">
-          <div className="message assistant">
-            <p>
-              I can help compare companies, summarize filings, and explain market moves in plain language.
-            </p>
-          </div>
-          <div className="message user">
-            <p>Summarize major risk signals for my top holdings this week.</p>
-          </div>
+          {chatMessages.map((message) => (
+            <div key={message.id} className={`message ${message.role}`}>
+              <p>{message.text}</p>
+              {showSources && message.role === "assistant" && message.sources?.length ? (
+                <div className="source-list">
+                  {message.sources.map((source) => (
+                    <span key={`${message.id}-${source}`} className="source-chip">
+                      {source}
+                    </span>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+          ))}
         </div>
 
         <div className="chat-input-row">
-          <input placeholder="Ask Iris anything about equities..." />
-          <button className="primary-btn">Send</button>
+          <input
+            placeholder="Ask Iris anything about equities..."
+            value={composerText}
+            onChange={(event) => setComposerText(event.target.value)}
+          />
+          <button type="button" className="primary-btn">Send</button>
         </div>
       </article>
     </section>

@@ -917,6 +917,55 @@ html.theme-transitioning * {
   gap: 10px;
 }
 
+.chat-controls {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.mode-pill {
+  border: 1px solid color-mix(in srgb, var(--line) 90%, transparent);
+  background: color-mix(in srgb, var(--card) 92%, transparent);
+  color: var(--muted);
+  border-radius: 999px;
+  padding: 6px 10px;
+  font-size: 0.72rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+
+.mode-pill.active {
+  border-color: color-mix(in srgb, var(--brand) 42%, var(--line));
+  color: var(--brand);
+  background: color-mix(in srgb, var(--brand-soft) 65%, transparent);
+}
+
+.chat-suggestions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.chat-suggestion-chip {
+  border: 1px solid color-mix(in srgb, var(--line) 90%, transparent);
+  background: color-mix(in srgb, var(--card) 90%, transparent);
+  color: var(--muted);
+  border-radius: 999px;
+  padding: 6px 10px;
+  font-size: 0.74rem;
+  cursor: pointer;
+  text-align: left;
+}
+
+.chat-suggestion-chip:hover {
+  color: var(--brand);
+  border-color: color-mix(in srgb, var(--brand) 42%, var(--line));
+  background: color-mix(in srgb, var(--brand-soft) 55%, transparent);
+}
+
 .chat-messages {
   min-height: 320px;
   padding: 8px;
@@ -947,6 +996,24 @@ html.theme-transitioning * {
 .chat-input-row {
   display: flex;
   gap: 8px;
+}
+
+.source-list {
+  margin-top: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.source-chip {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--brand) 35%, var(--line));
+  background: color-mix(in srgb, var(--brand-soft) 70%, transparent);
+  color: color-mix(in srgb, var(--brand) 78%, var(--ink));
+  padding: 3px 8px;
+  font-size: 0.68rem;
 }
 
 .chat-input-row input,
@@ -1353,6 +1420,10 @@ html.theme-transitioning * {
   .page-header {
     flex-direction: column;
     align-items: flex-start;
+  }
+
+  .chat-controls {
+    justify-content: flex-start;
   }
 
   .message {
