@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   BarChart3,
   Bot,
+  Command,
   FileText,
   LayoutDashboard,
   Moon,
@@ -32,6 +33,14 @@ import {
 
 type ViewKey = "dashboard" | "chat" | "portfolio" | "filings" | "news" | "settings";
 type Theme = "light" | "dark";
+
+interface CommandItem {
+  id: string;
+  label: string;
+  hint?: string;
+  keywords: string;
+  action: () => void;
+}
 
 interface NavItem {
   key: ViewKey;
@@ -67,6 +76,10 @@ function getInitialTheme(): Theme {
 export default function App() {
   const [activeView, setActiveView] = useState<ViewKey>("dashboard");
   const [theme, setTheme] = useState<Theme>(getInitialTheme);
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  const [paletteQuery, setPaletteQuery] = useState("");
+  const [paletteActiveIndex, setPaletteActiveIndex] = useState(0);
+  const paletteInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     const root = document.documentElement;
@@ -114,6 +127,163 @@ export default function App() {
     }, 420);
   }, []);
 
+  const goToView = useCallback((view: ViewKey) => {
+    setActiveView(view);
+    setPaletteOpen(false);
+    setPaletteQuery("");
+    setPaletteActiveIndex(0);
+  }, []);
+
+  const openPalette = useCallback(() => {
+    setPaletteOpen(true);
+  }, []);
+
+  const closePalette = useCallback(() => {
+    setPaletteOpen(false);
+    setPaletteQuery("");
+    setPaletteActiveIndex(0);
+  }, []);
+
+  const paletteCommands = useMemo<CommandItem[]>(
+    () => [
+      {
+        id: "go-dashboard",
+        label: "Go to Dashboard",
+        hint: "Navigation",
+        keywords: "dashboard home overview",
+        action: () => goToView("dashboard"),
+      },
+      {
+        id: "go-chat",
+        label: "Go to Iris Chat",
+        hint: "Navigation",
+        keywords: "chat copilot iris assistant",
+        action: () => goToView("chat"),
+      },
+      {
+        id: "go-portfolio",
+        label: "Go to Portfolio",
+        hint: "Navigation",
+        keywords: "portfolio holdings risk exposure",
+        action: () => goToView("portfolio"),
+      },
+      {
+        id: "go-filings",
+        label: "Go to Filings",
+        hint: "Navigation",
+        keywords: "filings sec reports documents",
+        action: () => goToView("filings"),
+      },
+      {
+        id: "go-news",
+        label: "Go to News & Sentiment",
+        hint: "Navigation",
+        keywords: "news sentiment headlines",
+        action: () => goToView("news"),
+      },
+      {
+        id: "go-settings",
+        label: "Go to Settings",
+        hint: "Navigation",
+        keywords: "settings preferences configuration",
+        action: () => goToView("settings"),
+      },
+      {
+        id: "toggle-theme",
+        label: theme === "dark" ? "Switch to Light Theme" : "Switch to Dark Theme",
+        hint: "Appearance",
+        keywords: "theme light dark appearance",
+        action: () => {
+          toggleTheme();
+          closePalette();
+        },
+      },
+    ],
+    [closePalette, goToView, theme, toggleTheme]
+  );
+
+  const filteredCommands = useMemo(() => {
+    const query = paletteQuery.trim().toLowerCase();
+    if (!query) return paletteCommands;
+
+    return paletteCommands.filter((command) => {
+      const haystack = `${command.label} ${command.keywords} ${command.hint ?? ""}`.toLowerCase();
+      return haystack.includes(query);
+    });
+  }, [paletteCommands, paletteQuery]);
+
+  useEffect(() => {
+    if (!paletteOpen) return;
+    window.requestAnimationFrame(() => {
+      paletteInputRef.current?.focus();
+    });
+  }, [paletteOpen]);
+
+  useEffect(() => {
+    setPaletteActiveIndex(0);
+  }, [paletteQuery]);
+
+  useEffect(() => {
+    const handleGlobalShortcuts = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      const isTypingContext =
+        target?.tagName === "INPUT" ||
+        target?.tagName === "TEXTAREA" ||
+        target?.isContentEditable;
+
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        setPaletteOpen((current) => !current);
+        return;
+      }
+
+      if (!paletteOpen) return;
+
+      if (isTypingContext) {
+        if (event.key === "Escape") {
+          event.preventDefault();
+          closePalette();
+        }
+        return;
+      }
+
+      if (event.key === "Escape") {
+        event.preventDefault();
+        closePalette();
+        return;
+      }
+
+      if (event.key === "ArrowDown") {
+        event.preventDefault();
+        setPaletteActiveIndex((current) =>
+          filteredCommands.length ? (current + 1) % filteredCommands.length : 0
+        );
+        return;
+      }
+
+      if (event.key === "ArrowUp") {
+        event.preventDefault();
+        setPaletteActiveIndex((current) =>
+          filteredCommands.length
+            ? (current - 1 + filteredCommands.length) % filteredCommands.length
+            : 0
+        );
+        return;
+      }
+
+      if (event.key === "Enter") {
+        event.preventDefault();
+        const command = filteredCommands[paletteActiveIndex];
+        command?.action();
+      }
+    };
+
+    window.addEventListener("keydown", handleGlobalShortcuts);
+    return () => {
+      window.removeEventListener("keydown", handleGlobalShortcuts);
+    };
+  }, [closePalette, filteredCommands, paletteActiveIndex, paletteOpen]);
+
   const page = useMemo(() => {
     switch (activeView) {
       case "dashboard":
@@ -151,6 +321,14 @@ export default function App() {
           <span>{theme === "dark" ? "Switch to light" : "Switch to dark"}</span>
         </button>
 
+        <button type="button" className="command-shortcut" onClick={openPalette}>
+          <span className="command-shortcut-left">
+            <Command size={14} />
+            Command Palette
+          </span>
+          <span className="kbd-chip">Ctrl/Cmd + K</span>
+        </button>
+
         <nav className="nav-stack">
           {navItems.map((item) => {
             const Icon = item.icon;
@@ -181,6 +359,76 @@ export default function App() {
       </aside>
 
       <main className="main-panel">{page}</main>
+
+      {paletteOpen ? (
+        <div className="command-overlay" role="dialog" aria-modal="true" aria-label="Command palette">
+          <button type="button" className="command-backdrop" onClick={closePalette} />
+          <div className="command-panel">
+            <div className="command-input-row">
+              <Search size={15} />
+              <input
+                ref={paletteInputRef}
+                value={paletteQuery}
+                onChange={(event) => setPaletteQuery(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    const command = filteredCommands[paletteActiveIndex] ?? filteredCommands[0];
+                    command?.action();
+                    return;
+                  }
+
+                  if (event.key === "ArrowDown") {
+                    event.preventDefault();
+                    setPaletteActiveIndex((current) =>
+                      filteredCommands.length ? (current + 1) % filteredCommands.length : 0
+                    );
+                    return;
+                  }
+
+                  if (event.key === "ArrowUp") {
+                    event.preventDefault();
+                    setPaletteActiveIndex((current) =>
+                      filteredCommands.length
+                        ? (current - 1 + filteredCommands.length) % filteredCommands.length
+                        : 0
+                    );
+                    return;
+                  }
+
+                  if (event.key === "Escape") {
+                    event.preventDefault();
+                    closePalette();
+                  }
+                }}
+                placeholder="Search commands, pages, and actions..."
+              />
+            </div>
+
+            <div className="command-list" role="listbox" aria-activedescendant={filteredCommands[paletteActiveIndex]?.id}>
+              {filteredCommands.length ? (
+                filteredCommands.map((command, index) => (
+                  <button
+                    type="button"
+                    key={command.id}
+                    id={command.id}
+                    role="option"
+                    aria-selected={index === paletteActiveIndex}
+                    className={`command-item ${index === paletteActiveIndex ? "active" : ""}`}
+                    onMouseEnter={() => setPaletteActiveIndex(index)}
+                    onClick={command.action}
+                  >
+                    <span>{command.label}</span>
+                    <span>{command.hint ?? "Action"}</span>
+                  </button>
+                ))
+              ) : (
+                <p className="command-empty">No matching commands.</p>
+              )}
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

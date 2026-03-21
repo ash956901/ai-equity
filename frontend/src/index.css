@@ -188,6 +188,129 @@ html.theme-transitioning * {
   color: var(--brand);
 }
 
+.command-shortcut {
+  border: 1px solid var(--line);
+  background: color-mix(in srgb, var(--card) 92%, transparent);
+  color: var(--ink);
+  border-radius: 12px;
+  padding: 8px 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 0.74rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.25s ease;
+}
+
+.command-shortcut:hover {
+  border-color: var(--brand);
+  color: var(--brand);
+}
+
+.command-shortcut-left {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.kbd-chip {
+  border: 1px solid color-mix(in srgb, var(--line) 85%, transparent);
+  background: color-mix(in srgb, var(--bg-elevated) 88%, transparent);
+  border-radius: 8px;
+  padding: 2px 6px;
+  font-size: 0.66rem;
+  color: var(--muted);
+}
+
+.command-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding: 10vh 16px 16px;
+}
+
+.command-backdrop {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  background: color-mix(in srgb, #071018 58%, transparent);
+  backdrop-filter: blur(4px);
+}
+
+.command-panel {
+  position: relative;
+  width: min(680px, 100%);
+  border-radius: 14px;
+  border: 1px solid color-mix(in srgb, var(--line) 88%, transparent);
+  background: color-mix(in srgb, var(--card) 96%, transparent);
+  box-shadow: 0 20px 42px rgba(5, 13, 22, 0.28);
+  overflow: hidden;
+}
+
+.command-input-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-bottom: 1px solid color-mix(in srgb, var(--line) 88%, transparent);
+  padding: 10px 12px;
+  color: var(--muted);
+}
+
+.command-input-row input {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  outline: none;
+}
+
+.command-list {
+  max-height: 360px;
+  overflow-y: auto;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.command-item {
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--ink);
+  border-radius: 10px;
+  padding: 9px 10px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+
+.command-item span:last-child {
+  color: var(--muted);
+  font-size: 0.7rem;
+}
+
+.command-item.active,
+.command-item:hover {
+  border-color: color-mix(in srgb, var(--brand) 35%, var(--line));
+  background: color-mix(in srgb, var(--brand-soft) 55%, transparent);
+}
+
+.command-empty {
+  margin: 0;
+  padding: 10px;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
 .nav-stack {
   display: flex;
   flex-direction: column;
@@ -728,5 +851,13 @@ html.theme-transitioning * {
 
   .theme-toggle {
     justify-content: flex-start;
+  }
+
+  .command-shortcut {
+    justify-content: flex-start;
+  }
+
+  .kbd-chip {
+    display: none;
   }
 }
