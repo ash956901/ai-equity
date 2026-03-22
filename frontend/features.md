@@ -92,22 +92,26 @@ Status: [x] Completed
 
 ### 5) Company Workspace Deep Data Tabs
 
+Status: [x] Completed
+
 #### Scope
-- Replace placeholder tabs with richer data blocks:
-  - Filings detail list
-  - Sentiment timeline mini-chart
-  - Key ratio snapshot
-  - Contextual chat prompts tied to active tab
+- [x] Replace placeholder tabs with richer data blocks:
+  - [x] Filings detail list
+  - [x] Sentiment timeline mini-chart
+  - [x] Key ratio snapshot
+  - [x] Contextual chat prompts tied to active tab
 
 ---
 
 ### 6) Portfolio Analytics v2 (Chart Library Integration)
 
+Status: [x] Completed
+
 #### Scope
-- Integrate proper charting (Recharts/Chart.js)
-- Risk vs return scatter
-- Sector donut chart
-- Drawdown/volatility trends
+- [x] Integrate proper charting (Recharts/Chart.js)
+- [x] Risk vs return scatter
+- [x] Sector donut chart
+- [x] Drawdown/volatility trends
 
 ---
 

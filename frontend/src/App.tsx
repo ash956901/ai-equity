@@ -35,6 +35,20 @@ import {
 } from "lucide-react";
 import type { jsPDF as JsPdfType } from "jspdf";
 import {
+  CartesianGrid,
+  Cell,
+  Line,
+  LineChart,
+  Pie,
+  PieChart,
+  ResponsiveContainer,
+  Scatter,
+  ScatterChart,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
+import {
   ApiError,
   fetchApiStatus,
   fetchBackendHealth,
@@ -658,6 +672,17 @@ const DEMO_DASHBOARD_DATA = {
   headlines: DEMO_MARKET_HEADLINES,
   holdingsCount: PORTFOLIO_HOLDINGS.length,
 };
+
+const CHART_COLORS = [
+  "#0f86ba",
+  "#20a6d5",
+  "#13b3a1",
+  "#4fa15d",
+  "#e8a640",
+  "#c66c41",
+  "#8b7ad3",
+  "#b262bb",
+];
 
 type ViewTransitionCapable = {
   startViewTransition?: (updateCallback: () => void) => { finished: Promise<void> };
@@ -1984,6 +2009,8 @@ export default function App() {
             searchSelection={searchSelection}
             addFavorite={addFavorite}
             isFavorited={isFavorited}
+            goToView={goToView}
+            setSearchSelection={setSearchSelection}
           />
         );
       case "chat":
@@ -3395,6 +3422,8 @@ function CompanyWorkspaceView(props: {
   searchSelection: SearchSelection | null;
   addFavorite: (favorite: Omit<FavoriteItem, "id" | "createdAt">) => void;
   isFavorited: (favorite: Pick<FavoriteItem, "type" | "title" | "symbol">) => boolean;
+  goToView: (view: ViewKey) => void;
+  setSearchSelection: (selection: SearchSelection) => void;
 }) {
   const [lastSelectionStamp, setLastSelectionStamp] = useState<number>(0);
   const [symbolInput, setSymbolInput] = useState("RELIANCE");
@@ -3569,6 +3598,112 @@ function CompanyWorkspaceView(props: {
       divergence,
     };
   }, [comparisonCompanies, comparisonTimeline, reportScope]);
+
+  const companyFilings = useMemo(() => {
+    return buildMockFilings(companyData.symbol)
+      .slice(0, 7)
+      .map((filing) => ({
+        ...filing,
+        narrative:
+          filing.type === "10-K"
+            ? "Annual commentary references strategy durability and capex calibration."
+            : filing.type === "10-Q"
+              ? "Quarterly notes point to execution trend and margin sensitivity."
+              : "Event filing indicates a near-term operational catalyst or disclosure update.",
+      }));
+  }, [companyData.symbol]);
+
+  const companyRatioSnapshot = useMemo(() => {
+    const relatedHolding = PORTFOLIO_HOLDINGS.find((holding) => holding.symbol === companyData.symbol);
+
+    if (relatedHolding) {
+      const roe = Number((12 + relatedHolding.returnPct * 1.2).toFixed(1));
+      const debtToEquity = Number((0.5 + relatedHolding.beta * 0.45).toFixed(2));
+      const operatingMargin = Number((14 + relatedHolding.returnPct * 1.4).toFixed(1));
+
+      return {
+        pe: relatedHolding.pe,
+        pb: relatedHolding.pb,
+        roe,
+        debtToEquity,
+        operatingMargin,
+        beta: relatedHolding.beta,
+      };
+    }
+
+    const themeValues = Object.values(companyData.themeScores);
+    const avgTheme = themeValues.length
+      ? themeValues.reduce((sum, value) => sum + value, 0) / themeValues.length
+      : 58;
+
+    return {
+      pe: Number((16 + avgTheme / 6).toFixed(1)),
+      pb: Number((1.4 + avgTheme / 40).toFixed(2)),
+      roe: Number((10 + avgTheme / 4.6).toFixed(1)),
+      debtToEquity: Number((0.7 + (100 - avgTheme) / 90).toFixed(2)),
+      operatingMargin: Number((11 + avgTheme / 5).toFixed(1)),
+      beta: Number((0.85 + avgTheme / 180).toFixed(2)),
+    };
+  }, [companyData.symbol, companyData.themeScores]);
+
+  const companySentimentTrend = useMemo(() => {
+    const topThemeScore = topThemes[0]?.[1] ?? 62;
+    const baseShift = Math.round((topThemeScore - 60) / 7);
+    const days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+
+    return days.map((day, index) => {
+      const positive = Math.max(1, 5 + baseShift + ((index + 2) % 3));
+      const negative = Math.max(0, 2 + ((index + 1) % 2) - Math.max(baseShift, -1));
+      const neutral = Math.max(1, 7 - index + Math.max(0, baseShift));
+      const score = positive * 2 + neutral - negative * 2;
+
+      return {
+        day,
+        positive,
+        neutral,
+        negative,
+        score,
+      };
+    });
+  }, [topThemes]);
+
+  const tabPrompts = useMemo<Record<"overview" | "filings" | "sentiment" | "timeline" | "chat", string[]>>(
+    () => ({
+      overview: [
+        `Give a 5-point briefing on ${companyData.symbol} strategic posture.`,
+        `What three catalysts should I monitor for ${companyData.symbol}?`,
+        `Summarize valuation context for ${companyData.symbol} in plain terms.`,
+      ],
+      filings: [
+        `What changed materially in ${companyData.symbol} recent filings?`,
+        `List potential red flags from ${companyData.symbol} latest disclosures.`,
+        `Convert ${companyData.symbol} filing updates into an action checklist.`,
+      ],
+      sentiment: [
+        `How stable is ${companyData.symbol} sentiment trend this week?`,
+        `Explain the sentiment shift in ${companyData.symbol} with likely drivers.`,
+        `What sentiment reversal signals should I watch for ${companyData.symbol}?`,
+      ],
+      timeline: [
+        `Rank ${companyData.symbol} timeline events by decision relevance.`,
+        `What is the most important recent event for ${companyData.symbol} and why?`,
+        `Build a risk-aware timeline summary for ${companyData.symbol}.`,
+      ],
+      chat: [
+        `Prepare a balanced bull vs bear case for ${companyData.symbol}.`,
+        `What should I verify before increasing exposure to ${companyData.symbol}?`,
+        `Create a one-week monitoring plan for ${companyData.symbol}.`,
+      ],
+    }),
+    [companyData.symbol]
+  );
+
+  const [companyChatPrompt, setCompanyChatPrompt] = useState("");
+
+  useEffect(() => {
+    const first = tabPrompts[activeTab]?.[0] ?? "";
+    setCompanyChatPrompt(first);
+  }, [activeTab, tabPrompts]);
 
   const comparisonSummary = useMemo(() => {
     if (reportScope !== "comparison" || comparisonCompanies.length < 2 || !comparisonMetrics) {
@@ -3953,29 +4088,112 @@ function CompanyWorkspaceView(props: {
       ) : null}
 
       {activeTab === "filings" ? (
-        <article className="feature-card">
-          <div className="feature-head">
-            <FileText size={18} />
+        <article className="list-card company-filings-card">
+          <div className="table-head">
             <h3>Filings Snapshot ({companyData.symbol})</h3>
+            <span>{companyFilings.length} filings</span>
           </div>
-          <p>
-            Open the full Filings page for deep drill-down. This workspace keeps the symbol context
-            pinned for quick navigation.
-          </p>
+          {companyFilings.map((filing, index) => (
+            <div key={`${filing.type}-${filing.filingDate ?? index}`} className="list-item company-filing-row">
+              <div>
+                <p>{filing.type} · {filing.title}</p>
+                <small>{filing.narrative}</small>
+              </div>
+              <span>{new Date(filing.filingDate ?? filing.acceptedDate ?? Date.now()).toLocaleDateString()}</span>
+            </div>
+          ))}
+          <button
+            type="button"
+            className="secondary-btn mini-btn"
+            onClick={() => {
+              props.setSearchSelection({
+                stamp: Date.now(),
+                filingsSymbol: companyData.symbol,
+                companySymbol: companyData.symbol,
+              });
+              props.goToView("filings");
+            }}
+          >
+            Open Full Filings Workspace
+          </button>
         </article>
       ) : null}
 
       {activeTab === "sentiment" ? (
-        <article className="feature-card">
-          <div className="feature-head">
-            <TrendingUp size={18} />
-            <h3>Sentiment Snapshot ({companyData.symbol})</h3>
-          </div>
-          <p>
-            Use this tab as a context anchor, then jump to News for live headlines and sentiment feed
-            scoped to {companyData.symbol}.
-          </p>
-        </article>
+        <div className="split-grid">
+          <article className="feature-card">
+            <div className="feature-head">
+              <TrendingUp size={18} />
+              <h3>Sentiment Timeline ({companyData.symbol})</h3>
+            </div>
+            <div className="chart-wrap medium">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={companySentimentTrend}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(120,132,145,0.22)" />
+                  <XAxis dataKey="day" tick={{ fill: "#7d8792", fontSize: 11 }} />
+                  <YAxis tick={{ fill: "#7d8792", fontSize: 11 }} />
+                  <Tooltip
+                    contentStyle={{
+                      borderRadius: 10,
+                      border: "1px solid rgba(120,132,145,0.25)",
+                      background: "rgba(12,18,26,0.92)",
+                      color: "#e8edf2",
+                    }}
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="score"
+                    stroke="#139bcf"
+                    strokeWidth={2.2}
+                    dot={{ r: 2.8, fill: "#139bcf" }}
+                    name="Net Sentiment"
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="negative"
+                    stroke="#d86c52"
+                    strokeWidth={1.6}
+                    dot={false}
+                    name="Negative Mentions"
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          </article>
+
+          <article className="feature-card">
+            <div className="feature-head">
+              <BarChart3 size={18} />
+              <h3>Ratio Snapshot ({companyData.symbol})</h3>
+            </div>
+            <div className="ratio-grid">
+              <div className="ratio-item">
+                <span>PE</span>
+                <strong>{companyRatioSnapshot.pe.toFixed(1)}</strong>
+              </div>
+              <div className="ratio-item">
+                <span>PB</span>
+                <strong>{companyRatioSnapshot.pb.toFixed(2)}</strong>
+              </div>
+              <div className="ratio-item">
+                <span>ROE</span>
+                <strong>{companyRatioSnapshot.roe.toFixed(1)}%</strong>
+              </div>
+              <div className="ratio-item">
+                <span>Debt/Equity</span>
+                <strong>{companyRatioSnapshot.debtToEquity.toFixed(2)}</strong>
+              </div>
+              <div className="ratio-item">
+                <span>Op Margin</span>
+                <strong>{companyRatioSnapshot.operatingMargin.toFixed(1)}%</strong>
+              </div>
+              <div className="ratio-item">
+                <span>Beta</span>
+                <strong>{companyRatioSnapshot.beta.toFixed(2)}</strong>
+              </div>
+            </div>
+          </article>
+        </div>
       ) : null}
 
       {activeTab === "timeline" ? (
@@ -3997,6 +4215,18 @@ function CompanyWorkspaceView(props: {
 
       {activeTab === "chat" ? (
         <article className="chat-shell">
+          <div className="chat-suggestions">
+            {tabPrompts[activeTab].map((prompt) => (
+              <button
+                key={prompt}
+                type="button"
+                className="chat-suggestion-chip"
+                onClick={() => setCompanyChatPrompt(prompt)}
+              >
+                {prompt}
+              </button>
+            ))}
+          </div>
           <div className="chat-messages">
             <div className="message assistant">
               <p>
@@ -4010,10 +4240,52 @@ function CompanyWorkspaceView(props: {
           </div>
           <div className="chat-input-row">
             <input
-              value={`What are the key risks and opportunities for ${companyData.symbol} this quarter?`}
-              readOnly
+              value={companyChatPrompt}
+              onChange={(event) => setCompanyChatPrompt(event.target.value)}
             />
-            <button type="button" className="primary-btn">Send</button>
+            <button
+              type="button"
+              className="primary-btn"
+              onClick={() => {
+                if (!companyChatPrompt.trim()) return;
+                props.setSearchSelection({
+                  stamp: Date.now(),
+                  companySymbol: companyData.symbol,
+                  chatPrompt: companyChatPrompt,
+                });
+                props.goToView("chat");
+              }}
+            >
+              Ask in Iris Chat
+            </button>
+          </div>
+        </article>
+      ) : null}
+
+      {activeTab !== "chat" ? (
+        <article className="feature-card tab-prompt-card">
+          <div className="feature-head">
+            <Bot size={18} />
+            <h3>Contextual Prompts for {activeTab[0].toUpperCase() + activeTab.slice(1)}</h3>
+          </div>
+          <div className="chat-suggestions">
+            {tabPrompts[activeTab].map((prompt) => (
+              <button
+                key={`${activeTab}-${prompt}`}
+                type="button"
+                className="chat-suggestion-chip"
+                onClick={() => {
+                  props.setSearchSelection({
+                    stamp: Date.now(),
+                    companySymbol: companyData.symbol,
+                    chatPrompt: prompt,
+                  });
+                  props.goToView("chat");
+                }}
+              >
+                {prompt}
+              </button>
+            ))}
           </div>
         </article>
       ) : null}
@@ -4476,6 +4748,38 @@ function PortfolioView(props: { dataMode: DataMode }) {
     return PORTFOLIO_HOLDINGS.filter((holding) => holding.beta > 1.15 || holding.volatility > 22);
   }, []);
 
+  const pieData = useMemo(
+    () => sectorWeights.map((item) => ({ name: item.sector, value: Number(item.weight.toFixed(2)) })),
+    [sectorWeights]
+  );
+
+  const scatterData = useMemo(
+    () =>
+      PORTFOLIO_HOLDINGS.map((holding) => ({
+        x: holding.volatility,
+        y: holding.returnPct,
+        z: holding.weight,
+        symbol: holding.symbol,
+      })),
+    []
+  );
+
+  const trendData = useMemo(() => {
+    const phases = ["M-6", "M-5", "M-4", "M-3", "M-2", "M-1", "Now"];
+    const baseDrawdown = -8.6;
+    const baseVol = 24;
+
+    return phases.map((phase, index) => {
+      const drawdown = Number((baseDrawdown + index * 1.15 + Math.sin(index * 0.8) * 0.6).toFixed(2));
+      const vol = Number((baseVol - index * 1.3 + Math.cos(index * 0.55) * 0.8).toFixed(2));
+      return {
+        phase,
+        drawdown,
+        volatility: vol,
+      };
+    });
+  }, []);
+
   const maxSectorWeight = sectorWeights[0]?.weight ?? 1;
 
   return (
@@ -4538,6 +4842,43 @@ function PortfolioView(props: { dataMode: DataMode }) {
 
         <article className="feature-card">
           <div className="feature-head">
+            <Compass size={18} />
+            <h3>Sector Donut</h3>
+          </div>
+          <div className="chart-wrap medium">
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart>
+                <Pie
+                  data={pieData}
+                  dataKey="value"
+                  nameKey="name"
+                  cx="50%"
+                  cy="50%"
+                  innerRadius={54}
+                  outerRadius={82}
+                  stroke="none"
+                >
+                  {pieData.map((entry, index) => (
+                    <Cell key={`${entry.name}-${index}`} fill={CHART_COLORS[index % CHART_COLORS.length]} />
+                  ))}
+                </Pie>
+                <Tooltip
+                  formatter={(value) => `${Number(value).toFixed(1)}%`}
+                  labelFormatter={(label) => String(label)}
+                  contentStyle={{
+                    borderRadius: 10,
+                    border: "1px solid rgba(120,132,145,0.25)",
+                    background: "rgba(12,18,26,0.92)",
+                    color: "#e8edf2",
+                  }}
+                />
+              </PieChart>
+            </ResponsiveContainer>
+          </div>
+        </article>
+
+        <article className="feature-card">
+          <div className="feature-head">
             <ShieldAlert size={18} />
             <h3>Risk Watchlist</h3>
           </div>
@@ -4555,6 +4896,92 @@ function PortfolioView(props: { dataMode: DataMode }) {
           ) : (
             <p>No elevated risk flags in current holdings.</p>
           )}
+        </article>
+      </div>
+
+      <div className="split-grid portfolio-grid-extended">
+        <article className="feature-card">
+          <div className="feature-head">
+            <GitCompareArrows size={18} />
+            <h3>Risk vs Return Scatter</h3>
+          </div>
+          <div className="chart-wrap medium">
+            <ResponsiveContainer width="100%" height="100%">
+              <ScatterChart margin={{ top: 10, right: 14, bottom: 6, left: 4 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(120,132,145,0.22)" />
+                <XAxis
+                  type="number"
+                  dataKey="x"
+                  name="Volatility"
+                  unit="%"
+                  tick={{ fill: "#7d8792", fontSize: 11 }}
+                />
+                <YAxis
+                  type="number"
+                  dataKey="y"
+                  name="Return"
+                  unit="%"
+                  tick={{ fill: "#7d8792", fontSize: 11 }}
+                />
+                <Tooltip
+                  cursor={{ strokeDasharray: "3 3" }}
+                  formatter={(value, name) => {
+                    const axisName =
+                      String(name) === "x" ? "Volatility" : String(name) === "y" ? "Return" : String(name);
+                    return [`${Number(value).toFixed(2)}%`, axisName];
+                  }}
+                  labelFormatter={(_value, payload) => payload?.[0]?.payload?.symbol ?? "Holding"}
+                  contentStyle={{
+                    borderRadius: 10,
+                    border: "1px solid rgba(120,132,145,0.25)",
+                    background: "rgba(12,18,26,0.92)",
+                    color: "#e8edf2",
+                  }}
+                />
+                <Scatter name="Holdings" data={scatterData} fill="#1186ba" />
+              </ScatterChart>
+            </ResponsiveContainer>
+          </div>
+        </article>
+
+        <article className="feature-card">
+          <div className="feature-head">
+            <TrendingUp size={18} />
+            <h3>Drawdown & Volatility Trend</h3>
+          </div>
+          <div className="chart-wrap medium">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={trendData}>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(120,132,145,0.22)" />
+                <XAxis dataKey="phase" tick={{ fill: "#7d8792", fontSize: 11 }} />
+                <YAxis tick={{ fill: "#7d8792", fontSize: 11 }} />
+                <Tooltip
+                  contentStyle={{
+                    borderRadius: 10,
+                    border: "1px solid rgba(120,132,145,0.25)",
+                    background: "rgba(12,18,26,0.92)",
+                    color: "#e8edf2",
+                  }}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="drawdown"
+                  stroke="#d86c52"
+                  strokeWidth={2.1}
+                  dot={{ r: 2.8, fill: "#d86c52" }}
+                  name="Drawdown"
+                />
+                <Line
+                  type="monotone"
+                  dataKey="volatility"
+                  stroke="#129ccf"
+                  strokeWidth={2.1}
+                  dot={{ r: 2.8, fill: "#129ccf" }}
+                  name="Volatility"
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
         </article>
       </div>
 
