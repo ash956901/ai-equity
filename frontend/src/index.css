@@ -1083,6 +1083,20 @@ html.theme-transitioning * {
   gap: 10px;
 }
 
+.report-scope-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.comparison-report-insights {
+  border: 1px solid color-mix(in srgb, var(--line) 90%, transparent);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--card) 94%, transparent);
+  padding: 8px;
+}
+
 .report-field {
   display: flex;
   flex-direction: column;

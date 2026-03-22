@@ -146,6 +146,8 @@ interface SearchSelection {
   timelineQuery?: string;
   timelineEventId?: string;
   chatPrompt?: string;
+  reportScope?: "company" | "comparison";
+  reportCompareSymbols?: string[];
 }
 
 type FavoriteType = "company" | "filing" | "headline";
@@ -182,6 +184,8 @@ interface GeneratedReport {
   symbol: string;
   companyName: string;
   dataMode: DataMode;
+  scope: "company" | "comparison";
+  compareSymbols?: string[];
   sections: GeneratedReportSection[];
   body: string;
 }
@@ -974,18 +978,22 @@ async function exportReportAsPdf(report: GeneratedReport): Promise<void> {
   }
 
   const pageCount = doc.getNumberOfPages();
+  const scopeLabel = report.scope === "comparison" ? "Comparison" : "Company";
   for (let page = 1; page <= pageCount; page += 1) {
     doc.setPage(page);
     doc.setFontSize(9);
     doc.setTextColor(110, 122, 134);
     doc.text(
-      `${report.symbol} · ${report.dataMode === "demo" ? "Demo" : "Live"} · Page ${page}/${pageCount}`,
+      `${scopeLabel} · ${report.symbol} · ${report.dataMode === "demo" ? "Demo" : "Live"} · Page ${page}/${pageCount}`,
       marginLeft,
       pageHeight - 8
     );
   }
 
-  const filename = `${report.symbol.toLowerCase()}-${report.audience}-report.pdf`;
+  const filename =
+    report.scope === "comparison"
+      ? `${toFileSlug(report.symbol)}-comparison-report.pdf`
+      : `${toFileSlug(report.symbol)}-${report.audience}-report.pdf`;
   doc.save(filename);
 }
 
@@ -1000,6 +1008,25 @@ function getInitialChatThreads(): ChatThread[] {
   } catch {
     return [createInitialThread()];
   }
+}
+
+function normalizeSymbolsInput(value: string): string[] {
+  return Array.from(
+    new Set(
+      value
+        .split(",")
+        .map((item) => item.trim().toUpperCase())
+        .filter(Boolean)
+        .slice(0, 4)
+    )
+  );
+}
+
+function toFileSlug(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
 }
 
 export default function App() {
@@ -1943,6 +1970,7 @@ export default function App() {
         return (
           <ComparisonWorkspaceView
             dataMode={dataMode}
+            pushToast={pushToast}
             searchSelection={searchSelection}
             goToView={goToView}
             setSearchSelection={setSearchSelection}
@@ -3150,6 +3178,7 @@ function ChatView(props: {
 
 function ComparisonWorkspaceView(props: {
   dataMode: DataMode;
+  pushToast: (message: string, tone?: ToastTone) => void;
   searchSelection: SearchSelection | null;
   goToView: (view: ViewKey) => void;
   setSearchSelection: (selection: SearchSelection) => void;
@@ -3214,18 +3243,40 @@ function ComparisonWorkspaceView(props: {
   }, [selectedCompanies]);
 
   const applySymbols = () => {
-    const parsed = inputText
-      .split(",")
-      .map((item) => item.trim().toUpperCase())
-      .filter(Boolean)
-      .slice(0, 4);
-
-    const deduped = Array.from(new Set(parsed));
+    const deduped = normalizeSymbolsInput(inputText);
     if (deduped.length < 2) {
       return;
     }
 
     setSelectedSymbols(deduped);
+    setInputText(deduped.join(", "));
+  };
+
+  const openComparisonReport = () => {
+    const typedSymbols = normalizeSymbolsInput(inputText);
+    const candidateSymbols = typedSymbols.length >= 2 ? typedSymbols : selectedSymbols;
+
+    const mappedCompanies = candidateSymbols
+      .map((symbol) => DISCOVERY_COMPANIES.find((company) => company.symbol === symbol))
+      .filter((company): company is DiscoveryCompany => Boolean(company));
+
+    if (mappedCompanies.length < 2) {
+      props.pushToast("Select at least two valid companies first", "warning");
+      return;
+    }
+
+    const symbols = mappedCompanies.map((company) => company.symbol);
+    setSelectedSymbols(symbols);
+    setInputText(symbols.join(", "));
+
+    props.setSearchSelection({
+      stamp: Date.now(),
+      reportScope: "comparison",
+      reportCompareSymbols: symbols,
+      compareSymbols: symbols,
+      companySymbol: symbols[0],
+    });
+    props.goToView("company");
   };
 
   return (
@@ -3255,6 +3306,9 @@ function ComparisonWorkspaceView(props: {
       <div className="comparison-toolbar">
         <button type="button" className="primary-btn" onClick={applySymbols}>
           Apply Comparison
+        </button>
+        <button type="button" className="primary-btn" onClick={openComparisonReport}>
+          Generate Comparison Report
         </button>
         <button
           type="button"
@@ -3357,16 +3411,20 @@ function CompanyWorkspaceView(props: {
   ]);
   const [reportAudience, setReportAudience] = useState<ReportAudience>("analyst");
   const [reportGeneratedAt, setReportGeneratedAt] = useState<string | null>(null);
+  const [reportScope, setReportScope] = useState<"company" | "comparison">("company");
+  const [comparisonSymbols, setComparisonSymbols] = useState<string[]>([]);
+  const [comparisonSymbolsInput, setComparisonSymbolsInput] = useState("");
+  const { searchSelection, pushToast, dataMode } = props;
 
   useEffect(() => {
-    if (!props.searchSelection) return;
-    if (props.searchSelection.stamp === lastSelectionStamp) return;
+    if (!searchSelection) return;
+    if (searchSelection.stamp === lastSelectionStamp) return;
 
     const symbol =
-      props.searchSelection.companySymbol ??
-      props.searchSelection.filingsSymbol ??
-      props.searchSelection.newsSymbol ??
-      props.searchSelection.discoveryQuery;
+      searchSelection.companySymbol ??
+      searchSelection.filingsSymbol ??
+      searchSelection.newsSymbol ??
+      searchSelection.discoveryQuery;
 
     if (symbol) {
       const normalized = symbol.toUpperCase();
@@ -3374,8 +3432,43 @@ function CompanyWorkspaceView(props: {
       setSymbolInput(normalized);
     }
 
-    setLastSelectionStamp(props.searchSelection.stamp);
-  }, [lastSelectionStamp, props.searchSelection]);
+    if (
+      searchSelection.reportScope === "comparison" &&
+      searchSelection.reportCompareSymbols?.length
+    ) {
+      const normalized = searchSelection.reportCompareSymbols
+        .map((item) => item.trim().toUpperCase())
+        .filter(Boolean)
+        .slice(0, 4);
+
+      if (normalized.length >= 2) {
+        const mapped = normalized
+          .map((item) => DISCOVERY_COMPANIES.find((company) => company.symbol === item))
+          .filter((company): company is DiscoveryCompany => Boolean(company));
+
+        if (mapped.length >= 2) {
+          const symbolsText = mapped.map((company) => company.symbol).join(" vs ");
+
+          setReportScope("comparison");
+          const selected = mapped.map((company) => company.symbol);
+          setComparisonSymbols(selected);
+          setComparisonSymbolsInput(selected.join(", "));
+          setReportTitle(`${symbolsText} Comparative Brief`);
+          setReportSections(["summary", "risks", "financials", "themes"]);
+          setReportAudience("analyst");
+          setReportGeneratedAt(new Date().toISOString());
+
+          pushToast("Comparison report draft generated", "success");
+        }
+      }
+    } else if (searchSelection.reportScope === "company") {
+      setReportScope("company");
+      setComparisonSymbols([]);
+      setComparisonSymbolsInput("");
+    }
+
+    setLastSelectionStamp(searchSelection.stamp);
+  }, [lastSelectionStamp, pushToast, searchSelection]);
 
   const companyData = useMemo(() => {
     const found = DISCOVERY_COMPANIES.find((company) => company.symbol === activeSymbol);
@@ -3401,15 +3494,193 @@ function CompanyWorkspaceView(props: {
     [companyData.themeScores]
   );
 
+  const comparisonCompanies = useMemo(() => {
+    if (reportScope !== "comparison") return [];
+    return comparisonSymbols
+      .map((symbol) => DISCOVERY_COMPANIES.find((company) => company.symbol === symbol))
+      .filter((company): company is DiscoveryCompany => Boolean(company));
+  }, [comparisonSymbols, reportScope]);
+
+  const comparisonTimeline = useMemo(() => {
+    if (reportScope !== "comparison") return [];
+    const symbolSet = new Set(comparisonSymbols);
+    return TIMELINE_EVENTS.filter((event) => symbolSet.has(event.company));
+  }, [comparisonSymbols, reportScope]);
+
+  const comparisonMetrics = useMemo(() => {
+    if (reportScope !== "comparison" || comparisonCompanies.length < 2) {
+      return null;
+    }
+
+    const strengths = comparisonCompanies.map((company) => {
+      const [theme, score] = Object.entries(company.themeScores).sort((a, b) => b[1] - a[1])[0] ?? ["None", 0];
+      return { symbol: company.symbol, topTheme: theme, score };
+    });
+
+    const strongest = strengths.reduce((best, current) =>
+      !best || current.score > best.score ? current : best
+    );
+    const weakest = strengths.reduce((worst, current) =>
+      !worst || current.score < worst.score ? current : worst
+    );
+
+    const riskScores = comparisonCompanies.map((company) => {
+      const avg =
+        Object.values(company.themeScores).reduce((sum, value) => sum + value, 0) /
+        Math.max(Object.values(company.themeScores).length, 1);
+      const concentrationPenalty = Math.max(0, 90 - avg);
+      const timelinePenalty = comparisonTimeline.filter(
+        (event) => event.company === company.symbol && event.impact === "high"
+      ).length;
+
+      return {
+        symbol: company.symbol,
+        score: Number((concentrationPenalty + timelinePenalty * 4).toFixed(1)),
+      };
+    });
+
+    const highestRisk = riskScores.reduce((best, current) =>
+      !best || current.score > best.score ? current : best
+    );
+    const lowestRisk = riskScores.reduce((best, current) =>
+      !best || current.score < best.score ? current : best
+    );
+
+    const allThemesSet = new Set<string>();
+    comparisonCompanies.forEach((company) => {
+      Object.keys(company.themeScores).forEach((theme) => allThemesSet.add(theme));
+    });
+
+    const divergence = Array.from(allThemesSet)
+      .map((theme) => {
+        const values = comparisonCompanies.map((company) => company.themeScores[theme] ?? 0);
+        const spread = Math.max(...values) - Math.min(...values);
+        return { theme, spread };
+      })
+      .sort((a, b) => b.spread - a.spread)
+      .slice(0, 3);
+
+    return {
+      strengths,
+      strongest,
+      weakest,
+      highestRisk,
+      lowestRisk,
+      divergence,
+    };
+  }, [comparisonCompanies, comparisonTimeline, reportScope]);
+
+  const comparisonSummary = useMemo(() => {
+    if (reportScope !== "comparison" || comparisonCompanies.length < 2 || !comparisonMetrics) {
+      return null;
+    }
+
+    const avgMarketCap =
+      comparisonCompanies.reduce((sum, company) => sum + company.marketCapBn, 0) /
+      comparisonCompanies.length;
+    const sectors = Array.from(new Set(comparisonCompanies.map((company) => company.sector))).join(", ");
+
+    return {
+      symbolsLabel: comparisonCompanies.map((company) => company.symbol).join(" vs "),
+      avgMarketCap,
+      sectors,
+      topSpreadTheme: comparisonMetrics.divergence[0],
+    };
+  }, [comparisonCompanies, comparisonMetrics, reportScope]);
+
   const profileTitle = `${companyData.symbol} · ${companyData.name}`;
 
   const generatedReport = useMemo<GeneratedReport | null>(() => {
     if (!reportGeneratedAt) return null;
 
+    const sections: GeneratedReportSection[] = [];
+
+    if (reportScope === "comparison" && (!comparisonSummary || !comparisonMetrics)) {
+      return null;
+    }
+
+    if (reportScope === "comparison" && comparisonSummary && comparisonMetrics) {
+      if (reportSections.includes("summary")) {
+        sections.push({
+          id: "summary",
+          heading: "Executive Summary",
+          content:
+            `${comparisonSummary.symbolsLabel} comparison indicates strongest momentum in ` +
+            `${comparisonMetrics.strongest.symbol} (${comparisonMetrics.strongest.topTheme} ${comparisonMetrics.strongest.score}/100), ` +
+            `while ${comparisonMetrics.weakest.symbol} trails on composite theme intensity (${comparisonMetrics.weakest.score}/100).`,
+        });
+      }
+
+      if (reportSections.includes("risks")) {
+        const riskSpread = (comparisonMetrics.highestRisk.score - comparisonMetrics.lowestRisk.score).toFixed(
+          1
+        );
+        sections.push({
+          id: "risks",
+          heading: "Risk Spread",
+          content:
+            `Highest modeled risk: ${comparisonMetrics.highestRisk.symbol} (${comparisonMetrics.highestRisk.score}).\n` +
+            `Lowest modeled risk: ${comparisonMetrics.lowestRisk.symbol} (${comparisonMetrics.lowestRisk.score}).\n` +
+            `Spread: ${riskSpread}. Monitor names with weaker average theme quality and clustered high-impact events.`,
+        });
+      }
+
+      if (reportSections.includes("financials")) {
+        const winnersText = [...comparisonCompanies]
+          .sort((a, b) => b.marketCapBn - a.marketCapBn)
+          .slice(0, 2)
+          .map((company) => `${company.symbol} ($${company.marketCapBn.toFixed(1)}B)`)
+          .join(", ");
+
+        sections.push({
+          id: "financials",
+          heading: "Scale & Coverage",
+          content:
+            `Average market cap across basket: $${comparisonSummary.avgMarketCap.toFixed(1)}B.\n` +
+            `Largest names by scale: ${winnersText}.\n` +
+            `Sector mix: ${comparisonSummary.sectors}.`,
+        });
+      }
+
+      if (reportSections.includes("themes")) {
+        const divergenceText = comparisonMetrics.divergence.length
+          ? comparisonMetrics.divergence
+              .map((item) => `${item.theme} (spread ${item.spread})`)
+              .join(", ")
+          : "No meaningful divergence detected";
+
+        sections.push({
+          id: "themes",
+          heading: "Theme Divergence",
+          content:
+            `${divergenceText}.\n` +
+            `Largest current gap: ${comparisonSummary.topSpreadTheme?.theme ?? "N/A"} ` +
+            `(${comparisonSummary.topSpreadTheme?.spread ?? 0} points).`,
+        });
+      }
+
+      const audienceText =
+        reportAudience === "retail"
+          ? "Retail framing: prefer simple winner/laggard interpretation and avoid overtrading on one-cycle noise."
+          : "Analyst framing: evaluate relative momentum, dispersion, and event-adjusted risk asymmetry across the basket.";
+
+      return {
+        title: reportTitle.trim() || `${comparisonSummary.symbolsLabel} Comparative Brief`,
+        generatedAt: reportGeneratedAt,
+        audience: reportAudience,
+        audienceText,
+        symbol: comparisonSummary.symbolsLabel,
+        companyName: "Comparison Basket",
+        dataMode,
+        scope: "comparison",
+        compareSymbols: comparisonCompanies.map((company) => company.symbol),
+        sections,
+        body: sections.map((section) => `${section.heading}:\n${section.content}`).join("\n\n"),
+      };
+    }
+
     const topTheme = topThemes[0]?.[0] ?? "No clear dominant theme";
     const topThemeScore = topThemes[0]?.[1] ?? 0;
-
-    const sections: GeneratedReportSection[] = [];
 
     if (reportSections.includes("summary")) {
       sections.push({
@@ -3460,23 +3731,28 @@ function CompanyWorkspaceView(props: {
       audienceText,
       symbol: companyData.symbol,
       companyName: companyData.name,
-      dataMode: props.dataMode,
+      dataMode,
+      scope: "company",
       sections,
       body: sections
         .map((section) => `${section.heading}:\n${section.content}`)
         .join("\n\n"),
     };
   }, [
+    comparisonCompanies,
+    comparisonMetrics,
+    comparisonSummary,
     companyData.marketCapBn,
     companyData.name,
     companyData.sector,
     companyData.symbol,
     companyTimeline.length,
+    reportScope,
     reportAudience,
     reportGeneratedAt,
     reportSections,
     reportTitle,
-    props.dataMode,
+    dataMode,
     topThemes,
   ]);
 
@@ -3491,6 +3767,22 @@ function CompanyWorkspaceView(props: {
   };
 
   const triggerReportGeneration = () => {
+    if (reportScope === "comparison") {
+      const normalized = normalizeSymbolsInput(comparisonSymbolsInput || comparisonSymbols.join(","));
+      if (normalized.length >= 2) {
+        setComparisonSymbols(normalized);
+        setComparisonSymbolsInput(normalized.join(", "));
+      }
+
+      const mapped = normalized
+        .map((symbol) => DISCOVERY_COMPANIES.find((company) => company.symbol === symbol))
+        .filter((company): company is DiscoveryCompany => Boolean(company));
+
+      if (mapped.length < 2) {
+        pushToast("Comparison report needs at least two valid symbols", "warning");
+        return;
+      }
+    }
     setReportGeneratedAt(new Date().toISOString());
   };
 
@@ -3509,22 +3801,23 @@ function CompanyWorkspaceView(props: {
     const url = window.URL.createObjectURL(blob);
     const anchor = document.createElement("a");
     anchor.href = url;
-    anchor.download = `${companyData.symbol.toLowerCase()}-report.txt`;
+    const baseName = generatedReport.scope === "comparison" ? generatedReport.symbol : companyData.symbol;
+    anchor.download = `${toFileSlug(baseName)}-report.txt`;
     document.body.appendChild(anchor);
     anchor.click();
     anchor.remove();
     window.URL.revokeObjectURL(url);
-    props.pushToast("Text report downloaded", "success");
+    pushToast("Text report downloaded", "success");
   };
 
   const exportReportPdf = async () => {
     if (!generatedReport) return;
     try {
-      props.pushToast("Preparing PDF export...", "info");
+      pushToast("Preparing PDF export...", "info");
       await exportReportAsPdf(generatedReport);
-      props.pushToast("PDF report downloaded", "success");
+      pushToast("PDF report downloaded", "success");
     } catch {
-      props.pushToast("PDF export failed. Please try again.", "warning");
+      pushToast("PDF export failed. Please try again.", "warning");
     }
   };
 
@@ -3533,7 +3826,7 @@ function CompanyWorkspaceView(props: {
       <PageHeader
         title="Company Workspace"
         subtitle="One research cockpit per company: filings, sentiment, timeline, and company-context chat."
-        dataMode={props.dataMode}
+        dataMode={dataMode}
         right={
           <form
             className="search-pill"
@@ -3554,6 +3847,13 @@ function CompanyWorkspaceView(props: {
           </form>
         }
       />
+
+      {reportScope === "comparison" && comparisonSummary ? (
+        <div className="notice">
+          Comparison report mode: {comparisonSummary.symbolsLabel}. Generate a unified winner/laggard and
+          risk-spread brief from this basket.
+        </div>
+      ) : null}
 
       <div className="company-header-card">
         <div className="company-header-main">
@@ -3724,6 +4024,69 @@ function CompanyWorkspaceView(props: {
           <h3>Report Generation Workspace</h3>
         </div>
 
+        <div className="report-scope-row">
+          <button
+            type="button"
+            className={`mode-pill ${reportScope === "company" ? "active" : ""}`}
+            onClick={() => {
+              setReportScope("company");
+              setComparisonSymbols([]);
+              setComparisonSymbolsInput("");
+            }}
+          >
+            Company Report
+          </button>
+          <button
+            type="button"
+            className={`mode-pill ${reportScope === "comparison" ? "active" : ""}`}
+            onClick={() => {
+              const normalized = normalizeSymbolsInput(
+                comparisonSymbolsInput || comparisonSymbols.join(",") || `${activeSymbol}, TCS`
+              );
+              if (normalized.length >= 2) {
+                setComparisonSymbols(normalized);
+                setComparisonSymbolsInput(normalized.join(", "));
+                setReportScope("comparison");
+                setReportTitle(`${normalized.join(" vs ")} Comparative Brief`);
+              } else {
+                pushToast("Add at least two symbols for comparison report", "warning");
+              }
+            }}
+          >
+            Comparison Report
+          </button>
+        </div>
+
+        {reportScope === "comparison" ? (
+          <div className="report-builder-grid">
+            <label className="report-field">
+              <span>Comparison symbols</span>
+              <input
+                value={comparisonSymbolsInput || comparisonSymbols.join(", ")}
+                readOnly
+              />
+            </label>
+            <label className="report-field">
+              <span>Comparison focus</span>
+              <input
+                value={comparisonSummary ? `${comparisonSummary.symbolsLabel}` : "No valid basket yet"}
+                readOnly
+              />
+            </label>
+          </div>
+        ) : null}
+
+        {reportScope === "comparison" && comparisonMetrics ? (
+          <div className="comparison-report-insights">
+            <div className="chip-row">
+              <span className="chip">Winner: {comparisonMetrics.strongest.symbol}</span>
+              <span className="chip">Laggard: {comparisonMetrics.weakest.symbol}</span>
+              <span className="chip warning">Risk High: {comparisonMetrics.highestRisk.symbol}</span>
+              <span className="chip positive">Risk Low: {comparisonMetrics.lowestRisk.symbol}</span>
+            </div>
+          </div>
+        ) : null}
+
         <div className="report-builder-grid">
           <label className="report-field">
             <span>Report title</span>
@@ -3786,6 +4149,7 @@ function CompanyWorkspaceView(props: {
           <div className="report-preview">
             <h4>{generatedReport.title}</h4>
             <p>{generatedReport.audienceText}</p>
+            <small>Scope: {generatedReport.scope === "comparison" ? "Comparison" : "Company"}</small>
             <small>
               Template: {generatedReport.audience === "retail" ? "Retail Brief" : "Analyst Dossier"}
             </small>

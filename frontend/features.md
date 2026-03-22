@@ -81,9 +81,12 @@ Status: [x] Completed
 
 ### 4) Comparison → Report Workflow
 
+Status: [x] Completed
+
 #### Scope
-- Generate report from selected comparison symbols
-- Shared insights section: winners/laggards/risk spread
+- [x] Generate report from selected comparison symbols
+- [x] Shared insights section: winners/laggards/risk spread
+- [x] Auto-open company report workspace prefilled for comparison mode
 
 ---
 
