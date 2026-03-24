@@ -1,0 +1,27 @@
+{
+  "query": "analyze the document provided which has reliance company details and provide a research analy",
+  "analysis_type": "sis on the company",
+  "company_names": [
+    "reliance"
+  ],
+  "documents": [
+    "ai-equity\\backend-ai\\data\\RIL-Integrated-Annual-Report-2024-25.pdf"
+  ],
+  "urls": [
+    "none"
+  ],
+  "compare_companies": false,
+  "comparison_companies": [],
+  "comparison_metrics": {},
+  "generate_report": true,
+  "latest_web_search": true,
+  "portfolio_enabled": false,
+  "portfolio_entries": [],
+  "risk_free_rate": 0.0,
+  "financial_inputs": {},
+  "revenue_series": [],
+  "top_k": 100,
+  "user_id": "dada",
+  "upload_id": "dada",
+  "company_id": "reliance"
+}

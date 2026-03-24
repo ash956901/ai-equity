@@ -1,0 +1,12 @@
+{
+  "agent": "WebSearchAgent",
+  "reasoning_trace": [
+    {
+      "step": 1,
+      "action": "web_search",
+      "reason": "Fetch latest public context when requested."
+    }
+  ],
+  "results": [],
+  "summary": "Fetched 0 web results."
+}

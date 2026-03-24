@@ -1,0 +1,10 @@
+{"timestamp": "2026-03-22T20:36:23.821349", "agent": "ResearchOrchestratorAgent", "event": "planned", "duration_ms": null, "payload": {"plan": ["DocumentIntelligenceAgent", "RetrievalAgent", "WebSearchAgent", "ReportGenerationAgent"]}, "error": null}
+{"timestamp": "2026-03-22T20:36:23.826152", "agent": "DocumentIntelligenceAgent", "event": "started", "duration_ms": null, "payload": {"max_steps": 6}, "error": null}
+{"timestamp": "2026-03-22T20:36:23.832058", "agent": "DocumentIntelligenceAgent", "event": "completed", "duration_ms": 5.9, "payload": {"memory_items": 1}, "error": null}
+{"timestamp": "2026-03-22T20:36:23.836293", "agent": "RetrievalAgent", "event": "started", "duration_ms": null, "payload": {"max_steps": 6}, "error": null}
+{"timestamp": "2026-03-22T20:37:06.761187", "agent": "RetrievalAgent", "event": "completed", "duration_ms": 42924.88, "payload": {"memory_items": 1}, "error": null}
+{"timestamp": "2026-03-22T20:37:06.765681", "agent": "WebSearchAgent", "event": "started", "duration_ms": null, "payload": {"max_steps": 6}, "error": null}
+{"timestamp": "2026-03-22T20:37:08.914744", "agent": "WebSearchAgent", "event": "completed", "duration_ms": 2149.04, "payload": {"memory_items": 1}, "error": null}
+{"timestamp": "2026-03-22T20:37:08.921558", "agent": "ReportGenerationAgent", "event": "started", "duration_ms": null, "payload": {"max_steps": 6}, "error": null}
+{"timestamp": "2026-03-22T20:37:08.923007", "agent": "ReportGenerationAgent", "event": "completed", "duration_ms": 1.43, "payload": {"memory_items": 1}, "error": null}
+{"timestamp": "2026-03-22T20:37:08.930184", "agent": "ResearchOrchestratorAgent", "event": "finalized", "duration_ms": null, "payload": {"run_dir": "workflow_runs\\2026-03-22\\20-36-23_analyze_the_document_provided_which_has_reliance_company_det"}, "error": null}

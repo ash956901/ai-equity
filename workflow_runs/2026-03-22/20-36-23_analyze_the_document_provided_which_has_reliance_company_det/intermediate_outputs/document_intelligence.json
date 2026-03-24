@@ -1,0 +1,28 @@
+{
+  "agent": "DocumentIntelligenceAgent",
+  "reasoning_trace": [
+    {
+      "step": 1,
+      "action": "pdf_parser",
+      "target": "ai-equity\\backend-ai\\data\\RIL-Integrated-Annual-Report-2024-25.pdf"
+    },
+    {
+      "step": 2,
+      "action": "url_fetcher",
+      "target": "none"
+    }
+  ],
+  "documents": [
+    {
+      "error": "PDF not found: ai-equity\\backend-ai\\data\\RIL-Integrated-Annual-Report-2024-25.pdf"
+    },
+    {
+      "error": "Invalid URL 'none': No scheme supplied. Perhaps you meant https://none?",
+      "source": "none"
+    }
+  ],
+  "document_summaries": [],
+  "tables": [],
+  "insights": [],
+  "summary": "Processed 2 inputs (docs/urls)."
+}

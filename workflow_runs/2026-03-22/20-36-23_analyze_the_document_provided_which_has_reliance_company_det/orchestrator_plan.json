@@ -1,0 +1,10 @@
+{
+  "goal": "analyze the document provided which has reliance company details and provide a research analy",
+  "plan": [
+    "DocumentIntelligenceAgent",
+    "RetrievalAgent",
+    "WebSearchAgent",
+    "ReportGenerationAgent"
+  ],
+  "saved_at": "2026-03-22T20:36:23.820107"
+}

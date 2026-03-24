@@ -1,0 +1,20 @@
+{
+  "agent": "ReportGenerationAgent",
+  "reasoning_trace": [
+    {
+      "step": 1,
+      "action": "aggregate_outputs",
+      "reason": "Assemble executive, detailed, and bullet outputs."
+    }
+  ],
+  "executive_summary": "No major insights detected.",
+  "bullet_insights": [],
+  "detailed_report": {
+    "financial": {},
+    "comparison": {},
+    "portfolio": {},
+    "documents": [],
+    "retrieval_hits": 0
+  },
+  "summary": "Report packages generated."
+}

@@ -1,0 +1,22 @@
+{
+  "agent": "RetrievalAgent",
+  "reasoning_trace": [
+    {
+      "step": 1,
+      "action": "generate_embeddings",
+      "reason": "Need query representation for semantic retrieval."
+    },
+    {
+      "step": 2,
+      "action": "vector_db_query",
+      "reason": "Fetch top-K semantically relevant chunks."
+    },
+    {
+      "step": 3,
+      "action": "stop",
+      "reason": "No additional retrieval strategy configured."
+    }
+  ],
+  "retrieval_results": [],
+  "summary": "Retrieved 0 chunks."
+}
