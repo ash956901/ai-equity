@@ -589,6 +589,11 @@ html.theme-transitioning * {
   color: color-mix(in srgb, var(--good) 80%, var(--ink));
 }
 
+.global-search-type.document {
+  border-color: color-mix(in srgb, #4f95d6 35%, var(--line));
+  color: color-mix(in srgb, #4f95d6 78%, var(--ink));
+}
+
 .favorites-overlay {
   position: fixed;
   inset: 0;
@@ -2222,6 +2227,240 @@ html.theme-transitioning * {
   width: fit-content;
 }
 
+.document-layout {
+  display: grid;
+  grid-template-columns: minmax(230px, 280px) minmax(0, 1fr);
+  gap: 12px;
+}
+
+.document-list-card,
+.document-viewer-card,
+.citation-sidebar {
+  border: 1px solid color-mix(in srgb, var(--line) 90%, transparent);
+  background: color-mix(in srgb, var(--card) 94%, transparent);
+  border-radius: 12px;
+}
+
+.document-list-card,
+.document-viewer-card {
+  padding: 10px;
+}
+
+.document-list-items {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.document-list-item {
+  border: 1px solid color-mix(in srgb, var(--line) 90%, transparent);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--card) 92%, transparent);
+  text-align: left;
+  color: var(--ink);
+  padding: 8px;
+  cursor: pointer;
+}
+
+.document-list-item.active,
+.document-list-item:hover {
+  border-color: color-mix(in srgb, var(--brand) 40%, var(--line));
+  background: color-mix(in srgb, var(--brand-soft) 50%, transparent);
+}
+
+.document-list-item p {
+  margin: 0;
+  font-size: 0.78rem;
+  line-height: 1.35;
+}
+
+.document-list-item span {
+  margin-top: 3px;
+  display: inline-block;
+  font-size: 0.68rem;
+  color: var(--muted);
+}
+
+.document-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.document-head h3 {
+  margin: 2px 0 0;
+  font-size: 1rem;
+}
+
+.document-head p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 0.8rem;
+  line-height: 1.45;
+}
+
+.document-body-grid {
+  margin-top: 10px;
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(260px, 1fr);
+  gap: 10px;
+}
+
+.document-page-mock {
+  border: 1px solid color-mix(in srgb, var(--line) 88%, transparent);
+  background: color-mix(in srgb, var(--card) 97%, transparent);
+  border-radius: 10px;
+  padding: 10px;
+  max-height: 640px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.document-section-block {
+  border: 1px solid color-mix(in srgb, var(--line) 88%, transparent);
+  border-radius: 10px;
+  padding: 10px;
+}
+
+.document-section-block h4 {
+  margin: 0;
+  font-size: 0.88rem;
+}
+
+.document-section-block p {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 0.8rem;
+  line-height: 1.52;
+}
+
+.citation-chip-row {
+  margin-top: 8px;
+}
+
+.citation-chip {
+  border: 1px solid color-mix(in srgb, var(--line) 90%, transparent);
+  background: color-mix(in srgb, var(--card) 90%, transparent);
+  border-radius: 999px;
+  font-size: 0.68rem;
+  padding: 4px 9px;
+  cursor: pointer;
+}
+
+.citation-chip.active {
+  outline: 1px solid color-mix(in srgb, var(--brand) 45%, var(--line));
+}
+
+.citation-chip.guidance {
+  color: color-mix(in srgb, var(--brand) 80%, var(--ink));
+  border-color: color-mix(in srgb, var(--brand) 35%, var(--line));
+}
+
+.citation-chip.risk {
+  color: color-mix(in srgb, var(--bad) 82%, var(--ink));
+  border-color: color-mix(in srgb, var(--bad) 35%, var(--line));
+}
+
+.citation-chip.financial {
+  color: color-mix(in srgb, #ef8f36 78%, var(--ink));
+  border-color: color-mix(in srgb, #ef8f36 35%, var(--line));
+}
+
+.citation-chip.governance {
+  color: color-mix(in srgb, #7f5af0 74%, var(--ink));
+  border-color: color-mix(in srgb, #7f5af0 35%, var(--line));
+}
+
+.citation-sidebar {
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.citation-sidebar-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.citation-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 330px;
+  overflow-y: auto;
+}
+
+.citation-item {
+  border: 1px solid color-mix(in srgb, var(--line) 90%, transparent);
+  background: color-mix(in srgb, var(--card) 92%, transparent);
+  border-radius: 10px;
+  padding: 8px;
+  text-align: left;
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.citation-item.active,
+.citation-item:hover {
+  border-color: color-mix(in srgb, var(--brand) 42%, var(--line));
+  background: color-mix(in srgb, var(--brand-soft) 50%, transparent);
+}
+
+.citation-item-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.citation-item-head span:last-child {
+  font-size: 0.65rem;
+  color: var(--muted);
+}
+
+.citation-item p {
+  margin: 6px 0 0;
+  font-size: 0.76rem;
+  line-height: 1.35;
+}
+
+.citation-item small {
+  margin-top: 4px;
+  display: inline-block;
+  font-size: 0.66rem;
+  color: var(--muted);
+}
+
+.citation-detail-card {
+  border: 1px solid color-mix(in srgb, var(--line) 90%, transparent);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--card) 96%, transparent);
+  padding: 9px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.citation-detail-card h4 {
+  margin: 0;
+  font-size: 0.82rem;
+}
+
+.citation-detail-card blockquote {
+  margin: 0;
+  border-left: 2px solid color-mix(in srgb, var(--brand) 50%, var(--line));
+  padding-left: 8px;
+  color: var(--muted);
+  font-size: 0.76rem;
+  line-height: 1.45;
+}
+
 .results-title {
   margin: 0 0 8px;
   color: var(--muted);
@@ -2282,6 +2521,11 @@ html.theme-transitioning * {
   }
 
   .timeline-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .document-layout,
+  .document-body-grid {
     grid-template-columns: 1fr;
   }
 

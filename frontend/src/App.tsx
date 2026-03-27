@@ -70,6 +70,7 @@ type ViewKey =
   | "chat"
   | "compare"
   | "company"
+  | "documents"
   | "discovery"
   | "portfolio"
   | "filings"
@@ -153,6 +154,8 @@ interface SearchSelection {
   stamp: number;
   companySymbol?: string;
   compareSymbols?: string[];
+  documentSymbol?: string;
+  documentId?: string;
   discoveryQuery?: string;
   discoveryTheme?: string;
   filingsSymbol?: string;
@@ -251,7 +254,7 @@ interface PortfolioHolding {
   volatility: number;
 }
 
-type GlobalSearchResultType = "company" | "theme" | "event" | "query";
+type GlobalSearchResultType = "company" | "theme" | "event" | "query" | "document";
 
 interface GlobalSearchResult {
   id: string;
@@ -259,6 +262,38 @@ interface GlobalSearchResult {
   title: string;
   subtitle: string;
   onSelect: () => void;
+}
+
+type CitationCategory = "guidance" | "risk" | "financial" | "governance";
+
+interface DocumentSection {
+  id: string;
+  heading: string;
+  content: string;
+}
+
+interface CitationAnchor {
+  id: string;
+  label: string;
+  sectionId: string;
+  quote: string;
+  page: number;
+  lines: string;
+  confidence: number;
+  category: CitationCategory;
+}
+
+interface ResearchDocument {
+  id: string;
+  symbol: string;
+  title: string;
+  type: string;
+  sourceLabel: string;
+  date: string;
+  sourceUrl?: string;
+  summary: string;
+  sections: DocumentSection[];
+  citations: CitationAnchor[];
 }
 
 const QUICK_QUERY_TEMPLATES = [
@@ -593,6 +628,7 @@ const navItems: NavItem[] = [
   { key: "dashboard", label: "Dashboard", icon: LayoutDashboard, caption: "Overview" },
   { key: "compare", label: "Compare", icon: GitCompareArrows, caption: "Side-by-side" },
   { key: "company", label: "Company", icon: Building2, caption: "Workspace" },
+  { key: "documents", label: "Documents", icon: FileText, caption: "Viewer" },
   { key: "chat", label: "Iris Chat", icon: Bot, caption: "Copilot" },
   { key: "discovery", label: "Discovery", icon: Compass, caption: "Themes" },
   { key: "portfolio", label: "Portfolio", icon: Wallet, caption: "Exposure" },
@@ -682,6 +718,213 @@ const CHART_COLORS = [
   "#c66c41",
   "#8b7ad3",
   "#b262bb",
+];
+
+const RESEARCH_DOCUMENTS: ResearchDocument[] = [
+  {
+    id: "doc-reliance-q4",
+    symbol: "RELIANCE",
+    title: "Reliance Industries Q4 FY26 Earnings Brief",
+    type: "Earnings Transcript",
+    sourceLabel: "Demo Filing Repository",
+    date: "2026-03-18",
+    sourceUrl: "#",
+    summary:
+      "Management commentary indicates retail and digital resilience, with capex discipline emphasized across growth verticals.",
+    sections: [
+      {
+        id: "overview",
+        heading: "Business Overview",
+        content:
+          "Revenue growth remained diversified across consumer and digital businesses. Management reiterated selective investment in high-conviction adjacencies while preserving balance sheet flexibility.",
+      },
+      {
+        id: "financials",
+        heading: "Financial Highlights",
+        content:
+          "Operating margin remained stable sequentially, supported by mix improvements in telecom and retail. Working capital efficiency improved on inventory discipline and tighter vendor cycle management.",
+      },
+      {
+        id: "guidance",
+        heading: "Forward Guidance",
+        content:
+          "Near-term priorities include execution quality in retail footprint expansion and measured digital monetization. Leadership expects moderate earnings progression with no abrupt leverage increase.",
+      },
+      {
+        id: "risks",
+        heading: "Risk Factors",
+        content:
+          "Key watchpoints include energy price variability, regulatory shifts in telecom, and slower-than-expected consumer discretionary momentum in select categories.",
+      },
+    ],
+    citations: [
+      {
+        id: "c-rel-1",
+        label: "Capex Discipline Statement",
+        sectionId: "guidance",
+        quote:
+          "We continue with calibrated capital allocation, prioritizing projects with clear return pathways and execution readiness.",
+        page: 8,
+        lines: "12-18",
+        confidence: 0.91,
+        category: "guidance",
+      },
+      {
+        id: "c-rel-2",
+        label: "Margin Stability Note",
+        sectionId: "financials",
+        quote:
+          "Sequential margin profile remained stable with stronger contribution from digital and consumer channels.",
+        page: 6,
+        lines: "31-36",
+        confidence: 0.88,
+        category: "financial",
+      },
+      {
+        id: "c-rel-3",
+        label: "Risk Disclosure",
+        sectionId: "risks",
+        quote:
+          "Macro energy volatility and regulatory policy shifts remain external variables that we continue to monitor closely.",
+        page: 11,
+        lines: "4-11",
+        confidence: 0.83,
+        category: "risk",
+      },
+    ],
+  },
+  {
+    id: "doc-tcs-deal",
+    symbol: "TCS",
+    title: "TCS Strategy Update: Enterprise AI Pipeline",
+    type: "Strategy Presentation",
+    sourceLabel: "Demo Investor Deck",
+    date: "2026-03-15",
+    sourceUrl: "#",
+    summary:
+      "Deal commentary signals durable AI modernization demand and expanding managed services footprint among global accounts.",
+    sections: [
+      {
+        id: "overview",
+        heading: "Demand Context",
+        content:
+          "Client discussions are increasingly centered on enterprise productivity and workflow redesign. AI-linked commitments continue to support deal pipeline conversion.",
+      },
+      {
+        id: "delivery",
+        heading: "Execution Model",
+        content:
+          "The delivery mix is shifting toward platformized implementation and reusable accelerators, supporting better operating leverage and faster deployment cycles.",
+      },
+      {
+        id: "governance",
+        heading: "Governance and Controls",
+        content:
+          "Leadership highlights stronger program governance, especially around data controls, model review checkpoints, and client-specific compliance requirements.",
+      },
+    ],
+    citations: [
+      {
+        id: "c-tcs-1",
+        label: "Pipeline Momentum",
+        sectionId: "overview",
+        quote:
+          "Large-account pipelines show continued momentum, with AI transformation mandates now embedded in broader modernization contracts.",
+        page: 4,
+        lines: "20-27",
+        confidence: 0.89,
+        category: "guidance",
+      },
+      {
+        id: "c-tcs-2",
+        label: "Delivery Efficiency",
+        sectionId: "delivery",
+        quote:
+          "Reusable service components are reducing implementation cycle time while preserving quality controls.",
+        page: 6,
+        lines: "13-19",
+        confidence: 0.84,
+        category: "financial",
+      },
+      {
+        id: "c-tcs-3",
+        label: "Governance Assurance",
+        sectionId: "governance",
+        quote:
+          "Every deployment follows structured review gates covering data governance, model behavior, and auditability expectations.",
+        page: 9,
+        lines: "1-7",
+        confidence: 0.86,
+        category: "governance",
+      },
+    ],
+  },
+  {
+    id: "doc-hal-order",
+    symbol: "HAL",
+    title: "HAL Order Visibility and Program Delivery Note",
+    type: "Management Commentary",
+    sourceLabel: "Demo Defense Brief",
+    date: "2026-03-20",
+    sourceUrl: "#",
+    summary:
+      "Order backlog visibility remains strong; delivery cadence and margin discipline are central to near-term rerating potential.",
+    sections: [
+      {
+        id: "backlog",
+        heading: "Backlog Quality",
+        content:
+          "Backlog composition suggests continued medium-term revenue support, with diversified program participation and relatively stable procurement flow assumptions.",
+      },
+      {
+        id: "execution",
+        heading: "Execution Dynamics",
+        content:
+          "Execution remains dependent on program sequencing and supplier readiness. Delivery slippage risk is moderate but manageable under current timelines.",
+      },
+      {
+        id: "risk",
+        heading: "Operational Risks",
+        content:
+          "Primary risks include schedule variance, component bottlenecks, and potential shifts in defense budget prioritization.",
+      },
+    ],
+    citations: [
+      {
+        id: "c-hal-1",
+        label: "Backlog Depth",
+        sectionId: "backlog",
+        quote:
+          "Existing backlog provides robust multi-year visibility subject to standard procurement and acceptance milestones.",
+        page: 5,
+        lines: "6-12",
+        confidence: 0.9,
+        category: "financial",
+      },
+      {
+        id: "c-hal-2",
+        label: "Execution Watchpoint",
+        sectionId: "execution",
+        quote:
+          "Program-level execution remains on track, though vendor synchronization remains a key operational dependency.",
+        page: 7,
+        lines: "21-27",
+        confidence: 0.85,
+        category: "guidance",
+      },
+      {
+        id: "c-hal-3",
+        label: "Risk Register",
+        sectionId: "risk",
+        quote:
+          "Delivery variance, if any, is expected to stem from supply-side constraints rather than demand-side weakness.",
+        page: 10,
+        lines: "14-19",
+        confidence: 0.81,
+        category: "risk",
+      },
+    ],
+  },
 ];
 
 type ViewTransitionCapable = {
@@ -1077,6 +1320,7 @@ export default function App() {
   const [globalSearchOpen, setGlobalSearchOpen] = useState(false);
   const [globalSearchQuery, setGlobalSearchQuery] = useState("");
   const [globalSearchIndex, setGlobalSearchIndex] = useState(0);
+  const [activeCitationId, setActiveCitationId] = useState("");
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [paletteQuery, setPaletteQuery] = useState("");
   const [paletteActiveIndex, setPaletteActiveIndex] = useState(0);
@@ -1358,6 +1602,15 @@ export default function App() {
         severity: "low",
       });
     }
+
+    if (view === "documents") {
+      createNotification({
+        title: "Document viewer opened",
+        message: "Citation anchors and document context are now available.",
+        category: "filing",
+        severity: "low",
+      });
+    }
   }, [createNotification]);
 
   const handleFavoriteSelect = useCallback(
@@ -1633,6 +1886,28 @@ export default function App() {
       });
     }
 
+    for (const document of RESEARCH_DOCUMENTS) {
+      const searchable = `${document.symbol} ${document.title} ${document.type} ${document.summary}`.toLowerCase();
+      if (!searchable.includes(query)) continue;
+
+      results.push({
+        id: `document-${document.id}`,
+        type: "document",
+        title: `${document.symbol} · ${document.title}`,
+        subtitle: "Open document viewer with citation anchors",
+        onSelect: () => {
+          setSearchSelection({
+            stamp: Date.now(),
+            documentSymbol: document.symbol,
+            documentId: document.id,
+            companySymbol: document.symbol,
+          });
+          setActiveCitationId(document.citations[0]?.id ?? "");
+          goToView("documents");
+        },
+      });
+    }
+
     for (const template of QUICK_QUERY_TEMPLATES) {
       if (!template.toLowerCase().includes(query)) continue;
       results.push({
@@ -1748,6 +2023,38 @@ export default function App() {
         action: () => goToView("news"),
       },
       {
+        id: "go-documents",
+        label: "Go to Document Viewer",
+        hint: "Navigation",
+        keywords: "documents viewer citation pdf filings",
+        action: () => {
+          const fallback = RESEARCH_DOCUMENTS[0];
+          const symbol =
+            searchSelection?.documentSymbol ??
+            searchSelection?.companySymbol ??
+            fallback?.symbol ??
+            "RELIANCE";
+          const documentForSymbol =
+            RESEARCH_DOCUMENTS.find((document) => document.symbol === symbol) ?? fallback;
+
+          if (!documentForSymbol) {
+            goToView("documents");
+            closePalette();
+            return;
+          }
+
+          setSearchSelection({
+            stamp: Date.now(),
+            documentSymbol: documentForSymbol.symbol,
+            documentId: documentForSymbol.id,
+            companySymbol: documentForSymbol.symbol,
+          });
+          setActiveCitationId(documentForSymbol.citations[0]?.id ?? "");
+          goToView("documents");
+          closePalette();
+        },
+      },
+      {
         id: "go-settings",
         label: "Go to Settings",
         hint: "Navigation",
@@ -1821,6 +2128,7 @@ export default function App() {
       markAllNotificationsRead,
       runAlertRulesCheck,
       searchSelection?.companySymbol,
+      searchSelection?.documentSymbol,
       searchSelection?.discoveryQuery,
       searchSelection?.filingsSymbol,
       searchSelection?.newsSymbol,
@@ -2068,6 +2376,19 @@ export default function App() {
             setSearchSelection={setSearchSelection}
           />
         );
+      case "documents":
+        return (
+          <DocumentViewerView
+            searchSelection={searchSelection}
+            dataMode={dataMode}
+            activeCitationId={activeCitationId}
+            setActiveCitationId={setActiveCitationId}
+            goToView={goToView}
+            setSearchSelection={setSearchSelection}
+            addFavorite={addFavorite}
+            isFavorited={isFavorited}
+          />
+        );
       case "settings":
         return (
           <SettingsView
@@ -2093,6 +2414,7 @@ export default function App() {
   }, [
     activeView,
     addFavorite,
+    activeCitationId,
     activeChatThreadId,
     dashboardPreferences,
     dataMode,
@@ -5813,6 +6135,321 @@ function NewsView(props: {
               {!(sentimentFeed?.articles ?? []).length ? (
                 <p>No sentiment articles available for this symbol.</p>
               ) : null}
+            </div>
+          )}
+        </article>
+      </div>
+    </section>
+  );
+}
+
+function DocumentViewerView(props: {
+  searchSelection: SearchSelection | null;
+  dataMode: DataMode;
+  activeCitationId: string;
+  setActiveCitationId: React.Dispatch<React.SetStateAction<string>>;
+  goToView: (view: ViewKey) => void;
+  setSearchSelection: (selection: SearchSelection) => void;
+  addFavorite: (favorite: Omit<FavoriteItem, "id" | "createdAt">) => void;
+  isFavorited: (favorite: Pick<FavoriteItem, "type" | "title" | "symbol">) => boolean;
+}) {
+  const [symbolFilter, setSymbolFilter] = useState("all");
+  const [activeDocumentId, setActiveDocumentId] = useState(RESEARCH_DOCUMENTS[0]?.id ?? "");
+  const [highlightMode, setHighlightMode] = useState<"all" | CitationCategory>("all");
+  const [lastSelectionStamp, setLastSelectionStamp] = useState<number>(0);
+  const {
+    searchSelection,
+    dataMode,
+    activeCitationId,
+    setActiveCitationId,
+    goToView,
+    setSearchSelection,
+    addFavorite,
+    isFavorited,
+  } = props;
+
+  useEffect(() => {
+    if (!searchSelection) return;
+    if (searchSelection.stamp === lastSelectionStamp) return;
+
+    if (searchSelection.documentSymbol) {
+      setSymbolFilter(searchSelection.documentSymbol.toUpperCase());
+    }
+
+    if (searchSelection.documentId) {
+      setActiveDocumentId(searchSelection.documentId);
+      const matched = RESEARCH_DOCUMENTS.find((document) => document.id === searchSelection.documentId);
+      if (matched) {
+        setActiveCitationId(matched.citations[0]?.id ?? "");
+      }
+    }
+
+    setLastSelectionStamp(searchSelection.stamp);
+  }, [lastSelectionStamp, searchSelection, setActiveCitationId]);
+
+  const symbolOptions = useMemo(() => {
+    return ["all", ...Array.from(new Set(RESEARCH_DOCUMENTS.map((document) => document.symbol))).sort()];
+  }, []);
+
+  const filteredDocuments = useMemo(() => {
+    return RESEARCH_DOCUMENTS.filter((document) =>
+      symbolFilter === "all" ? true : document.symbol === symbolFilter
+    );
+  }, [symbolFilter]);
+
+  useEffect(() => {
+    if (!filteredDocuments.length) {
+      setActiveDocumentId("");
+      setActiveCitationId("");
+      return;
+    }
+
+    const exists = filteredDocuments.some((document) => document.id === activeDocumentId);
+    if (!exists) {
+      const next = filteredDocuments[0];
+      setActiveDocumentId(next.id);
+      setActiveCitationId(next.citations[0]?.id ?? "");
+    }
+  }, [activeDocumentId, filteredDocuments, setActiveCitationId]);
+
+  const activeDocument =
+    filteredDocuments.find((document) => document.id === activeDocumentId) ?? filteredDocuments[0] ?? null;
+
+  const filteredCitations = useMemo(() => {
+    if (!activeDocument) return [];
+    return activeDocument.citations.filter((citation) =>
+      highlightMode === "all" ? true : citation.category === highlightMode
+    );
+  }, [activeDocument, highlightMode]);
+
+  useEffect(() => {
+    if (!filteredCitations.length) {
+      setActiveCitationId("");
+      return;
+    }
+
+    const exists = filteredCitations.some((citation) => citation.id === activeCitationId);
+    if (!exists) {
+      setActiveCitationId(filteredCitations[0].id);
+    }
+  }, [activeCitationId, filteredCitations, setActiveCitationId]);
+
+  const activeCitation =
+    filteredCitations.find((citation) => citation.id === activeCitationId) ?? filteredCitations[0] ?? null;
+
+  const getCitationClass = (category: CitationCategory) => {
+    if (category === "risk") return "citation-chip risk";
+    if (category === "financial") return "citation-chip financial";
+    if (category === "governance") return "citation-chip governance";
+    return "citation-chip guidance";
+  };
+
+  return (
+    <section className="page-wrap">
+      <PageHeader
+        title="Document Viewer"
+        subtitle="Inspect filings and presentations with citation anchors for explainable research."
+        dataMode={dataMode}
+      />
+
+      <div className="news-toolbar">
+        <div className="chip-row">
+          <select
+            className="type-select"
+            value={symbolFilter}
+            onChange={(event) => setSymbolFilter(event.target.value)}
+          >
+            {symbolOptions.map((symbol) => (
+              <option key={symbol} value={symbol}>
+                Symbol: {symbol === "all" ? "All" : symbol}
+              </option>
+            ))}
+          </select>
+          <select
+            className="type-select"
+            value={highlightMode}
+            onChange={(event) => setHighlightMode(event.target.value as "all" | CitationCategory)}
+          >
+            <option value="all">Citations: All</option>
+            <option value="guidance">Citations: Guidance</option>
+            <option value="risk">Citations: Risk</option>
+            <option value="financial">Citations: Financial</option>
+            <option value="governance">Citations: Governance</option>
+          </select>
+        </div>
+        <div className="chip-row">
+          <span className="chip">Documents: {filteredDocuments.length}</span>
+          <span className="chip">Anchors: {filteredCitations.length}</span>
+        </div>
+      </div>
+
+      <div className="document-layout">
+        <aside className="document-list-card">
+          <p className="results-title">Available Documents</p>
+          <div className="document-list-items">
+            {filteredDocuments.length ? (
+              filteredDocuments.map((document) => (
+                <button
+                  key={document.id}
+                  type="button"
+                  className={`document-list-item ${document.id === activeDocument?.id ? "active" : ""}`}
+                  onClick={() => {
+                    setActiveDocumentId(document.id);
+                    setActiveCitationId(document.citations[0]?.id ?? "");
+                    setSearchSelection({
+                      stamp: Date.now(),
+                      documentId: document.id,
+                      documentSymbol: document.symbol,
+                      companySymbol: document.symbol,
+                    });
+                  }}
+                >
+                  <p>{document.symbol} · {document.title}</p>
+                  <span>{document.type} · {new Date(document.date).toLocaleDateString()}</span>
+                </button>
+              ))
+            ) : (
+              <div className="list-item single-line">
+                <p>No documents available for this filter.</p>
+              </div>
+            )}
+          </div>
+        </aside>
+
+        <article className="document-viewer-card">
+          {activeDocument ? (
+            <>
+              <div className="document-head">
+                <div>
+                  <p className="discovery-symbol">{activeDocument.symbol}</p>
+                  <h3>{activeDocument.title}</h3>
+                  <p>{activeDocument.summary}</p>
+                </div>
+                <div className="chip-row">
+                  <span className="chip">{activeDocument.type}</span>
+                  <span className="chip">{activeDocument.sourceLabel}</span>
+                  <button
+                    type="button"
+                    className="favorite-icon-btn"
+                    onClick={() =>
+                      addFavorite({
+                        type: "filing",
+                        symbol: activeDocument.symbol,
+                        title: `${activeDocument.symbol} · ${activeDocument.title}`,
+                        subtitle: activeDocument.type,
+                        url: activeDocument.sourceUrl,
+                      })
+                    }
+                    aria-label="Save document to favorites"
+                  >
+                    {isFavorited({
+                      type: "filing",
+                      symbol: activeDocument.symbol,
+                      title: `${activeDocument.symbol} · ${activeDocument.title}`,
+                    }) ? (
+                      <BookmarkCheck size={14} />
+                    ) : (
+                      <Bookmark size={14} />
+                    )}
+                  </button>
+                </div>
+              </div>
+
+              <div className="document-body-grid">
+                <div className="document-page-mock" role="region" aria-label="Document preview pane">
+                  {activeDocument.sections.map((section) => {
+                    const sectionCitations = filteredCitations.filter(
+                      (citation) => citation.sectionId === section.id
+                    );
+
+                    return (
+                      <article key={section.id} className="document-section-block">
+                        <h4>{section.heading}</h4>
+                        <p>{section.content}</p>
+                        {sectionCitations.length ? (
+                          <div className="chip-row citation-chip-row">
+                            {sectionCitations.map((citation) => (
+                              <button
+                                key={citation.id}
+                                type="button"
+                                className={`${getCitationClass(citation.category)} ${
+                                  citation.id === activeCitation?.id ? "active" : ""
+                                }`}
+                                onClick={() => setActiveCitationId(citation.id)}
+                              >
+                                {citation.label}
+                              </button>
+                            ))}
+                          </div>
+                        ) : null}
+                      </article>
+                    );
+                  })}
+                </div>
+
+                <aside className="citation-sidebar">
+                  <div className="citation-sidebar-head">
+                    <p className="results-title">Citation Anchors</p>
+                    <span className="chip">{filteredCitations.length} anchors</span>
+                  </div>
+
+                  <div className="citation-list">
+                    {filteredCitations.length ? (
+                      filteredCitations.map((citation) => (
+                        <button
+                          key={citation.id}
+                          type="button"
+                          className={`citation-item ${citation.id === activeCitation?.id ? "active" : ""}`}
+                          onClick={() => setActiveCitationId(citation.id)}
+                        >
+                          <div className="citation-item-head">
+                            <span className={getCitationClass(citation.category)}>{citation.category}</span>
+                            <span>
+                              p.{citation.page} · {citation.lines}
+                            </span>
+                          </div>
+                          <p>{citation.label}</p>
+                          <small>Confidence: {(citation.confidence * 100).toFixed(0)}%</small>
+                        </button>
+                      ))
+                    ) : (
+                      <div className="list-item single-line">
+                        <p>No citation anchors in this category.</p>
+                      </div>
+                    )}
+                  </div>
+
+                  {activeCitation ? (
+                    <div className="citation-detail-card">
+                      <p className="results-title">Selected Citation</p>
+                      <h4>{activeCitation.label}</h4>
+                      <blockquote>{activeCitation.quote}</blockquote>
+                      <div className="chip-row">
+                        <span className="chip">Page {activeCitation.page}</span>
+                        <span className="chip">Lines {activeCitation.lines}</span>
+                      </div>
+                      <button
+                        type="button"
+                        className="secondary-btn mini-btn"
+                        onClick={() => {
+                          setSearchSelection({
+                            stamp: Date.now(),
+                            chatPrompt: `Use citation ${activeCitation.label} from ${activeDocument.symbol} to explain implications.`,
+                            companySymbol: activeDocument.symbol,
+                          });
+                          goToView("chat");
+                        }}
+                      >
+                        Ask Iris with this citation
+                      </button>
+                    </div>
+                  ) : null}
+                </aside>
+              </div>
+            </>
+          ) : (
+            <div className="list-item single-line">
+              <p>Select a document to open the viewer.</p>
             </div>
           )}
         </article>

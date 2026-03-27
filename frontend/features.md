@@ -137,9 +137,12 @@ Status: [x] Completed
 
 ### 9) Document Viewer + Citation Highlighting (Frontend Shell)
 
+Status: [x] Completed
+
 #### Scope
-- PDF viewer panel
-- Highlight anchor placeholders for future backend citations
+- [x] PDF-like viewer panel with document sections and scrollable reading surface
+- [x] Citation anchor placeholders with categories, confidence, and source coordinates
+- [x] Citation-to-chat handoff and global search integration for documents
 
 ---
 
