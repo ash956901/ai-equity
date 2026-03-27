@@ -1,6 +1,7 @@
 """Vector search tools wrapping VectorService."""
 
 from typing import Any, Dict, List, Optional
+from uuid import UUID
 
 from langchain_core.tools import tool
 

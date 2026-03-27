@@ -54,9 +54,9 @@ def _get_model_kwargs() -> dict[str, Any]:
             temperature=s.llm_temperature,
         )
     elif s.llm_provider == "deepseek":
-        from langchain_openai import ChatOpenAI
+        from src.agents.middleware_openai_compat import StrictOpenAICompatChatOpenAI
 
-        kwargs["model"] = ChatOpenAI(
+        kwargs["model"] = StrictOpenAICompatChatOpenAI(
             model=s.get_llm_model(),
             api_key=s.deepseek_api_key or "",
             base_url=s.deepseek_base_url,

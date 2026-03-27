@@ -1,3 +1,15 @@
 /.venv/
 *.env
 /data/
+.DS_Store
+
+# Python bytecode and caches
+__pycache__/
+*.py[cod]
+
+# Logs and local run artifacts
+*.log
+workflow_runs/
+
+# Frontend build artifacts
+frontend/dist/

@@ -1,0 +1,4 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+    "model":"gpt-5.3-codex"
+}
