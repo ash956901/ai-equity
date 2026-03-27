@@ -1,9 +1,19 @@
-"""Market data service namespace.
+"""Market data service namespace."""
 
-This namespace will host focused quote/fundamentals/ratios services.
-For now it re-exports the existing real-time service to preserve behavior.
-"""
+from src.services.market_data.context import MarketDataContext
+from src.services.market_data.enrichment_service import (
+    CompanyEnrichmentService,
+    CompanySearchService,
+)
+from src.services.market_data.financials_service import FinancialStatementsService
+from src.services.market_data.quotes_service import QuotesService
+from src.services.market_data.ratios_service import RatiosService
 
-from src.services.realtime_data import RealTimeDataService
-
-__all__ = ["RealTimeDataService"]
+__all__ = [
+    "MarketDataContext",
+    "QuotesService",
+    "FinancialStatementsService",
+    "RatiosService",
+    "CompanyEnrichmentService",
+    "CompanySearchService",
+]
