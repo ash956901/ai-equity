@@ -2,15 +2,15 @@ import sys
 import os
 import uuid
 import argparse
+from pathlib import Path
 
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+ROOT_DIR = Path(__file__).resolve().parents[1]
+sys.path.append(str(ROOT_DIR))
 
 from src.agents import build_research_agent
 
 
-DEFAULT_PDF_PATH = os.path.abspath(
-    os.path.join(os.path.dirname(__file__), "data", "RIL-Integrated-Annual-Report-2024-25.pdf")
-)
+DEFAULT_PDF_PATH = str(ROOT_DIR / "data" / "RIL-Integrated-Annual-Report-2024-25.pdf")
 DEFAULT_QUERY = "What are the key financial highlights and revenue figures from the uploaded document?"
 
 

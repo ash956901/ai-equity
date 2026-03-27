@@ -1,7 +1,10 @@
 """Minimal debug to find exact import error."""
-import sys, os, warnings
+import os
+import sys
+import warnings
+
 warnings.filterwarnings("ignore")
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 print("1. Testing config...", flush=True)
 try:
