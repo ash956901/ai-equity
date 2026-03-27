@@ -8,8 +8,13 @@ from fastapi import BackgroundTasks, HTTPException
 from sqlalchemy.orm import Session
 
 from src.db.models import Company
+from src.services.market_data.context import MarketDataContext
+from src.services.market_data.enrichment_service import (
+    CompanyEnrichmentService,
+    CompanySearchService,
+)
+from src.services.market_data.quotes_service import QuotesService
 from src.services.financial_service import FinancialService
-from src.services.realtime_data import RealTimeDataService
 from src.utils.data_sources import company_sources, financial_sources, quote_sources
 
 
@@ -18,7 +23,10 @@ class CompaniesService:
 
     def __init__(self, db: Session):
         self.db = db
-        self._realtime = RealTimeDataService(db)
+        self._market_data_context = MarketDataContext(db)
+        self._quotes = QuotesService(self._market_data_context)
+        self._enrichment = CompanyEnrichmentService(self._market_data_context)
+        self._search = CompanySearchService(self._market_data_context)
         self._financial = FinancialService(db)
 
     def list_companies(
@@ -62,7 +70,7 @@ class CompaniesService:
         }
 
     def search_companies(self, query: str, limit: int) -> list[dict[str, Any]]:
-        return self._realtime.find_company(query, limit)
+        return self._search.find_company(query, limit)
 
     def get_company(self, company_id: UUID, background_tasks: BackgroundTasks) -> dict[str, Any]:
         company = self.db.query(Company).filter(Company.id == company_id).first()
@@ -94,7 +102,7 @@ class CompaniesService:
         }
 
     async def get_quote(self, company_id: UUID) -> dict[str, Any]:
-        result = await self._realtime.get_quote(company_id)
+        result = await self._quotes.get_quote(company_id)
         company = self.db.query(Company).filter(Company.id == company_id).first()
         ticker = company.ticker_nse if company else None
         result["data_sources"] = quote_sources(result.get("source", ""), ticker)
@@ -116,7 +124,7 @@ class CompaniesService:
         return result
 
     def enrich_company(self, company_id: UUID) -> dict[str, Any]:
-        return self._realtime.enrich_company(company_id)
+        return self._enrichment.enrich_company(company_id)
 
     def refresh_company(self, company_id: UUID) -> dict[str, Any]:
         from src.etl.tasks import refresh_company as refresh_task

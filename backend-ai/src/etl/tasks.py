@@ -2,7 +2,7 @@
 
 import logging
 from datetime import datetime
-from typing import Optional
+from typing import Any, Optional
 from uuid import UUID
 
 from src.celery_app import app
@@ -79,8 +79,10 @@ def enrich_companies_batch(self, batch_size: int = 200):
     """
     db = SessionLocal()
     run = _log_etl_run(db, "company_enrichment")
+    context = None
     try:
-        from src.services.realtime_data import RealTimeDataService
+        from src.services.market_data.context import MarketDataContext
+        from src.services.market_data.enrichment_service import CompanyEnrichmentService
 
         companies = (
             db.query(Company)
@@ -91,11 +93,13 @@ def enrich_companies_batch(self, batch_size: int = 200):
             .limit(batch_size)
             .all()
         )
+
+        context = MarketDataContext(db)
+        enrichment_service = CompanyEnrichmentService(context)
         enriched = 0
         for company in companies:
             try:
-                svc = RealTimeDataService(db)
-                result = svc.enrich_company(company.id)
+                result = enrichment_service.enrich_company(company.id)
                 if result.get("enriched"):
                     enriched += 1
             except Exception as e:
@@ -107,6 +111,8 @@ def enrich_companies_batch(self, batch_size: int = 200):
         _finish_etl_run(db, run, status="failed", error=str(e))
         raise
     finally:
+        if context is not None:
+            context.close()
         db.close()
 
 
@@ -114,15 +120,20 @@ def enrich_companies_batch(self, batch_size: int = 200):
 def enrich_single_company(self, company_id: str):
     """On-demand enrichment for a specific company."""
     db = SessionLocal()
+    context = None
     try:
-        from src.services.realtime_data import RealTimeDataService
+        from src.services.market_data.context import MarketDataContext
+        from src.services.market_data.enrichment_service import CompanyEnrichmentService
 
-        svc = RealTimeDataService(db)
-        return svc.enrich_company(UUID(company_id))
+        context = MarketDataContext(db)
+        service = CompanyEnrichmentService(context)
+        return service.enrich_company(UUID(company_id))
     except Exception as e:
         logger.exception("Single company enrich failed for %s", company_id)
         raise
     finally:
+        if context is not None:
+            context.close()
         db.close()
 
 
@@ -136,8 +147,10 @@ def refresh_financials_batch(self, batch_size: int = 100):
     """Scrape and persist financial data for companies lacking it."""
     db = SessionLocal()
     run = _log_etl_run(db, "financials_refresh")
+    context = None
     try:
-        from src.services.realtime_data import RealTimeDataService
+        from src.services.market_data.context import MarketDataContext
+        from src.services.market_data.financials_service import FinancialStatementsService
 
         from sqlalchemy import func
         from src.db.models import FinancialStatementRaw
@@ -157,11 +170,13 @@ def refresh_financials_batch(self, batch_size: int = 100):
             .all()
         )
 
+        context = MarketDataContext(db)
+        financials_service = FinancialStatementsService(context)
+
         fetched = 0
         for company in companies:
             try:
-                svc = RealTimeDataService(db)
-                result = svc.get_financials(company.id)
+                result = financials_service.get_financials(company.id)
                 if result.get("periods") or result.get("raw_data"):
                     fetched += 1
             except Exception as e:
@@ -173,6 +188,8 @@ def refresh_financials_batch(self, batch_size: int = 100):
         _finish_etl_run(db, run, status="failed", error=str(e))
         raise
     finally:
+        if context is not None:
+            context.close()
         db.close()
 
 
@@ -236,10 +253,13 @@ def crawl_ir_pages(
 @app.task(bind=True, name="etl.refresh_company")
 def refresh_company(self, company_id: str):
     """Full refresh for a single company: enrich + financials + filings."""
-    from celery import chain
+    import importlib
 
-    chain(
-        enrich_single_company.s(company_id),
-        crawl_nse_filings.s(company_id=company_id),
-        crawl_ir_pages.s(company_id=company_id),
-    ).apply_async()
+    celery_mod = importlib.import_module("celery")
+    chain_fn = getattr(celery_mod, "chain")
+
+    enrich_sig: Any = enrich_single_company.s(company_id)
+    nse_sig: Any = crawl_nse_filings.s(company_id=company_id)
+    ir_sig: Any = crawl_ir_pages.s(company_id=company_id)
+    workflow: Any = chain_fn(enrich_sig, nse_sig, ir_sig)
+    workflow.apply_async()
