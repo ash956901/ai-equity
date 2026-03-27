@@ -6,7 +6,7 @@ from uuid import UUID
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from src.agents import build_research_agent
+from src.domains.compare.service import CompareService
 
 router = APIRouter(prefix="/compare", tags=["compare"])
 
@@ -26,28 +26,13 @@ class CompareRequest(BaseModel):
 @router.post("/")
 def compare_companies(request: CompareRequest) -> dict[str, Any]:
     """Compare 2-5 companies using the deep agent orchestrator."""
-    agent = build_research_agent()
-
-    company_ids_str = ", ".join(str(cid) for cid in request.company_ids)
-    user_message = (
-        f"{request.query}\n\n"
-        f"[Context: user_id={request.user_id}, "
-        f"company_ids=[{company_ids_str}], "
-        f"expertise_level={request.expertise_level}]"
-    )
-
+    service = CompareService()
     try:
-        result = agent.invoke(
-            {"messages": [{"role": "user", "content": user_message}]},
-            config={
-                "configurable": {"thread_id": f"compare-{request.user_id}"}
-            },
+        return service.compare(
+            user_id=str(request.user_id),
+            company_ids=[str(company_id) for company_id in request.company_ids],
+            query=request.query,
+            expertise_level=request.expertise_level,
         )
-        response_text = result["messages"][-1].content
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
-    return {
-        "response": response_text,
-        "tokens_used": 0,
-    }

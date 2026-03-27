@@ -3,12 +3,12 @@
 from typing import Any, Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from src.db.database import get_db
-from src.db.models import Company, SavedScreen
+from src.domains.screens.service import ScreensService
 
 router = APIRouter(prefix="/screens", tags=["screens"])
 
@@ -30,61 +30,29 @@ class RunScreenRequest(BaseModel):
 @router.get("/")
 def list_screens(user_id: UUID, db: Session = Depends(get_db)) -> list[dict[str, Any]]:
     """List saved screens for a user."""
-    screens = (
-        db.query(SavedScreen)
-        .filter(SavedScreen.user_id == user_id)
-        .order_by(SavedScreen.created_at.desc())
-        .all()
-    )
-    return [
-        {
-            "id": str(s.id),
-            "name": s.name,
-            "filters": s.filters or {},
-            "created_at": s.created_at.isoformat(),
-        }
-        for s in screens
-    ]
+    service = ScreensService(db)
+    return service.list_screens(user_id)
 
 
 @router.post("/", status_code=201)
 def save_screen(request: SaveScreenRequest, db: Session = Depends(get_db)):
     """Save a screen filter configuration."""
-    screen = SavedScreen(
+    service = ScreensService(db)
+    return service.save_screen(
         user_id=request.user_id,
         name=request.name,
         filters=request.filters,
     )
-    db.add(screen)
-    db.commit()
-    db.refresh(screen)
-    return {"id": str(screen.id), "name": screen.name}
 
 
 @router.post("/run")
 def run_screen(request: RunScreenRequest, db: Session = Depends(get_db)) -> list[dict[str, Any]]:
     """Execute a screen query against the companies database."""
-    query = db.query(Company).filter(Company.listing_status == "active")
-
-    if request.sector:
-        query = query.filter(Company.sector == request.sector)
-    if request.industry:
-        query = query.filter(Company.industry == request.industry)
-    if request.min_market_cap:
-        query = query.filter(Company.market_cap_inr >= request.min_market_cap)
-    if request.max_market_cap:
-        query = query.filter(Company.market_cap_inr <= request.max_market_cap)
-
-    companies = query.order_by(Company.market_cap_inr.desc().nullslast()).limit(request.limit).all()
-    return [
-        {
-            "id": str(c.id),
-            "name": c.name,
-            "ticker_nse": c.ticker_nse,
-            "ticker_bse": c.ticker_bse,
-            "sector": c.sector,
-            "industry": c.industry,
-            "market_cap_inr": c.market_cap_inr,
-        }
-        for c in companies
-    ]
+    service = ScreensService(db)
+    return service.run_screen(
+        sector=request.sector,
+        industry=request.industry,
+        min_market_cap=request.min_market_cap,
+        max_market_cap=request.max_market_cap,
+        limit=request.limit,
+    )
