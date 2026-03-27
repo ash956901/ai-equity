@@ -1,0 +1,106 @@
+{
+  "answer": "Research completed.\nGoal: analyze the document provided which has reliance company details and provide a research analy\nInsights generated: 0\nTables available: 0\nGraph series: 0\nDocument summaries: 0\nWorkflow run folder: workflow_runs\\2026-03-22\\20-36-23_analyze_the_document_provided_which_has_reliance_company_det\nExecutive summary: No major insights detected.",
+  "tables": [],
+  "graph_data": [],
+  "urls": [],
+  "insights": [],
+  "parsed_document_summaries": [],
+  "json_output": {
+    "plan": [
+      "DocumentIntelligenceAgent",
+      "RetrievalAgent",
+      "WebSearchAgent",
+      "ReportGenerationAgent"
+    ],
+    "agent_outputs": {
+      "DocumentIntelligenceAgent": {
+        "agent": "DocumentIntelligenceAgent",
+        "reasoning_trace": [
+          {
+            "step": 1,
+            "action": "pdf_parser",
+            "target": "ai-equity\\backend-ai\\data\\RIL-Integrated-Annual-Report-2024-25.pdf"
+          },
+          {
+            "step": 2,
+            "action": "url_fetcher",
+            "target": "none"
+          }
+        ],
+        "documents": [
+          {
+            "error": "PDF not found: ai-equity\\backend-ai\\data\\RIL-Integrated-Annual-Report-2024-25.pdf"
+          },
+          {
+            "error": "Invalid URL 'none': No scheme supplied. Perhaps you meant https://none?",
+            "source": "none"
+          }
+        ],
+        "document_summaries": [],
+        "tables": [],
+        "insights": [],
+        "summary": "Processed 2 inputs (docs/urls)."
+      },
+      "RetrievalAgent": {
+        "agent": "RetrievalAgent",
+        "reasoning_trace": [
+          {
+            "step": 1,
+            "action": "generate_embeddings",
+            "reason": "Need query representation for semantic retrieval."
+          },
+          {
+            "step": 2,
+            "action": "vector_db_query",
+            "reason": "Fetch top-K semantically relevant chunks."
+          },
+          {
+            "step": 3,
+            "action": "stop",
+            "reason": "No additional retrieval strategy configured."
+          }
+        ],
+        "retrieval_results": [],
+        "summary": "Retrieved 0 chunks."
+      },
+      "WebSearchAgent": {
+        "agent": "WebSearchAgent",
+        "reasoning_trace": [
+          {
+            "step": 1,
+            "action": "web_search",
+            "reason": "Fetch latest public context when requested."
+          }
+        ],
+        "results": [],
+        "summary": "Fetched 0 web results."
+      },
+      "ReportGenerationAgent": {
+        "agent": "ReportGenerationAgent",
+        "reasoning_trace": [
+          {
+            "step": 1,
+            "action": "aggregate_outputs",
+            "reason": "Assemble executive, detailed, and bullet outputs."
+          }
+        ],
+        "executive_summary": "No major insights detected.",
+        "bullet_insights": [],
+        "detailed_report": {
+          "financial": {},
+          "comparison": {},
+          "portfolio": {},
+          "documents": [],
+          "retrieval_hits": 0
+        },
+        "summary": "Report packages generated."
+      }
+    },
+    "financial_analysis": {},
+    "comparison_result": {},
+    "portfolio_result": {},
+    "retrieval_results_count": 0
+  },
+  "workflow_run_dir": "workflow_runs\\2026-03-22\\20-36-23_analyze_the_document_provided_which_has_reliance_company_det",
+  "errors": []
+}

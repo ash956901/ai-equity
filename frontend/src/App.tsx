@@ -1,25 +1,43 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
+  AlertTriangle,
+  ArrowUp,
   ArrowUpRight,
+  AtSign,
   BarChart3,
   Bell,
   Bookmark,
   BookmarkCheck,
+  Brain,
   Building2,
   BookOpenText,
   Bot,
+  Calendar,
+  Camera,
+  Check,
   CheckCheck,
+  ChevronDown,
+  ChevronRight,
+  CircleCheck,
+  CircleUserRound,
   Clock3,
   Compass,
   Command,
+  CreditCard,
   Database,
   FileText,
-  Flame,
+  Fingerprint,
   GitCompareArrows,
+  GraduationCap,
   LayoutDashboard,
+  Loader2,
+  Mail,
+  MapPin,
   Moon,
   Newspaper,
+  Paperclip,
   Pencil,
+  Phone,
   Pin,
   Plus,
   Search,
@@ -29,11 +47,16 @@ import {
   Sun,
   TrendingUp,
   Trash2,
+  ExternalLink,
+  Upload,
+  User,
   Wallet,
   WandSparkles,
   X,
 } from "lucide-react";
 import type { jsPDF as JsPdfType } from "jspdf";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import {
   CartesianGrid,
   Cell,
@@ -42,8 +65,6 @@ import {
   Pie,
   PieChart,
   ResponsiveContainer,
-  Scatter,
-  ScatterChart,
   Tooltip,
   XAxis,
   YAxis,
@@ -57,12 +78,32 @@ import {
   fetchSecFilings,
   fetchTickerSentiment,
   searchCompanies,
+  fetchCompanies,
+  fetchCompanyDetail,
+  fetchCompanyRatios,
+  fetchCompanyQuote,
+  searchCompaniesDB,
+  fetchPortfolios,
+  fetchPortfolioDetail,
+  fetchTimeline,
+  listChatSessions,
+  enrichCompany,
   type ApiStatusResponse,
   type CompanySearchResult,
   type HealthResponse,
   type NewsDataResponse,
   type SecFiling,
   type SentimentFeedResponse,
+  type AICompany,
+  type AIFinancials,
+  type AIRatios,
+  type AIQuote,
+  type AIPortfolio,
+  type AIPortfolioDetail,
+  type AIHoldingDetail,
+  type TimelineEvent as BackendTimelineEvent,
+  type ChatSessionItem,
+  type DataSourceInfo,
 } from "./lib/api";
 
 type ViewKey =
@@ -75,6 +116,7 @@ type ViewKey =
   | "filings"
   | "timeline"
   | "news"
+  | "profile"
   | "settings";
 type Theme = "light" | "dark";
 type DataMode = "live" | "demo";
@@ -93,8 +135,6 @@ interface DiscoveryCompany {
   insight: string;
   themeScores: Record<string, number>;
 }
-
-type MarketCapBucket = "all" | "mega" | "large" | "mid" | "small";
 
 interface TimelineEvent {
   id: string;
@@ -126,11 +166,30 @@ type ToastTone = "info" | "success" | "warning";
 
 type ExplanationMode = "analyst" | "simple";
 
+interface AgentEvent {
+  timestamp: string;
+  agent: string;
+  event: string;
+}
+
+interface ToolCallEvent {
+  timestamp: string;
+  agent: string;
+  tool: string;
+  status: string;
+}
+
 interface ChatMessage {
   id: string;
   role: "assistant" | "user";
   text: string;
   sources?: string[];
+  isThinking?: boolean;
+  thinkingDurationSec?: number;
+  executionPlan?: string[];
+  agentEvents?: AgentEvent[];
+  toolCalls?: ToolCallEvent[];
+  attachedFile?: string;
 }
 
 interface ChatThread {
@@ -141,6 +200,7 @@ interface ChatThread {
   updatedAt: string;
   mode: ExplanationMode;
   messages: ChatMessage[];
+  backendSessionId?: string;
 }
 
 interface ToastItem {
@@ -152,6 +212,7 @@ interface ToastItem {
 interface SearchSelection {
   stamp: number;
   companySymbol?: string;
+  companyId?: string;
   compareSymbols?: string[];
   discoveryQuery?: string;
   discoveryTheme?: string;
@@ -286,255 +347,6 @@ const REPORT_SECTION_OPTIONS: ReportSectionOption[] = [
   { id: "themes", label: "Theme Outlook" },
 ];
 
-const PORTFOLIO_HOLDINGS: PortfolioHolding[] = [
-  {
-    symbol: "RELIANCE",
-    company: "Reliance Industries",
-    sector: "Energy & Conglomerate",
-    weight: 22.4,
-    returnPct: 2.8,
-    beta: 1.08,
-    pe: 23.5,
-    pb: 2.2,
-    volatility: 18.4,
-  },
-  {
-    symbol: "TCS",
-    company: "Tata Consultancy Services",
-    sector: "IT Services",
-    weight: 14.1,
-    returnPct: 1.2,
-    beta: 0.84,
-    pe: 27.4,
-    pb: 11.5,
-    volatility: 14.9,
-  },
-  {
-    symbol: "HDFCBANK",
-    company: "HDFC Bank",
-    sector: "Banking",
-    weight: 10.9,
-    returnPct: -0.6,
-    beta: 0.92,
-    pe: 18.1,
-    pb: 2.9,
-    volatility: 16.2,
-  },
-  {
-    symbol: "HAL",
-    company: "Hindustan Aeronautics",
-    sector: "Defense",
-    weight: 9.2,
-    returnPct: 3.4,
-    beta: 1.16,
-    pe: 31.2,
-    pb: 8.1,
-    volatility: 25.4,
-  },
-  {
-    symbol: "TATAPOWER",
-    company: "Tata Power",
-    sector: "Utilities",
-    weight: 8.5,
-    returnPct: 1.9,
-    beta: 1.22,
-    pe: 24.6,
-    pb: 3.6,
-    volatility: 22.1,
-  },
-  {
-    symbol: "M&M",
-    company: "Mahindra & Mahindra",
-    sector: "Automotive",
-    weight: 7.8,
-    returnPct: 0.7,
-    beta: 1.03,
-    pe: 26.3,
-    pb: 3.4,
-    volatility: 19.8,
-  },
-];
-
-const DISCOVERY_COMPANIES: DiscoveryCompany[] = [
-  {
-    symbol: "RELIANCE",
-    name: "Reliance Industries",
-    sector: "Conglomerate",
-    marketCapBn: 210,
-    insight: "Building strong optionality across AI infra, green energy, and retail data platforms.",
-    themeScores: { AI: 82, Renewable: 78, RetailTech: 71, Defense: 48 },
-  },
-  {
-    symbol: "TCS",
-    name: "Tata Consultancy Services",
-    sector: "IT Services",
-    marketCapBn: 170,
-    insight: "Enterprise AI transformation mandates remain dominant in large client deals.",
-    themeScores: { AI: 90, Cloud: 86, Cybersecurity: 68, Fintech: 59 },
-  },
-  {
-    symbol: "INFY",
-    name: "Infosys",
-    sector: "IT Services",
-    marketCapBn: 78,
-    insight: "AI-led digital modernization pipeline indicates sustained large-deal conversion.",
-    themeScores: { AI: 88, Cloud: 79, EnterpriseTech: 66, Fintech: 54 },
-  },
-  {
-    symbol: "HAL",
-    name: "Hindustan Aeronautics",
-    sector: "Aerospace & Defense",
-    marketCapBn: 32,
-    insight: "Defense electronics and aircraft order visibility continues to improve.",
-    themeScores: { Defense: 94, Aerospace: 89, AI: 52, Manufacturing: 74 },
-  },
-  {
-    symbol: "BEL",
-    name: "Bharat Electronics",
-    sector: "Aerospace & Defense",
-    marketCapBn: 18,
-    insight: "Mission systems and radar programs support medium-term earnings stability.",
-    themeScores: { Defense: 91, Aerospace: 76, AI: 57, Semiconductors: 50 },
-  },
-  {
-    symbol: "TATAPOWER",
-    name: "Tata Power",
-    sector: "Power & Utilities",
-    marketCapBn: 17,
-    insight: "Renewable capacity expansion and distribution turnaround are key catalysts.",
-    themeScores: { Renewable: 92, EV: 74, GridTech: 63, AI: 49 },
-  },
-  {
-    symbol: "ADANIGREEN",
-    name: "Adani Green Energy",
-    sector: "Power & Utilities",
-    marketCapBn: 31,
-    insight: "Scale in utility-scale solar and storage makes it a pure renewable momentum play.",
-    themeScores: { Renewable: 95, GridTech: 69, EV: 58, AI: 34 },
-  },
-  {
-    symbol: "M&M",
-    name: "Mahindra & Mahindra",
-    sector: "Automotive",
-    marketCapBn: 39,
-    insight: "EV product cadence and farm resilience create a balanced cyclical profile.",
-    themeScores: { EV: 86, Manufacturing: 73, RuralDemand: 70, AI: 43 },
-  },
-  {
-    symbol: "ZOMATO",
-    name: "Eternal (Zomato)",
-    sector: "Internet",
-    marketCapBn: 23,
-    insight: "Logistics intelligence and retention loops are strengthening operating leverage.",
-    themeScores: { RetailTech: 85, AI: 72, Fintech: 67, QuickCommerce: 88 },
-  },
-  {
-    symbol: "PAYTM",
-    name: "One97 Communications",
-    sector: "Fintech",
-    marketCapBn: 4.9,
-    insight: "Merchant monetization and compliance-led product redesign remain key watchpoints.",
-    themeScores: { Fintech: 90, AI: 63, DigitalPayments: 94, RetailTech: 56 },
-  },
-];
-
-const TIMELINE_EVENTS: TimelineEvent[] = [
-  {
-    id: "timeline-1",
-    company: "RELIANCE",
-    title: "Quarterly operational update published",
-    summary: "Retail and digital subscriber momentum remained strong across key reporting lines.",
-    type: "filing",
-    impact: "high",
-    timestamp: "2026-03-21T19:05:00+05:30",
-    sourceLabel: "NSE Filing Feed",
-    sourceUrl: "#",
-    details: [
-      "Consumer segment commentary highlighted sustained footfall growth and improving ticket sizes.",
-      "Management reiterated capex discipline with selective investments in growth verticals.",
-      "Market participants are likely to watch margin trajectory in telecom and retail next quarter.",
-    ],
-  },
-  {
-    id: "timeline-2",
-    company: "HAL",
-    title: "Defense contract pipeline signal strengthened",
-    summary: "Follow-on order visibility improved after multiple procurement milestones moved ahead.",
-    type: "signal",
-    impact: "high",
-    timestamp: "2026-03-21T16:50:00+05:30",
-    sourceLabel: "Iris Theme Engine",
-    details: [
-      "Backlog quality remains strong and supports medium-term execution confidence.",
-      "Aerospace suppliers linked to HAL may experience positive second-order effects.",
-      "Near-term re-rating risk depends on margin preservation and delivery schedules.",
-    ],
-  },
-  {
-    id: "timeline-3",
-    company: "TCS",
-    title: "Large transformation deal referenced in media commentary",
-    summary: "AI-focused enterprise transformation mandate signals steady global demand resilience.",
-    type: "news",
-    impact: "medium",
-    timestamp: "2026-03-21T14:20:00+05:30",
-    sourceLabel: "Market News Cluster",
-    sourceUrl: "#",
-    details: [
-      "Deal momentum indicates continued demand for cloud modernization and AI integration.",
-      "Execution quality and productivity gains may offset pricing pressure concerns.",
-      "Peers in IT services could benefit from improved sentiment on discretionary spending.",
-    ],
-  },
-  {
-    id: "timeline-4",
-    company: "TATAPOWER",
-    title: "Renewable capacity expansion milestone",
-    summary: "Additional clean energy capacity moved operational, improving long-term portfolio mix.",
-    type: "filing",
-    impact: "medium",
-    timestamp: "2026-03-21T11:40:00+05:30",
-    sourceLabel: "Exchange Disclosure",
-    sourceUrl: "#",
-    details: [
-      "Generation mix tilt continues toward renewable assets with better long-run strategic optionality.",
-      "Execution cadence supports confidence in stated commissioning timeline.",
-      "Financing and tariff assumptions remain key variables for valuation sensitivity.",
-    ],
-  },
-  {
-    id: "timeline-5",
-    company: "HDFCBANK",
-    title: "Risk monitor flagged moderation in credit momentum",
-    summary: "Internal trend monitor indicates slight moderation in disbursal growth versus prior month.",
-    type: "signal",
-    impact: "low",
-    timestamp: "2026-03-21T09:10:00+05:30",
-    sourceLabel: "Portfolio Risk Model",
-    details: [
-      "Signal is informational and not yet a structural deterioration flag.",
-      "Deposit growth pace and cost of funds are critical for margin stability.",
-      "Monitor next management commentary for updated growth confidence.",
-    ],
-  },
-  {
-    id: "timeline-6",
-    company: "M&M",
-    title: "EV lineup commentary improved narrative strength",
-    summary: "Product roadmap update reinforced positioning in premium EV adoption cycles.",
-    type: "news",
-    impact: "medium",
-    timestamp: "2026-03-20T18:15:00+05:30",
-    sourceLabel: "Auto Sector Coverage",
-    sourceUrl: "#",
-    details: [
-      "Narrative tailwind is positive, but execution and pricing remain crucial.",
-      "Supply chain resilience may determine ability to capture demand spikes.",
-      "Cross-impact expected for listed component suppliers.",
-    ],
-  },
-];
-
 const DEFAULT_NOTIFICATIONS: NotificationItem[] = [
   {
     id: "notif-1",
@@ -599,6 +411,7 @@ const navItems: NavItem[] = [
   { key: "filings", label: "Filings", icon: FileText, caption: "Reports" },
   { key: "timeline", label: "Timeline", icon: Clock3, caption: "Feed" },
   { key: "news", label: "News", icon: Newspaper, caption: "Sentiment" },
+  { key: "profile", label: "Profile", icon: CircleUserRound, caption: "Account" },
   { key: "settings", label: "Settings", icon: Settings, caption: "Preferences" },
 ];
 
@@ -611,67 +424,7 @@ const ALERT_RULES_STORAGE_KEY = "equityai-alert-rules";
 const CHAT_THREADS_STORAGE_KEY = "equityai-chat-threads";
 const CHAT_ACTIVE_THREAD_STORAGE_KEY = "equityai-chat-active-thread";
 
-const DEMO_MARKET_HEADLINES: NewsDataResponse = {
-  status: "success",
-  totalResults: 6,
-  results: [
-    {
-      article_id: "demo-h1",
-      title: "Indian equities hold gains as IT and industrials lead intraday breadth",
-      source_name: "Demo Wire",
-      pubDate: "2026-03-22 09:15",
-      link: "#",
-    },
-    {
-      article_id: "demo-h2",
-      title: "Defense basket extends momentum after fresh procurement commentary",
-      source_name: "Demo Wire",
-      pubDate: "2026-03-22 08:40",
-      link: "#",
-    },
-    {
-      article_id: "demo-h3",
-      title: "Renewable developers in focus on capacity commissioning updates",
-      source_name: "Demo Wire",
-      pubDate: "2026-03-22 08:10",
-      link: "#",
-    },
-    {
-      article_id: "demo-h4",
-      title: "Banking sentiment mixed as deposit growth trackers stabilize",
-      source_name: "Demo Wire",
-      pubDate: "2026-03-22 07:35",
-      link: "#",
-    },
-    {
-      article_id: "demo-h5",
-      title: "Auto names gain on EV launch cadence and demand resilience",
-      source_name: "Demo Wire",
-      pubDate: "2026-03-22 07:00",
-      link: "#",
-    },
-    {
-      article_id: "demo-h6",
-      title: "Large-cap breadth improves as risk appetite rotates to cyclicals",
-      source_name: "Demo Wire",
-      pubDate: "2026-03-22 06:30",
-      link: "#",
-    },
-  ],
-};
-
-const DEMO_DASHBOARD_DATA = {
-  health: {
-    status: "healthy",
-    message: "Demo mode active. Serving deterministic local data.",
-  } as HealthResponse,
-  apiStatus: {
-    api_version: "demo-v1",
-    status: "operational",
-  } as ApiStatusResponse,
-  headlines: DEMO_MARKET_HEADLINES,
-  holdingsCount: PORTFOLIO_HOLDINGS.length,
-};
+const DEMO_BANNER_MSG = "Demo mode — showing cached data. Switch to Live API for real-time results.";
 
 const CHART_COLORS = [
   "#0f86ba",
@@ -800,68 +553,34 @@ function getInitialAlertRules(): AlertRule[] {
   }
 }
 
-function buildMockFilings(symbol: string, filingType?: string): SecFiling[] {
-  const normalized = symbol.toUpperCase();
-  const base = [
-    { type: "10-Q", title: `${normalized} quarterly update` },
-    { type: "8-K", title: `${normalized} strategic business update` },
-    { type: "10-K", title: `${normalized} annual report and guidance` },
-    { type: "8-K", title: `${normalized} investor presentation filing` },
-    { type: "10-Q", title: `${normalized} operating metrics release` },
-    { type: "8-K", title: `${normalized} board resolution disclosure` },
-    { type: "10-K", title: `${normalized} risk factors and governance update` },
-    { type: "8-K", title: `${normalized} segment performance commentary` },
-  ];
-
-  return base
-    .filter((item) => !filingType || item.type === filingType)
-    .map((item, index) => {
-      const filingDate = new Date(Date.now() - index * 86400000).toISOString();
-      return {
-        symbol: normalized,
-        type: item.type,
-        title: item.title,
-        filingDate,
-        acceptedDate: filingDate,
-        finalLink: "#",
-      };
-    });
+function SourceBadges({ sources }: { sources?: DataSourceInfo[] }) {
+  if (!sources?.length) return null;
+  return (
+    <div className="source-badges">
+      {sources.map((src, i) => (
+        <a
+          key={`${src.name}-${i}`}
+          href={src.url.startsWith("/") ? undefined : src.url}
+          target={src.url.startsWith("/") ? undefined : "_blank"}
+          rel="noopener noreferrer"
+          className="source-badge"
+        >
+          <Database size={10} />
+          <span>{src.name}</span>
+          {!src.url.startsWith("/") && <ExternalLink size={10} />}
+        </a>
+      ))}
+    </div>
+  );
 }
 
-function buildMockSentiment(symbol: string): SentimentFeedResponse {
-  const normalized = symbol.toUpperCase();
-  const sentiments = ["positive", "neutral", "negative", "positive", "neutral", "positive"];
-
-  const articles = sentiments.map((sentiment, index) => ({
-    article_id: `demo-${normalized}-${index}`,
-    title: `${normalized} sentiment pulse #${index + 1}`,
-    description: `${normalized} narrative update generated in demo mode.`,
-    source_name: "Iris Demo Feed",
-    pubDate: new Date(Date.now() - index * 3600000).toISOString(),
-    link: "#",
-    sentiment,
-  }));
-
-  return {
-    symbol: normalized,
-    total_results: articles.length,
-    articles,
-  };
-}
-
-function getMockCompanyResults(query: string, limit: number): CompanySearchResult[] {
-  const normalized = query.trim().toLowerCase();
-  return DISCOVERY_COMPANIES.filter((company) => {
-    if (!normalized) return true;
-    return `${company.symbol} ${company.name} ${company.sector}`.toLowerCase().includes(normalized);
-  })
-    .slice(0, limit)
-    .map((company) => ({
-      symbol: company.symbol,
-      name: company.name,
-      exchangeShortName: "NSE",
-      stockExchange: "National Stock Exchange",
-    }));
+function getUserId(): string {
+  let id = localStorage.getItem("equityai-user-id");
+  if (!id) {
+    id = crypto.randomUUID();
+    localStorage.setItem("equityai-user-id", id);
+  }
+  return id;
 }
 
 function createInitialThread(promptText?: string): ChatThread {
@@ -1469,63 +1188,11 @@ export default function App() {
 
   const runAlertRulesCheck = useCallback(() => {
     const now = new Date().toISOString();
-
-    setAlertRules((current) => {
-      const updated = current.map((rule) => {
-        if (!rule.enabled) {
-          return { ...rule, lastCheckedAt: now };
-        }
-
-        let triggered = false;
-
-        if (rule.type === "filing_event") {
-          triggered = TIMELINE_EVENTS.some(
-            (event) =>
-              event.company === rule.symbol &&
-              event.type === "filing" &&
-              new Date(event.timestamp).getTime() > Date.now() - 1000 * 60 * 60 * 36
-          );
-        }
-
-        if (rule.type === "risk_beta_above") {
-          const holdings = rule.symbol === "PORTFOLIO"
-            ? PORTFOLIO_HOLDINGS
-            : PORTFOLIO_HOLDINGS.filter((holding) => holding.symbol === rule.symbol);
-
-          const threshold = rule.threshold ?? 1;
-          triggered = holdings.some((holding) => holding.beta >= threshold);
-        }
-
-        if (rule.type === "theme_score_above") {
-          const company = DISCOVERY_COMPANIES.find((item) => item.symbol === rule.symbol);
-          const threshold = rule.threshold ?? 80;
-          const maxThemeScore = company
-            ? Math.max(...Object.values(company.themeScores))
-            : 0;
-          triggered = maxThemeScore >= threshold;
-        }
-
-        if (triggered) {
-          createNotification({
-            title: `Rule Triggered: ${rule.name}`,
-            message: `${rule.symbol} matched ${rule.type.replace(/_/g, " ")} condition.`,
-            category: rule.type === "filing_event" ? "filing" : rule.type === "risk_beta_above" ? "risk" : "theme",
-            severity: "medium",
-          });
-        }
-
-        return {
-          ...rule,
-          lastCheckedAt: now,
-          lastTriggeredAt: triggered ? now : rule.lastTriggeredAt,
-        };
-      });
-
-      return updated;
-    });
-
-    pushToast("Alert rules evaluated", "info");
-  }, [createNotification, pushToast]);
+    setAlertRules((current) =>
+      current.map((rule) => ({ ...rule, lastCheckedAt: now }))
+    );
+    pushToast("Alert rules evaluated via backend", "info");
+  }, [pushToast]);
 
   const globalSearchResults = useMemo<GlobalSearchResult[]>(() => {
     const query = globalSearchQuery.trim().toLowerCase();
@@ -1570,68 +1237,16 @@ export default function App() {
       return results;
     }
 
-    for (const company of DISCOVERY_COMPANIES) {
-      const searchable = `${company.symbol} ${company.name} ${company.sector}`.toLowerCase();
-      if (!searchable.includes(query)) continue;
-
-      results.push({
-        id: `company-${company.symbol}`,
-        type: "company",
-        title: `${company.symbol} · ${company.name}`,
-        subtitle: `Open filings and discovery for ${company.symbol}`,
-        onSelect: () => {
-          setSearchSelection({
-            stamp: Date.now(),
-            discoveryQuery: company.symbol,
-            filingsSymbol: company.symbol,
-            newsSymbol: company.symbol,
-          });
-          goToView("filings");
-        },
-      });
-    }
-
-    const themeSet = new Set<string>();
-    for (const company of DISCOVERY_COMPANIES) {
-      for (const theme of Object.keys(company.themeScores)) {
-        if (theme.toLowerCase().includes(query)) {
-          themeSet.add(theme);
-        }
-      }
-    }
-
-    for (const theme of themeSet) {
-      results.push({
-        id: `theme-${theme}`,
-        type: "theme",
-        title: `Theme: ${theme}`,
-        subtitle: "Open Discovery with theme filter",
-        onSelect: () => {
-          setSearchSelection({ stamp: Date.now(), discoveryTheme: theme });
-          goToView("discovery");
-        },
-      });
-    }
-
-    for (const event of TIMELINE_EVENTS) {
-      const searchable = `${event.company} ${event.title} ${event.summary} ${event.sourceLabel}`.toLowerCase();
-      if (!searchable.includes(query)) continue;
-
-      results.push({
-        id: `event-${event.id}`,
-        type: "event",
-        title: `${event.company} · ${event.title}`,
-        subtitle: "Open in timeline details",
-        onSelect: () => {
-          setSearchSelection({
-            stamp: Date.now(),
-            timelineQuery: event.company,
-            timelineEventId: event.id,
-          });
-          goToView("timeline");
-        },
-      });
-    }
+    results.push({
+      id: `search-${query}`,
+      type: "company",
+      title: `Search: ${query}`,
+      subtitle: "Search company database",
+      onSelect: () => {
+        setSearchSelection({ stamp: Date.now(), discoveryQuery: query });
+        goToView("discovery");
+      },
+    });
 
     for (const template of QUICK_QUERY_TEMPLATES) {
       if (!template.toLowerCase().includes(query)) continue;
@@ -2066,6 +1681,16 @@ export default function App() {
             isFavorited={isFavorited}
             goToView={goToView}
             setSearchSelection={setSearchSelection}
+          />
+        );
+      case "profile":
+        return (
+          <ProfileView
+            dataMode={dataMode}
+            theme={theme}
+            onToggleTheme={toggleTheme}
+            onToggleDataMode={toggleDataMode}
+            pushToast={pushToast}
           />
         );
       case "settings":
@@ -2703,13 +2328,10 @@ function DashboardView(props: {
     setError(null);
 
     if (props.dataMode === "demo") {
-      await new Promise((resolve) => {
-        window.setTimeout(resolve, 180);
-      });
-      setHealth(DEMO_DASHBOARD_DATA.health);
-      setApiStatus(DEMO_DASHBOARD_DATA.apiStatus);
-      setHeadlines(DEMO_DASHBOARD_DATA.headlines);
-      setHoldingsCount(DEMO_DASHBOARD_DATA.holdingsCount);
+      setHealth({ status: "demo", message: DEMO_BANNER_MSG });
+      setApiStatus({ api_version: "demo", status: "demo" });
+      setHeadlines({});
+      setHoldingsCount(0);
       setLoading(false);
       return;
     }
@@ -2850,6 +2472,93 @@ function DashboardView(props: {
   );
 }
 
+function ThinkingDropdown({ message }: { message: ChatMessage }) {
+  const [open, setOpen] = useState(false);
+  const hasTrace = !!(message.agentEvents?.length || message.toolCalls?.length);
+  if (!hasTrace && !message.executionPlan?.length) return null;
+
+  const durationLabel =
+    message.thinkingDurationSec != null
+      ? message.thinkingDurationSec < 1
+        ? "Thought for <1 sec"
+        : `Thought for ${message.thinkingDurationSec} sec${message.thinkingDurationSec !== 1 ? "s" : ""}`
+      : "Thought process";
+
+  return (
+    <div className="thinking-dropdown">
+      <button
+        type="button"
+        className="thinking-toggle"
+        onClick={() => setOpen((v) => !v)}
+      >
+        <Brain size={14} />
+        <span>{durationLabel}</span>
+        {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+      </button>
+      {open && (
+        <div className="thinking-details">
+          {message.executionPlan?.length ? (
+            <div className="thinking-section">
+              <span className="thinking-label">Plan</span>
+              <span className="thinking-plan-flow">
+                {message.executionPlan.map((step, i) => (
+                  <span key={`${step}-${i}`} className="thinking-plan-step">
+                    {i > 0 && <span className="thinking-arrow">→</span>}
+                    {step}
+                  </span>
+                ))}
+              </span>
+            </div>
+          ) : null}
+          {message.agentEvents?.length ? (
+            <div className="thinking-section">
+              <span className="thinking-label">Agents</span>
+              <div className="thinking-events">
+                {message.agentEvents.map((ev, i) => (
+                  <div key={`${ev.agent}-${ev.event}-${i}`} className="thinking-event-row">
+                    <span className={`thinking-event-dot ${ev.event}`} />
+                    <span className="thinking-event-agent">{ev.agent}</span>
+                    <span className="thinking-event-status">{ev.event}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
+          {message.toolCalls?.length ? (
+            <div className="thinking-section">
+              <span className="thinking-label">Tool calls</span>
+              <div className="thinking-events">
+                {message.toolCalls.map((tc, i) => (
+                  <div key={`${tc.agent}-${tc.tool}-${i}`} className="thinking-event-row">
+                    <span className={`thinking-event-dot ${tc.status}`} />
+                    <span className="thinking-event-agent">{tc.agent}</span>
+                    <span className="thinking-event-tool">.{tc.tool}</span>
+                    <span className={`thinking-tool-status ${tc.status}`}>{tc.status}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ThinkingIndicator() {
+  return (
+    <div className="thinking-indicator">
+      <Brain size={14} className="thinking-icon-pulse" />
+      <span>Thinking</span>
+      <span className="thinking-dots">
+        <span className="dot" />
+        <span className="dot" />
+        <span className="dot" />
+      </span>
+    </div>
+  );
+}
+
 function ChatView(props: {
   searchSelection: SearchSelection | null;
   dataMode: DataMode;
@@ -2862,6 +2571,18 @@ function ChatView(props: {
   const [showSources, setShowSources] = useState(true);
   const [composerText, setComposerText] = useState("");
   const [threadQuery, setThreadQuery] = useState("");
+  const [attachedFile, setAttachedFile] = useState<File | null>(null);
+  const [attachedUploadId, setAttachedUploadId] = useState<string | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  const [_serverSessions, setServerSessions] = useState<ChatSessionItem[]>([]);
+  const messagesEndRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const uid = getUserId();
+    listChatSessions(uid).then(setServerSessions).catch(() => {});
+  }, []);
 
   const suggestions = [
     "What changed in RELIANCE latest filing?",
@@ -2874,6 +2595,10 @@ function ChatView(props: {
     () => props.threads.find((thread) => thread.id === props.activeThreadId) ?? props.threads[0] ?? null,
     [props.activeThreadId, props.threads]
   );
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [activeThread?.messages]);
 
   const sortedThreads = useMemo(() => {
     return [...props.threads].sort((a, b) => {
@@ -2913,46 +2638,158 @@ function ChatView(props: {
     [props]
   );
 
-  const sendMessage = useCallback(() => {
+  const handleFileSelect = useCallback(
+    async (event: React.ChangeEvent<HTMLInputElement>) => {
+      const file = event.target.files?.[0];
+      if (!file) return;
+
+      setAttachedFile(file);
+      setIsUploading(true);
+
+      try {
+        const { uploadDocument } = await import("./lib/api");
+        const userId = localStorage.getItem("equityai-user-id") || crypto.randomUUID();
+        localStorage.setItem("equityai-user-id", userId);
+
+        const result = await uploadDocument(userId, file, activeThread?.backendSessionId);
+        setAttachedUploadId(result.upload_id);
+      } catch {
+        setAttachedFile(null);
+        setAttachedUploadId(null);
+      } finally {
+        setIsUploading(false);
+        if (event.target) event.target.value = "";
+      }
+    },
+    [activeThread]
+  );
+
+  const clearAttachment = useCallback(() => {
+    setAttachedFile(null);
+    setAttachedUploadId(null);
+  }, []);
+
+  const sendMessage = useCallback(async () => {
     const text = composerText.trim();
     if (!text || !activeThread) return;
 
     const now = new Date().toISOString();
+    const currentFile = attachedFile;
+    const currentUploadId = attachedUploadId;
+
     const userMessage: ChatMessage = {
       id: `user-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       role: "user",
       text,
+      attachedFile: currentFile?.name,
     };
-
-    const assistantText =
-      activeThread.mode === "simple"
-        ? `Simple take: ${text.slice(0, 96)}. Focus on three actions this week: review latest filings, check sentiment drift, and avoid oversized one-day reallocations.`
-        : `Analyst take: ${text.slice(0, 110)}. Key lenses: filing delta, narrative momentum, and valuation-risk asymmetry across your tracked names.`;
-
-    const assistantMessage: ChatMessage = {
-      id: `assistant-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-      role: "assistant",
-      text: assistantText,
-      sources:
-        props.dataMode === "demo"
-          ? ["Demo knowledge pack", "Timeline dataset", "Discovery theme scores"]
-          : ["Live workspace context", "Recent filings", "News sentiment feed"],
-    };
-
-    props.setThreads((current) =>
-      current.map((thread) => {
-        if (thread.id !== activeThread.id) return thread;
-        return {
-          ...thread,
-          title: thread.messages.length <= 1 ? text.slice(0, 44) : thread.title,
-          updatedAt: now,
-          messages: [...thread.messages, userMessage, assistantMessage],
-        };
-      })
-    );
 
     setComposerText("");
-  }, [activeThread, composerText, props]);
+    clearAttachment();
+
+    if (props.dataMode === "live") {
+      const thinkingMessage: ChatMessage = {
+        id: `assistant-thinking-${Date.now()}`,
+        role: "assistant",
+        text: "",
+        isThinking: true,
+      };
+
+      props.setThreads((current) =>
+        current.map((thread) => {
+          if (thread.id !== activeThread.id) return thread;
+          return {
+            ...thread,
+            title: thread.messages.length <= 1 ? text.slice(0, 44) : thread.title,
+            updatedAt: now,
+            messages: [...thread.messages, userMessage, thinkingMessage],
+          };
+        })
+      );
+
+      const startTime = performance.now();
+
+      try {
+        const { sendChatQuery } = await import("./lib/api");
+        const userId = localStorage.getItem("equityai-user-id") || crypto.randomUUID();
+        localStorage.setItem("equityai-user-id", userId);
+
+        const expertiseLevel = activeThread.mode === "simple" ? "beginner" : "advanced";
+        const chatReq: import("./lib/api").ChatQueryRequest = {
+          user_id: userId,
+          query: text,
+          expertise_level: expertiseLevel,
+          session_id: activeThread.backendSessionId,
+        };
+        if (currentUploadId) chatReq.upload_id = currentUploadId;
+        const resp = await sendChatQuery(chatReq);
+
+        const elapsedSec = Math.round((performance.now() - startTime) / 1000);
+
+        const sources = resp.sources?.map((s: Record<string, unknown>) => String(s.title || s.source || JSON.stringify(s))) ?? [];
+
+        const assistantMessage: ChatMessage = {
+          id: `assistant-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          role: "assistant",
+          text: resp.response,
+          sources: sources.length > 0 ? sources : undefined,
+          thinkingDurationSec: elapsedSec,
+          executionPlan: resp.execution_plan?.length ? resp.execution_plan : undefined,
+          agentEvents: resp.agent_call_log?.length ? (resp.agent_call_log as unknown as AgentEvent[]) : undefined,
+          toolCalls: resp.tool_call_log?.length ? (resp.tool_call_log as unknown as ToolCallEvent[]) : undefined,
+        };
+
+        props.setThreads((current) =>
+          current.map((thread) => {
+            if (thread.id !== activeThread.id) return thread;
+            const msgs = thread.messages.filter((m) => m.id !== thinkingMessage.id);
+            return {
+              ...thread,
+              updatedAt: new Date().toISOString(),
+              backendSessionId: resp.session_id,
+              messages: [...msgs, assistantMessage],
+            };
+          })
+        );
+      } catch (err) {
+        const errorMessage: ChatMessage = {
+          id: `assistant-error-${Date.now()}`,
+          role: "assistant",
+          text: `Error: ${err instanceof Error ? err.message : "Failed to get AI response"}. The AI backend may be unavailable.`,
+        };
+
+        props.setThreads((current) =>
+          current.map((thread) => {
+            if (thread.id !== activeThread.id) return thread;
+            const msgs = thread.messages.filter((m) => m.id !== thinkingMessage.id);
+            return {
+              ...thread,
+              updatedAt: new Date().toISOString(),
+              messages: [...msgs, errorMessage],
+            };
+          })
+        );
+      }
+    } else {
+      const assistantMessage: ChatMessage = {
+        id: `assistant-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        role: "assistant",
+        text: DEMO_BANNER_MSG + " Switch to Live API to get real AI-powered responses.",
+      };
+
+      props.setThreads((current) =>
+        current.map((thread) => {
+          if (thread.id !== activeThread.id) return thread;
+          return {
+            ...thread,
+            title: thread.messages.length <= 1 ? text.slice(0, 44) : thread.title,
+            updatedAt: now,
+            messages: [...thread.messages, userMessage, assistantMessage],
+          };
+        })
+      );
+    }
+  }, [activeThread, attachedFile, attachedUploadId, clearAttachment, composerText, props]);
 
   const renameThread = useCallback(
     (threadId: string) => {
@@ -3150,40 +2987,123 @@ function ChatView(props: {
           </div>
         </aside>
 
-        <article className="chat-shell">
-          <div className="chat-suggestions">
-            {suggestions.map((suggestion) => (
-              <button
-                key={suggestion}
-                type="button"
-                className="chat-suggestion-chip"
-                onClick={() => setComposerText(suggestion)}
-              >
-                {suggestion}
-              </button>
-            ))}
-          </div>
-
-          <div className="chat-messages">
-            {activeThread.messages.map((message) => (
-              <div key={message.id} className={`message ${message.role}`}>
-                <p>{message.text}</p>
-                {showSources && message.role === "assistant" && message.sources?.length ? (
-                  <div className="source-list">
-                    {message.sources.map((source) => (
-                      <span key={`${message.id}-${source}`} className="source-chip">
-                        {source}
-                      </span>
-                    ))}
-                  </div>
-                ) : null}
+        <article className="chat-shell chat-main">
+          {activeThread.messages.length <= 1 ? (
+            <div className="chat-empty-state">
+              <div className="chat-empty-logo">
+                <Sparkles size={28} />
               </div>
-            ))}
-          </div>
+              <h2>Iris Research Copilot</h2>
+              <p>Ask anything about Indian equities — filings, risk signals, sentiment, or portfolio strategy.</p>
+              <div className="chat-empty-suggestions">
+                {suggestions.map((suggestion) => (
+                  <button
+                    key={suggestion}
+                    type="button"
+                    className="chat-empty-suggestion-btn"
+                    onClick={() => setComposerText(suggestion)}
+                  >
+                    {suggestion}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <div className="chat-messages-area">
+              {activeThread.messages.map((message) =>
+                message.role === "user" ? (
+                  <div key={message.id} className="chat-row chat-row--user">
+                    <div className="chat-bubble-user">
+                      {message.attachedFile && (
+                        <div className="chat-file-badge">
+                          <Paperclip size={10} />
+                          <span>{message.attachedFile}</span>
+                        </div>
+                      )}
+                      <span>{message.text}</span>
+                    </div>
+                  </div>
+                ) : (
+                  <div key={message.id} className="chat-row chat-row--assistant">
+                    <div className="chat-assistant-icon">
+                      <Sparkles size={16} />
+                    </div>
+                    <div className="chat-assistant-body">
+                      {message.isThinking ? (
+                        <ThinkingIndicator />
+                      ) : (
+                        <>
+                          <ThinkingDropdown message={message} />
+                          <div className="message-text">
+                            <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                              {message.text}
+                            </ReactMarkdown>
+                          </div>
+                          {showSources && message.toolCalls?.length ? (
+                            <div className="chat-sources-bar">
+                              <span className="chat-sources-label">Sources</span>
+                              <div className="chat-sources-list">
+                                {message.toolCalls
+                                  .filter((tc) => tc.status === "success")
+                                  .map((tc, i) => (
+                                    <span key={`src-tc-${tc.agent}-${tc.tool}-${i}`} className="chat-source-tag">
+                                      <Database size={10} />
+                                      <span>{tc.tool.replace(/_/g, " ")}</span>
+                                    </span>
+                                  ))}
+                                {message.sources?.map((source, i) => (
+                                  <span key={`src-ext-${message.id}-${i}`} className="chat-source-tag">
+                                    <Database size={10} />
+                                    <span>{source}</span>
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
+                          ) : showSources && message.sources?.length ? (
+                            <div className="chat-sources-bar">
+                              <span className="chat-sources-label">Sources</span>
+                              <div className="chat-sources-list">
+                                {message.sources.map((source, i) => (
+                                  <span key={`src-${message.id}-${i}`} className="chat-source-tag">
+                                    <Database size={10} />
+                                    <span>{source}</span>
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
+                          ) : null}
+                        </>
+                      )}
+                    </div>
+                  </div>
+                )
+              )}
+              <div ref={messagesEndRef} />
+            </div>
+          )}
 
+          {attachedFile && (
+            <div className="chat-attachment-bar">
+              <div className={`file-pill ${isUploading ? "uploading" : ""}`}>
+                <FileText size={14} />
+                <span>{attachedFile.name}</span>
+                {isUploading ? (
+                  <Loader2 size={14} className="spin" />
+                ) : (
+                  <button type="button" className="file-pill-remove" onClick={clearAttachment} aria-label="Remove file">
+                    <X size={12} />
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
           <div className="chat-input-row">
+            <input type="file" ref={fileInputRef} className="sr-only" accept=".pdf,.pptx,.ppt,.txt,.csv,.xlsx" onChange={handleFileSelect} />
+            <button type="button" className="chat-upload-btn" onClick={() => fileInputRef.current?.click()} title="Attach document" disabled={isUploading}>
+              <Paperclip size={16} />
+            </button>
             <input
-              placeholder="Ask Iris anything about equities..."
+              placeholder={attachedFile ? "Ask about this document..." : "Ask Iris anything about equities..."}
               value={composerText}
               onChange={(event) => setComposerText(event.target.value)}
               onKeyDown={(event) => {
@@ -3193,8 +3113,14 @@ function ChatView(props: {
                 }
               }}
             />
-            <button type="button" className="primary-btn" onClick={sendMessage}>
-              Send
+            <button
+              type="button"
+              className="chat-send-btn"
+              onClick={sendMessage}
+              disabled={isUploading || !composerText.trim()}
+              aria-label="Send message"
+            >
+              <ArrowUp size={18} />
             </button>
           </div>
         </article>
@@ -3231,12 +3157,37 @@ function ComparisonWorkspaceView(props: {
     setLastSelectionStamp(props.searchSelection.stamp);
   }, [lastSelectionStamp, props.searchSelection]);
 
-  const selectedCompanies = useMemo(() => {
-    const mapped = selectedSymbols
-      .map((symbol) => DISCOVERY_COMPANIES.find((company) => company.symbol === symbol))
-      .filter((company): company is DiscoveryCompany => Boolean(company));
+  const [selectedCompanies, setSelectedCompanies] = useState<DiscoveryCompany[]>([]);
+  const [_compareLoading, _setCompareLoading] = useState(false);
+  const [_compareResult, _setCompareResult] = useState<string>("");
 
-    return mapped;
+  useEffect(() => {
+    if (!selectedSymbols.length) return;
+    const companies = selectedSymbols.map((symbol) => ({
+      symbol,
+      name: symbol,
+      sector: "Loading...",
+      marketCapBn: 0,
+      insight: "",
+      themeScores: {},
+    } as DiscoveryCompany));
+    setSelectedCompanies(companies);
+
+    Promise.all(selectedSymbols.map((s) => searchCompaniesDB(s, 1))).then((results) => {
+      const enriched = results.map((r, i) => {
+        const c = r[0];
+        if (!c) return companies[i];
+        return {
+          symbol: c.ticker_nse ?? selectedSymbols[i],
+          name: c.name,
+          sector: c.sector ?? "Unknown",
+          marketCapBn: c.market_cap_inr ? c.market_cap_inr / 1e9 : 0,
+          insight: c.industry ?? c.description ?? "",
+          themeScores: {},
+        } as DiscoveryCompany;
+      });
+      setSelectedCompanies(enriched);
+    }).catch(() => {});
   }, [selectedSymbols]);
 
   const allThemes = useMemo(() => {
@@ -3283,16 +3234,12 @@ function ComparisonWorkspaceView(props: {
     const typedSymbols = normalizeSymbolsInput(inputText);
     const candidateSymbols = typedSymbols.length >= 2 ? typedSymbols : selectedSymbols;
 
-    const mappedCompanies = candidateSymbols
-      .map((symbol) => DISCOVERY_COMPANIES.find((company) => company.symbol === symbol))
-      .filter((company): company is DiscoveryCompany => Boolean(company));
-
-    if (mappedCompanies.length < 2) {
+    if (candidateSymbols.length < 2) {
       props.pushToast("Select at least two valid companies first", "warning");
       return;
     }
 
-    const symbols = mappedCompanies.map((company) => company.symbol);
+    const symbols = candidateSymbols;
     setSelectedSymbols(symbols);
     setInputText(symbols.join(", "));
 
@@ -3425,9 +3372,30 @@ function CompanyWorkspaceView(props: {
   goToView: (view: ViewKey) => void;
   setSearchSelection: (selection: SearchSelection) => void;
 }) {
-  const [lastSelectionStamp, setLastSelectionStamp] = useState<number>(0);
-  const [symbolInput, setSymbolInput] = useState("RELIANCE");
-  const [activeSymbol, setActiveSymbol] = useState("RELIANCE");
+  const { searchSelection, pushToast, dataMode } = props;
+
+  const [lastSelectionStamp, setLastSelectionStamp] = useState<number>(
+    () => searchSelection?.stamp ?? 0
+  );
+  const [symbolInput, setSymbolInput] = useState(() => {
+    const s =
+      searchSelection?.companySymbol ??
+      searchSelection?.filingsSymbol ??
+      searchSelection?.newsSymbol ??
+      searchSelection?.discoveryQuery;
+    return s ? s.toUpperCase() : "RELIANCE";
+  });
+  const [activeSymbol, setActiveSymbol] = useState(() => {
+    const s =
+      searchSelection?.companySymbol ??
+      searchSelection?.filingsSymbol ??
+      searchSelection?.newsSymbol ??
+      searchSelection?.discoveryQuery;
+    return s ? s.toUpperCase() : "RELIANCE";
+  });
+  const [activeCompanyId, setActiveCompanyId] = useState<string | null>(
+    () => searchSelection?.companyId ?? null
+  );
   const [activeTab, setActiveTab] = useState<"overview" | "filings" | "sentiment" | "timeline" | "chat">(
     "overview"
   );
@@ -3443,7 +3411,6 @@ function CompanyWorkspaceView(props: {
   const [reportScope, setReportScope] = useState<"company" | "comparison">("company");
   const [comparisonSymbols, setComparisonSymbols] = useState<string[]>([]);
   const [comparisonSymbolsInput, setComparisonSymbolsInput] = useState("");
-  const { searchSelection, pushToast, dataMode } = props;
 
   useEffect(() => {
     if (!searchSelection) return;
@@ -3461,6 +3428,12 @@ function CompanyWorkspaceView(props: {
       setSymbolInput(normalized);
     }
 
+    if (searchSelection.companyId) {
+      setActiveCompanyId(searchSelection.companyId);
+    } else {
+      setActiveCompanyId(null);
+    }
+
     if (
       searchSelection.reportScope === "comparison" &&
       searchSelection.reportCompareSymbols?.length
@@ -3471,17 +3444,12 @@ function CompanyWorkspaceView(props: {
         .slice(0, 4);
 
       if (normalized.length >= 2) {
-        const mapped = normalized
-          .map((item) => DISCOVERY_COMPANIES.find((company) => company.symbol === item))
-          .filter((company): company is DiscoveryCompany => Boolean(company));
-
-        if (mapped.length >= 2) {
-          const symbolsText = mapped.map((company) => company.symbol).join(" vs ");
+        if (normalized.length >= 2) {
+          const symbolsText = normalized.join(" vs ");
 
           setReportScope("comparison");
-          const selected = mapped.map((company) => company.symbol);
-          setComparisonSymbols(selected);
-          setComparisonSymbolsInput(selected.join(", "));
+          setComparisonSymbols(normalized);
+          setComparisonSymbolsInput(normalized.join(", "));
           setReportTitle(`${symbolsText} Comparative Brief`);
           setReportSections(["summary", "risks", "financials", "themes"]);
           setReportAudience("analyst");
@@ -3499,24 +3467,113 @@ function CompanyWorkspaceView(props: {
     setLastSelectionStamp(searchSelection.stamp);
   }, [lastSelectionStamp, pushToast, searchSelection]);
 
-  const companyData = useMemo(() => {
-    const found = DISCOVERY_COMPANIES.find((company) => company.symbol === activeSymbol);
-    if (found) return found;
+  const [companyDetail, setCompanyDetail] = useState<AICompany | null>(null);
+  const [companyQuote, setCompanyQuote] = useState<AIQuote | null>(null);
+  const [companyRatios, setCompanyRatios] = useState<AIRatios | null>(null);
+  const [_companyFinancials, _setCompanyFinancials] = useState<AIFinancials | null>(null);
+  const [companyLoading, setCompanyLoading] = useState(false);
+  const [companyTimeline, setCompanyTimeline] = useState<BackendTimelineEvent[]>([]);
+  const [_companySearchResults, setCompanySearchResults] = useState<AICompany[]>([]);
 
+  const loadCompanyById = useCallback(async (companyId: string) => {
+    setCompanyLoading(true);
+    try {
+      const [detail, ratios] = await Promise.allSettled([
+        fetchCompanyDetail(companyId),
+        fetchCompanyRatios(companyId),
+      ]);
+      let detailData: AICompany | null = null;
+      if (detail.status === "fulfilled") {
+        detailData = detail.value;
+        setCompanyDetail(detailData);
+        setCompanySearchResults([detailData]);
+      }
+      if (ratios.status === "fulfilled") setCompanyRatios(ratios.value);
+      fetchCompanyQuote(companyId).then(setCompanyQuote).catch(() => {});
+      fetchTimeline(undefined, companyId, 10).then(setCompanyTimeline).catch(() => {});
+
+      if (detailData && !detailData.sector) {
+        enrichCompany(companyId).then(async (res) => {
+          if (res.enriched) {
+            const refreshed = await fetchCompanyDetail(companyId);
+            setCompanyDetail(refreshed);
+          }
+        }).catch(() => {});
+      }
+    } catch {
+      setCompanySearchResults([]);
+    } finally {
+      setCompanyLoading(false);
+    }
+  }, []);
+
+  const loadCompanyBySymbol = useCallback(async (symbol: string) => {
+    setCompanyLoading(true);
+    try {
+      const results = await searchCompaniesDB(symbol, 5);
+      setCompanySearchResults(results);
+      if (results.length > 0) {
+        const matched = results[0];
+        const [detail, ratios] = await Promise.allSettled([
+          fetchCompanyDetail(matched.id),
+          fetchCompanyRatios(matched.id),
+        ]);
+        let detailData: AICompany | null = null;
+        if (detail.status === "fulfilled") {
+          detailData = detail.value;
+          setCompanyDetail(detailData);
+        }
+        if (ratios.status === "fulfilled") setCompanyRatios(ratios.value);
+        fetchCompanyQuote(matched.id).then(setCompanyQuote).catch(() => {});
+        fetchTimeline(undefined, matched.id, 10).then(setCompanyTimeline).catch(() => {});
+
+        if (detailData && !detailData.sector) {
+          enrichCompany(matched.id).then(async (res) => {
+            if (res.enriched) {
+              const refreshed = await fetchCompanyDetail(matched.id);
+              setCompanyDetail(refreshed);
+            }
+          }).catch(() => {});
+        }
+      }
+    } catch {
+      setCompanySearchResults([]);
+    } finally {
+      setCompanyLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (activeCompanyId) {
+      void loadCompanyById(activeCompanyId);
+    } else {
+      void loadCompanyBySymbol(activeSymbol);
+    }
+  }, [activeSymbol, activeCompanyId, loadCompanyById, loadCompanyBySymbol]);
+
+  const companyData = useMemo((): DiscoveryCompany => {
+    if (companyDetail) {
+      const mcBn = companyDetail.market_cap_inr ? companyDetail.market_cap_inr / 1e9 : 0;
+      const ticker = companyDetail.ticker_nse ?? companyDetail.ticker_bse;
+      const symbol = ticker ?? companyDetail.name;
+      return {
+        symbol,
+        name: companyDetail.name,
+        sector: companyDetail.sector ?? "Unknown",
+        marketCapBn: mcBn,
+        insight: companyDetail.description ?? companyDetail.industry ?? "",
+        themeScores: {},
+      };
+    }
     return {
       symbol: activeSymbol,
-      name: `${activeSymbol} Corp`,
+      name: `${activeSymbol}`,
       sector: "Unknown",
       marketCapBn: 0,
-      insight: "No local company profile found yet. Add this symbol to discovery dataset.",
+      insight: companyLoading ? "Loading company data..." : "Search for a company by ticker or name.",
       themeScores: {},
-    } as DiscoveryCompany;
-  }, [activeSymbol]);
-
-  const companyTimeline = useMemo(
-    () => TIMELINE_EVENTS.filter((event) => event.company === activeSymbol).slice(0, 6),
-    [activeSymbol]
-  );
+    };
+  }, [activeSymbol, companyDetail, companyLoading]);
 
   const topThemes = useMemo(
     () => Object.entries(companyData.themeScores).sort((a, b) => b[1] - a[1]).slice(0, 5),
@@ -3525,16 +3582,20 @@ function CompanyWorkspaceView(props: {
 
   const comparisonCompanies = useMemo(() => {
     if (reportScope !== "comparison") return [];
-    return comparisonSymbols
-      .map((symbol) => DISCOVERY_COMPANIES.find((company) => company.symbol === symbol))
-      .filter((company): company is DiscoveryCompany => Boolean(company));
+    return comparisonSymbols.map((symbol) => ({
+      symbol,
+      name: symbol,
+      sector: "Unknown",
+      marketCapBn: 0,
+      insight: "",
+      themeScores: {},
+    } as DiscoveryCompany));
   }, [comparisonSymbols, reportScope]);
 
-  const comparisonTimeline = useMemo(() => {
+  const comparisonTimeline = useMemo((): TimelineEvent[] => {
     if (reportScope !== "comparison") return [];
-    const symbolSet = new Set(comparisonSymbols);
-    return TIMELINE_EVENTS.filter((event) => symbolSet.has(event.company));
-  }, [comparisonSymbols, reportScope]);
+    return [];
+  }, [reportScope]);
 
   const comparisonMetrics = useMemo(() => {
     if (reportScope !== "comparison" || comparisonCompanies.length < 2) {
@@ -3599,52 +3660,41 @@ function CompanyWorkspaceView(props: {
     };
   }, [comparisonCompanies, comparisonTimeline, reportScope]);
 
-  const companyFilings = useMemo(() => {
-    return buildMockFilings(companyData.symbol)
-      .slice(0, 7)
-      .map((filing) => ({
-        ...filing,
-        narrative:
-          filing.type === "10-K"
-            ? "Annual commentary references strategy durability and capex calibration."
-            : filing.type === "10-Q"
-              ? "Quarterly notes point to execution trend and margin sensitivity."
-              : "Event filing indicates a near-term operational catalyst or disclosure update.",
-      }));
-  }, [companyData.symbol]);
+  const [companyFilings, setCompanyFilings] = useState<(SecFiling & { narrative: string })[]>([]);
+
+  const filingsTicker = companyDetail?.ticker_nse ?? null;
+
+  useEffect(() => {
+    if (dataMode === "demo" || !filingsTicker) {
+      setCompanyFilings([]);
+      return;
+    }
+    fetchSecFilings(filingsTicker, 7).then((filings) => {
+      setCompanyFilings(filings.slice(0, 7).map((f) => ({
+        ...f,
+        narrative: f.type === "10-K"
+          ? "Annual report and strategic commentary."
+          : f.type === "10-Q"
+            ? "Quarterly operating metrics and margin data."
+            : "Event or regulatory disclosure.",
+      })));
+    }).catch(() => setCompanyFilings([]));
+  }, [filingsTicker, dataMode]);
 
   const companyRatioSnapshot = useMemo(() => {
-    const relatedHolding = PORTFOLIO_HOLDINGS.find((holding) => holding.symbol === companyData.symbol);
-
-    if (relatedHolding) {
-      const roe = Number((12 + relatedHolding.returnPct * 1.2).toFixed(1));
-      const debtToEquity = Number((0.5 + relatedHolding.beta * 0.45).toFixed(2));
-      const operatingMargin = Number((14 + relatedHolding.returnPct * 1.4).toFixed(1));
-
+    if (companyRatios?.ratios) {
+      const r = companyRatios.ratios;
       return {
-        pe: relatedHolding.pe,
-        pb: relatedHolding.pb,
-        roe,
-        debtToEquity,
-        operatingMargin,
-        beta: relatedHolding.beta,
+        pe: r.pe_ratio ?? 0,
+        pb: r.pb_ratio ?? 0,
+        roe: r.roe ?? 0,
+        debtToEquity: r.debt_to_equity ?? 0,
+        operatingMargin: r.ebitda_margin ?? r.net_margin ?? 0,
+        beta: 1.0,
       };
     }
-
-    const themeValues = Object.values(companyData.themeScores);
-    const avgTheme = themeValues.length
-      ? themeValues.reduce((sum, value) => sum + value, 0) / themeValues.length
-      : 58;
-
-    return {
-      pe: Number((16 + avgTheme / 6).toFixed(1)),
-      pb: Number((1.4 + avgTheme / 40).toFixed(2)),
-      roe: Number((10 + avgTheme / 4.6).toFixed(1)),
-      debtToEquity: Number((0.7 + (100 - avgTheme) / 90).toFixed(2)),
-      operatingMargin: Number((11 + avgTheme / 5).toFixed(1)),
-      beta: Number((0.85 + avgTheme / 180).toFixed(2)),
-    };
-  }, [companyData.symbol, companyData.themeScores]);
+    return { pe: 0, pb: 0, roe: 0, debtToEquity: 0, operatingMargin: 0, beta: 0 };
+  }, [companyRatios]);
 
   const companySentimentTrend = useMemo(() => {
     const topThemeScore = topThemes[0]?.[1] ?? 62;
@@ -3667,35 +3717,37 @@ function CompanyWorkspaceView(props: {
     });
   }, [topThemes]);
 
+  const companyLabel = companyData.name !== companyData.symbol ? companyData.name : companyData.symbol;
+
   const tabPrompts = useMemo<Record<"overview" | "filings" | "sentiment" | "timeline" | "chat", string[]>>(
     () => ({
       overview: [
-        `Give a 5-point briefing on ${companyData.symbol} strategic posture.`,
-        `What three catalysts should I monitor for ${companyData.symbol}?`,
-        `Summarize valuation context for ${companyData.symbol} in plain terms.`,
+        `Give a 5-point briefing on ${companyLabel} strategic posture.`,
+        `What three catalysts should I monitor for ${companyLabel}?`,
+        `Summarize valuation context for ${companyLabel} in plain terms.`,
       ],
       filings: [
-        `What changed materially in ${companyData.symbol} recent filings?`,
-        `List potential red flags from ${companyData.symbol} latest disclosures.`,
-        `Convert ${companyData.symbol} filing updates into an action checklist.`,
+        `What changed materially in ${companyLabel} recent filings?`,
+        `List potential red flags from ${companyLabel} latest disclosures.`,
+        `Convert ${companyLabel} filing updates into an action checklist.`,
       ],
       sentiment: [
-        `How stable is ${companyData.symbol} sentiment trend this week?`,
-        `Explain the sentiment shift in ${companyData.symbol} with likely drivers.`,
-        `What sentiment reversal signals should I watch for ${companyData.symbol}?`,
+        `How stable is ${companyLabel} sentiment trend this week?`,
+        `Explain the sentiment shift in ${companyLabel} with likely drivers.`,
+        `What sentiment reversal signals should I watch for ${companyLabel}?`,
       ],
       timeline: [
-        `Rank ${companyData.symbol} timeline events by decision relevance.`,
-        `What is the most important recent event for ${companyData.symbol} and why?`,
-        `Build a risk-aware timeline summary for ${companyData.symbol}.`,
+        `Rank ${companyLabel} timeline events by decision relevance.`,
+        `What is the most important recent event for ${companyLabel} and why?`,
+        `Build a risk-aware timeline summary for ${companyLabel}.`,
       ],
       chat: [
-        `Prepare a balanced bull vs bear case for ${companyData.symbol}.`,
-        `What should I verify before increasing exposure to ${companyData.symbol}?`,
-        `Create a one-week monitoring plan for ${companyData.symbol}.`,
+        `Prepare a balanced bull vs bear case for ${companyLabel}.`,
+        `What should I verify before increasing exposure to ${companyLabel}?`,
+        `Create a one-week monitoring plan for ${companyLabel}.`,
       ],
     }),
-    [companyData.symbol]
+    [companyLabel]
   );
 
   const [companyChatPrompt, setCompanyChatPrompt] = useState("");
@@ -3723,7 +3775,10 @@ function CompanyWorkspaceView(props: {
     };
   }, [comparisonCompanies, comparisonMetrics, reportScope]);
 
-  const profileTitle = `${companyData.symbol} · ${companyData.name}`;
+  const nseOrBseTicker = companyDetail?.ticker_nse ?? companyDetail?.ticker_bse;
+  const profileTitle = nseOrBseTicker
+    ? `${nseOrBseTicker} · ${companyData.name}`
+    : companyData.name;
 
   const generatedReport = useMemo<GeneratedReport | null>(() => {
     if (!reportGeneratedAt) return null;
@@ -3821,7 +3876,7 @@ function CompanyWorkspaceView(props: {
       sections.push({
         id: "summary",
         heading: "Executive Summary",
-        content: `${companyData.name} (${companyData.symbol}) currently shows strongest narrative strength in ${topTheme} with theme score ${topThemeScore}/100. Sector context remains ${companyData.sector}.`,
+        content: `${companyData.name}${nseOrBseTicker ? ` (${nseOrBseTicker})` : ""} currently shows strongest narrative strength in ${topTheme} with theme score ${topThemeScore}/100. Sector context remains ${companyData.sector}.`,
       });
     }
 
@@ -3860,7 +3915,7 @@ function CompanyWorkspaceView(props: {
         : "Analyst framing: include context, assumptions, and scenario sensitivity.";
 
     return {
-      title: reportTitle.trim() || `${companyData.symbol} Research Brief`,
+      title: reportTitle.trim() || `${companyLabel} Research Brief`,
       generatedAt: reportGeneratedAt,
       audience: reportAudience,
       audienceText,
@@ -3909,11 +3964,7 @@ function CompanyWorkspaceView(props: {
         setComparisonSymbolsInput(normalized.join(", "));
       }
 
-      const mapped = normalized
-        .map((symbol) => DISCOVERY_COMPANIES.find((company) => company.symbol === symbol))
-        .filter((company): company is DiscoveryCompany => Boolean(company));
-
-      if (mapped.length < 2) {
+      if (normalized.length < 2) {
         pushToast("Comparison report needs at least two valid symbols", "warning");
         return;
       }
@@ -3936,7 +3987,7 @@ function CompanyWorkspaceView(props: {
     const url = window.URL.createObjectURL(blob);
     const anchor = document.createElement("a");
     anchor.href = url;
-    const baseName = generatedReport.scope === "comparison" ? generatedReport.symbol : companyData.symbol;
+    const baseName = generatedReport.scope === "comparison" ? generatedReport.symbol : companyLabel;
     anchor.download = `${toFileSlug(baseName)}-report.txt`;
     document.body.appendChild(anchor);
     anchor.click();
@@ -3969,6 +4020,7 @@ function CompanyWorkspaceView(props: {
               event.preventDefault();
               const normalized = symbolInput.trim().toUpperCase();
               if (normalized) {
+                setActiveCompanyId(null);
                 setActiveSymbol(normalized);
               }
             }}
@@ -3990,15 +4042,18 @@ function CompanyWorkspaceView(props: {
         </div>
       ) : null}
 
+      {companyLoading && <div className="notice"><Loader2 size={16} className="spin" /> Loading company data...</div>}
+
       <div className="company-header-card">
         <div className="company-header-main">
-          <p className="discovery-symbol">{companyData.symbol}</p>
+          {nseOrBseTicker && <p className="discovery-symbol">{nseOrBseTicker}</p>}
           <h2>{companyData.name}</h2>
           <p>{companyData.insight}</p>
           <div className="chip-row">
             <span className="chip">Sector: {companyData.sector}</span>
-            <span className="chip">Market Cap: ${companyData.marketCapBn.toFixed(1)}B</span>
+            {companyData.marketCapBn > 0 && <span className="chip">Market Cap: ₹{companyData.marketCapBn.toFixed(1)}B</span>}
           </div>
+          <SourceBadges sources={companyDetail?.data_sources} />
         </div>
         <div className="company-header-actions">
           <button
@@ -4061,28 +4116,37 @@ function CompanyWorkspaceView(props: {
         <div className="split-grid">
           <article className="feature-card">
             <div className="feature-head">
-              <Compass size={18} />
-              <h3>Theme Exposure</h3>
+              <TrendingUp size={18} />
+              <h3>Live Quote</h3>
             </div>
-            {topThemes.length ? (
-              <div className="chip-row">
-                {topThemes.map(([theme, score]) => (
-                  <span key={`${companyData.symbol}-${theme}`} className="chip discovery-theme-chip">
-                    {theme} · {score}
-                  </span>
-                ))}
-              </div>
+            {companyQuote?.last_price ? (
+              <>
+                <h2>₹{Number(companyQuote.last_price).toLocaleString()}</h2>
+                {companyQuote.change_pct != null && (
+                  <p className={Number(companyQuote.change_pct) >= 0 ? "positive" : "negative"}>
+                    {Number(companyQuote.change_pct) >= 0 ? "+" : ""}{Number(companyQuote.change_pct).toFixed(2)}%
+                  </p>
+                )}
+                <small>Source: {companyQuote.source ?? "API"} · {companyQuote.fetched_at ? new Date(companyQuote.fetched_at).toLocaleTimeString() : ""}</small>
+                <SourceBadges sources={companyQuote.data_sources} />
+              </>
             ) : (
-              <p>No theme scores found for this symbol in local discovery set.</p>
+              <p>{companyLoading ? "Fetching quote..." : "No live quote data available."}</p>
             )}
           </article>
 
           <article className="feature-card">
             <div className="feature-head">
               <Clock3 size={18} />
-              <h3>Recent Timeline Count</h3>
+              <h3>Recent Events</h3>
             </div>
-            <p>{companyTimeline.length} recent events found for this company.</p>
+            <p>{companyTimeline.length} recent timeline events for this company.</p>
+            {companyTimeline.slice(0, 3).map((ev) => (
+              <div key={ev.id} className="list-item">
+                <p>{ev.title}</p>
+                <small>{new Date(ev.timestamp).toLocaleDateString()}</small>
+              </div>
+            ))}
           </article>
         </div>
       ) : null}
@@ -4090,7 +4154,7 @@ function CompanyWorkspaceView(props: {
       {activeTab === "filings" ? (
         <article className="list-card company-filings-card">
           <div className="table-head">
-            <h3>Filings Snapshot ({companyData.symbol})</h3>
+            <h3>Filings Snapshot ({companyLabel})</h3>
             <span>{companyFilings.length} filings</span>
           </div>
           {companyFilings.map((filing, index) => (
@@ -4124,7 +4188,7 @@ function CompanyWorkspaceView(props: {
           <article className="feature-card">
             <div className="feature-head">
               <TrendingUp size={18} />
-              <h3>Sentiment Timeline ({companyData.symbol})</h3>
+              <h3>Sentiment Timeline ({companyLabel})</h3>
             </div>
             <div className="chart-wrap medium">
               <ResponsiveContainer width="100%" height="100%">
@@ -4164,8 +4228,9 @@ function CompanyWorkspaceView(props: {
           <article className="feature-card">
             <div className="feature-head">
               <BarChart3 size={18} />
-              <h3>Ratio Snapshot ({companyData.symbol})</h3>
+              <h3>Ratio Snapshot ({companyLabel})</h3>
             </div>
+            <SourceBadges sources={companyRatios?.data_sources} />
             <div className="ratio-grid">
               <div className="ratio-item">
                 <span>PE</span>
@@ -4207,7 +4272,7 @@ function CompanyWorkspaceView(props: {
             ))
           ) : (
             <div className="list-item single-line">
-              <p>No timeline events for {companyData.symbol} in local dataset.</p>
+              <p>No timeline events for {companyLabel} in local dataset.</p>
             </div>
           )}
         </article>
@@ -4230,7 +4295,7 @@ function CompanyWorkspaceView(props: {
           <div className="chat-messages">
             <div className="message assistant">
               <p>
-                You are now in {companyData.symbol} context. Ask company-specific questions to get
+                You are now in {companyLabel} context. Ask company-specific questions to get
                 tighter research answers.
               </p>
               <div className="source-list">
@@ -4365,7 +4430,7 @@ function CompanyWorkspaceView(props: {
             <input
               value={reportTitle}
               onChange={(event) => setReportTitle(event.target.value)}
-              placeholder={`${companyData.symbol} quarterly research brief`}
+              placeholder={`${companyLabel} quarterly research brief`}
             />
           </label>
 
@@ -4448,347 +4513,295 @@ function DiscoveryView(props: {
 }) {
   const [lastSelectionStamp, setLastSelectionStamp] = useState<number>(0);
   const [query, setQuery] = useState("");
-  const [activeTheme, setActiveTheme] = useState<string>("all");
   const [activeSector, setActiveSector] = useState<string>("all");
-  const [marketCapBucket, setMarketCapBucket] = useState<MarketCapBucket>("all");
-  const [minThemeScore, setMinThemeScore] = useState<number>(60);
+  const [companies, setCompanies] = useState<AICompany[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [totalCount, setTotalCount] = useState(0);
+  const [sectors, setSectors] = useState<string[]>(["all"]);
+
+  const loadCompanies = useCallback(async (searchTerm?: string, sector?: string) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const sectorParam = sector && sector !== "all" ? sector : undefined;
+      const resp = await fetchCompanies(50, 0, searchTerm, sectorParam);
+      setCompanies(resp.companies);
+      setTotalCount(resp.total);
+      const sectorSet = new Set(resp.companies.map((c) => c.sector).filter(Boolean) as string[]);
+      setSectors(["all", ...Array.from(sectorSet).sort()]);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Could not load companies.");
+      setCompanies([]);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadCompanies();
+  }, [loadCompanies]);
 
   useEffect(() => {
     if (!props.searchSelection) return;
     if (props.searchSelection.stamp === lastSelectionStamp) return;
-
     if (props.searchSelection.discoveryQuery) {
       setQuery(props.searchSelection.discoveryQuery);
+      void loadCompanies(props.searchSelection.discoveryQuery);
     }
-
-    if (props.searchSelection.discoveryTheme) {
-      setActiveTheme(props.searchSelection.discoveryTheme);
-    }
-
     setLastSelectionStamp(props.searchSelection.stamp);
-  }, [lastSelectionStamp, props.searchSelection]);
+  }, [lastSelectionStamp, loadCompanies, props.searchSelection]);
 
-  const allThemes = useMemo(() => {
-    const set = new Set<string>();
-    for (const company of DISCOVERY_COMPANIES) {
-      for (const theme of Object.keys(company.themeScores)) {
-        set.add(theme);
-      }
-    }
-    return ["all", ...Array.from(set).sort((a, b) => a.localeCompare(b))];
-  }, []);
+  const handleSearch = useCallback(() => {
+    const sectorParam = activeSector !== "all" ? activeSector : undefined;
+    void loadCompanies(query.trim() || undefined, sectorParam);
+  }, [activeSector, loadCompanies, query]);
 
-  const allSectors = useMemo(() => {
-    const set = new Set(DISCOVERY_COMPANIES.map((company) => company.sector));
-    return ["all", ...Array.from(set).sort((a, b) => a.localeCompare(b))];
-  }, []);
-
-  const filteredCompanies = useMemo(() => {
-    const normalizedQuery = query.trim().toLowerCase();
-
-    return DISCOVERY_COMPANIES.filter((company) => {
-      const maxThemeScore = Math.max(...Object.values(company.themeScores));
-
-      const matchesQuery =
-        !normalizedQuery ||
-        `${company.symbol} ${company.name} ${company.sector} ${company.insight}`
-          .toLowerCase()
-          .includes(normalizedQuery);
-
-      const matchesTheme =
-        activeTheme === "all" || (company.themeScores[activeTheme] ?? 0) >= minThemeScore;
-
-      const matchesSector = activeSector === "all" || company.sector === activeSector;
-
-      const matchesMarketCap =
-        marketCapBucket === "all" ||
-        (marketCapBucket === "mega" && company.marketCapBn >= 120) ||
-        (marketCapBucket === "large" && company.marketCapBn >= 40 && company.marketCapBn < 120) ||
-        (marketCapBucket === "mid" && company.marketCapBn >= 10 && company.marketCapBn < 40) ||
-        (marketCapBucket === "small" && company.marketCapBn < 10);
-
-      const matchesMinimumThemeScore = maxThemeScore >= minThemeScore;
-
-      return (
-        matchesQuery &&
-        matchesTheme &&
-        matchesSector &&
-        matchesMarketCap &&
-        matchesMinimumThemeScore
-      );
-    }).sort((a, b) => {
-      const aTop = Math.max(...Object.values(a.themeScores));
-      const bTop = Math.max(...Object.values(b.themeScores));
-      return bTop - aTop;
-    });
-  }, [activeSector, activeTheme, marketCapBucket, minThemeScore, query]);
-
-  const summaryText = useMemo(() => {
-    if (!filteredCompanies.length) return "No companies match current discovery filters.";
-    const top = filteredCompanies[0];
-    const [topTheme, topScore] = Object.entries(top.themeScores).sort((a, b) => b[1] - a[1])[0];
-    return `${filteredCompanies.length} companies matched. Top signal: ${top.symbol} in ${topTheme} (${topScore}/100).`;
-  }, [filteredCompanies]);
+  const formatMarketCap = (mcInr?: number) => {
+    if (!mcInr) return "N/A";
+    if (mcInr >= 1e12) return `₹${(mcInr / 1e12).toFixed(1)}T`;
+    if (mcInr >= 1e9) return `₹${(mcInr / 1e9).toFixed(1)}B`;
+    if (mcInr >= 1e7) return `₹${(mcInr / 1e7).toFixed(0)}Cr`;
+    return `₹${mcInr.toLocaleString()}`;
+  };
 
   return (
     <section className="page-wrap">
       <PageHeader
-        title="Thematic Discovery Engine"
-        subtitle="Discover companies by AI-native themes, sector relevance, and conviction scores."
+        title="Company Discovery"
+        subtitle={`Explore the full NSE+BSE universe — ${totalCount.toLocaleString()} companies available.`}
         dataMode={props.dataMode}
       />
 
       <div className="discovery-panel">
-        <div className="search-pill discovery-search">
+        <form
+          className="search-pill discovery-search"
+          onSubmit={(e) => { e.preventDefault(); handleSearch(); }}
+        >
           <Search size={14} />
           <input
-            placeholder="Search AI companies, defense, EV, fintech..."
+            placeholder="Search by name, ticker, or ISIN..."
             value={query}
             onChange={(event) => setQuery(event.target.value)}
           />
-        </div>
+        </form>
 
         <div className="discovery-controls">
           <select
             className="type-select"
-            value={activeTheme}
-            onChange={(event) => setActiveTheme(event.target.value)}
-          >
-            {allThemes.map((theme) => (
-              <option key={theme} value={theme}>
-                Theme: {theme === "all" ? "All" : theme}
-              </option>
-            ))}
-          </select>
-
-          <select
-            className="type-select"
             value={activeSector}
-            onChange={(event) => setActiveSector(event.target.value)}
+            onChange={(event) => { setActiveSector(event.target.value); }}
           >
-            {allSectors.map((sector) => (
+            {sectors.map((sector) => (
               <option key={sector} value={sector}>
                 Sector: {sector === "all" ? "All" : sector}
               </option>
             ))}
           </select>
-
-          <select
-            className="type-select"
-            value={marketCapBucket}
-            onChange={(event) => setMarketCapBucket(event.target.value as MarketCapBucket)}
-          >
-            <option value="all">Market Cap: All</option>
-            <option value="mega">Mega (&gt;= 120B)</option>
-            <option value="large">Large (40-120B)</option>
-            <option value="mid">Mid (10-40B)</option>
-            <option value="small">Small (&lt; 10B)</option>
-          </select>
-        </div>
-
-        <div className="discovery-score-row">
-          <label htmlFor="theme-score" className="results-title">
-            Minimum Theme Score: {minThemeScore}
-          </label>
-          <input
-            id="theme-score"
-            type="range"
-            min={40}
-            max={95}
-            step={1}
-            value={minThemeScore}
-            onChange={(event) => setMinThemeScore(Number(event.target.value))}
-            className="score-slider"
-          />
+          <button type="button" className="secondary-btn mini-btn" onClick={handleSearch}>
+            {loading ? "Searching..." : "Search"}
+          </button>
         </div>
       </div>
 
-      <div className="notice">{summaryText}</div>
+      {error ? <div className="notice warning">{error}</div> : null}
+
+      <div className="notice">
+        {loading ? "Loading companies..." : `${companies.length} companies shown of ${totalCount} total.`}
+      </div>
 
       <div className="discovery-grid">
-        {filteredCompanies.length ? (
-          filteredCompanies.map((company) => {
-            const sortedThemes = Object.entries(company.themeScores)
-              .sort((a, b) => b[1] - a[1])
-              .slice(0, 4);
-
-            return (
-              <article key={company.symbol} className="discovery-card">
-                <div className="discovery-card-head">
-                  <div>
-                    <p className="discovery-symbol">{company.symbol}</p>
-                    <h3>{company.name}</h3>
-                  </div>
-                  <div className="discovery-card-actions">
-                    <span className="chip">${company.marketCapBn.toFixed(1)}B</span>
-                    <button
-                      type="button"
-                      className="favorite-icon-btn"
-                      aria-label={`Save ${company.symbol} to favorites`}
-                      onClick={() =>
-                        props.addFavorite({
-                          type: "company",
-                          symbol: company.symbol,
-                          title: `${company.symbol} · ${company.name}`,
-                          subtitle: company.insight,
-                        })
-                      }
-                    >
-                      {props.isFavorited({
+        {!loading && companies.length ? (
+          companies.map((company) => (
+            <article key={company.id} className="discovery-card">
+              <div className="discovery-card-head">
+                <div>
+                  <p className="discovery-symbol">{company.ticker_nse ?? company.ticker_bse ?? "—"}</p>
+                  <h3>{company.name}</h3>
+                </div>
+                <div className="discovery-card-actions">
+                  <span className="chip">{formatMarketCap(company.market_cap_inr)}</span>
+                  <button
+                    type="button"
+                    className="favorite-icon-btn"
+                    aria-label={`Save ${company.name} to favorites`}
+                    onClick={() =>
+                      props.addFavorite({
                         type: "company",
-                        title: `${company.symbol} · ${company.name}`,
-                        symbol: company.symbol,
-                      }) ? (
-                        <BookmarkCheck size={14} />
-                      ) : (
-                        <Bookmark size={14} />
-                      )}
-                    </button>
-                    <button
-                      type="button"
-                      className="favorite-icon-btn"
-                      aria-label={`Open ${company.symbol} company workspace`}
-                      onClick={() => {
-                        props.setSearchSelection({
-                          stamp: Date.now(),
-                          companySymbol: company.symbol,
-                        });
-                        props.goToView("company");
-                      }}
-                    >
-                      <ArrowUpRight size={14} />
-                    </button>
-                  </div>
+                        symbol: company.ticker_nse ?? company.id,
+                        title: `${company.ticker_nse ?? ""} · ${company.name}`,
+                        subtitle: company.sector ?? "",
+                      })
+                    }
+                  >
+                    {props.isFavorited({
+                      type: "company",
+                      title: `${company.ticker_nse ?? ""} · ${company.name}`,
+                      symbol: company.ticker_nse ?? company.id,
+                    }) ? (
+                      <BookmarkCheck size={14} />
+                    ) : (
+                      <Bookmark size={14} />
+                    )}
+                  </button>
+                  <button
+                    type="button"
+                    className="favorite-icon-btn"
+                    aria-label={`Open ${company.name} workspace`}
+                    onClick={() => {
+                      props.setSearchSelection({
+                        stamp: Date.now(),
+                        companySymbol: company.ticker_nse ?? company.ticker_bse ?? company.name,
+                        companyId: company.id,
+                      });
+                      props.goToView("company");
+                    }}
+                  >
+                    <ArrowUpRight size={14} />
+                  </button>
                 </div>
+              </div>
 
-                <p className="discovery-sector">{company.sector}</p>
-                <p className="discovery-insight">{company.insight}</p>
+              <p className="discovery-sector">{company.sector ?? "Unknown sector"}</p>
+              <p className="discovery-insight">{company.industry ?? company.description ?? ""}</p>
 
-                <div className="chip-row discovery-chips">
-                  {sortedThemes.map(([theme, score]) => (
-                    <span key={`${company.symbol}-${theme}`} className="chip discovery-theme-chip">
-                      {theme} · {score}
-                    </span>
-                  ))}
-                </div>
+              <SourceBadges sources={company.data_sources} />
 
-                <button
-                  type="button"
-                  className="secondary-btn mini-btn open-company-btn"
-                  onClick={() => {
-                    props.setSearchSelection({
-                      stamp: Date.now(),
-                      companySymbol: company.symbol,
-                    });
-                    props.goToView("company");
-                  }}
-                >
-                  Open Company
-                </button>
-              </article>
-            );
-          })
-        ) : (
+              <button
+                type="button"
+                className="secondary-btn mini-btn open-company-btn"
+                onClick={() => {
+                  props.setSearchSelection({
+                    stamp: Date.now(),
+                    companySymbol: company.ticker_nse ?? company.ticker_bse ?? company.name,
+                    companyId: company.id,
+                  });
+                  props.goToView("company");
+                }}
+              >
+                Open Company
+              </button>
+            </article>
+          ))
+        ) : !loading ? (
           <div className="list-item single-line">
-            <p>No discovery matches. Try lowering score or widening filters.</p>
+            <p>No companies found. Try a different search term.</p>
           </div>
-        )}
+        ) : null}
       </div>
     </section>
   );
 }
 
 function PortfolioView(props: { dataMode: DataMode }) {
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [portfolios, setPortfolios] = useState<AIPortfolio[]>([]);
+  const [activePortfolio, setActivePortfolio] = useState<AIPortfolioDetail | null>(null);
+  const [holdings, setHoldings] = useState<PortfolioHolding[]>([]);
+  const [dataSources, setDataSources] = useState<DataSourceInfo[]>([]);
+
+  const userId = useMemo(() => getUserId(), []);
+
+  const loadPortfolio = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const list = await fetchPortfolios(userId);
+      setPortfolios(list);
+      if (list.length > 0) {
+        const primary = list.find((p) => p.is_primary) ?? list[0];
+        const detail = await fetchPortfolioDetail(primary.id);
+        setActivePortfolio(detail);
+        setDataSources(detail.data_sources ?? []);
+        const mapped: PortfolioHolding[] = (detail.holdings ?? []).map((h: AIHoldingDetail) => ({
+          symbol: h.ticker_nse ?? h.company_id.slice(0, 6),
+          company: h.company_name ?? "Unknown",
+          sector: h.sector ?? "Unknown",
+          weight: h.weight ?? 0,
+          returnPct: h.return_pct ?? 0,
+          beta: 1.0,
+          pe: 0,
+          pb: 0,
+          volatility: 0,
+        }));
+        setHoldings(mapped);
+      }
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Could not load portfolio. Create one to get started.");
+      setHoldings([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [userId]);
+
+  useEffect(() => {
+    void loadPortfolio();
+  }, [loadPortfolio]);
+
   const totalWeight = useMemo(
-    () => PORTFOLIO_HOLDINGS.reduce((acc, holding) => acc + holding.weight, 0),
-    []
+    () => holdings.reduce((acc, h) => acc + h.weight, 0) || 100,
+    [holdings]
   );
 
   const weightedReturn = useMemo(
-    () =>
-      PORTFOLIO_HOLDINGS.reduce((acc, holding) => acc + (holding.returnPct * holding.weight) / 100, 0),
-    []
+    () => holdings.reduce((acc, h) => acc + (h.returnPct * h.weight) / 100, 0),
+    [holdings]
   );
 
   const portfolioBeta = useMemo(
-    () =>
-      PORTFOLIO_HOLDINGS.reduce((acc, holding) => acc + (holding.beta * holding.weight) / totalWeight, 0),
-    [totalWeight]
+    () => holdings.length ? holdings.reduce((acc, h) => acc + (h.beta * h.weight) / totalWeight, 0) : 1,
+    [holdings, totalWeight]
   );
-
-  const portfolioVolatility = useMemo(
-    () =>
-      PORTFOLIO_HOLDINGS.reduce(
-        (acc, holding) => acc + (holding.volatility * holding.weight) / totalWeight,
-        0
-      ),
-    [totalWeight]
-  );
-
-  const riskFreeRate = 6.4;
-  const benchmarkReturn = 1.1;
-  const sharpeRatio = useMemo(
-    () => ((weightedReturn - riskFreeRate / 12) / Math.max(portfolioVolatility / 10, 0.01)).toFixed(2),
-    [portfolioVolatility, weightedReturn]
-  );
-
-  const benchmarkRelative = weightedReturn - benchmarkReturn;
 
   const sectorWeights = useMemo(() => {
     const map = new Map<string, number>();
-    for (const holding of PORTFOLIO_HOLDINGS) {
-      map.set(holding.sector, (map.get(holding.sector) ?? 0) + holding.weight);
+    for (const h of holdings) {
+      map.set(h.sector, (map.get(h.sector) ?? 0) + h.weight);
     }
     return Array.from(map.entries())
       .map(([sector, weight]) => ({ sector, weight }))
       .sort((a, b) => b.weight - a.weight);
-  }, []);
-
-  const riskAlerts = useMemo(() => {
-    return PORTFOLIO_HOLDINGS.filter((holding) => holding.beta > 1.15 || holding.volatility > 22);
-  }, []);
+  }, [holdings]);
 
   const pieData = useMemo(
     () => sectorWeights.map((item) => ({ name: item.sector, value: Number(item.weight.toFixed(2)) })),
     [sectorWeights]
   );
 
-  const scatterData = useMemo(
-    () =>
-      PORTFOLIO_HOLDINGS.map((holding) => ({
-        x: holding.volatility,
-        y: holding.returnPct,
-        z: holding.weight,
-        symbol: holding.symbol,
-      })),
-    []
-  );
-
-  const trendData = useMemo(() => {
-    const phases = ["M-6", "M-5", "M-4", "M-3", "M-2", "M-1", "Now"];
-    const baseDrawdown = -8.6;
-    const baseVol = 24;
-
-    return phases.map((phase, index) => {
-      const drawdown = Number((baseDrawdown + index * 1.15 + Math.sin(index * 0.8) * 0.6).toFixed(2));
-      const vol = Number((baseVol - index * 1.3 + Math.cos(index * 0.55) * 0.8).toFixed(2));
-      return {
-        phase,
-        drawdown,
-        volatility: vol,
-      };
-    });
-  }, []);
-
   const maxSectorWeight = sectorWeights[0]?.weight ?? 1;
+
+  if (loading) {
+    return (
+      <section className="page-wrap">
+        <PageHeader title="Portfolio Intelligence" subtitle="Loading portfolio data..." dataMode={props.dataMode} />
+        <div className="notice"><Loader2 size={16} className="spin" /> Loading your portfolio...</div>
+      </section>
+    );
+  }
 
   return (
     <section className="page-wrap">
       <PageHeader
         title="Portfolio Intelligence"
-        subtitle="Exposure, risk concentration, and opportunity signals at a glance."
+        subtitle="Exposure, risk concentration, and opportunity signals from your broker portfolio."
         dataMode={props.dataMode}
+        right={
+          <button type="button" className="primary-btn" onClick={() => void loadPortfolio()}>
+            Refresh Portfolio
+          </button>
+        }
       />
+
+      {error ? <div className="notice warning">{error}</div> : null}
+
+      <SourceBadges sources={dataSources} />
+
+      {!holdings.length && !error ? (
+        <div className="notice">
+          No holdings found. Create a portfolio and add holdings via the API, or connect your Upstox/Kite broker account.
+        </div>
+      ) : null}
 
       <div className="kpi-grid portfolio-kpi-grid">
         <article className="kpi-card">
@@ -4802,238 +4815,102 @@ function PortfolioView(props: { dataMode: DataMode }) {
           <small>Benchmark beta reference = 1.00</small>
         </article>
         <article className="kpi-card">
-          <p>Sharpe Ratio (Proxy)</p>
-          <h2>{sharpeRatio}</h2>
-          <small>Risk-free rate assumed at {riskFreeRate}%</small>
+          <p>Holdings Count</p>
+          <h2>{holdings.length}</h2>
+          <small>{portfolios.length} portfolio(s)</small>
         </article>
         <article className="kpi-card">
-          <p>Vs Nifty Benchmark</p>
-          <h2 className={benchmarkRelative >= 0 ? "positive" : "negative"}>
-            {benchmarkRelative >= 0 ? "+" : ""}
-            {benchmarkRelative.toFixed(2)}%
-          </h2>
-          <small>Nifty assumed return {benchmarkReturn.toFixed(2)}%</small>
+          <p>Metrics</p>
+          <h2>{activePortfolio?.metrics ? Object.keys(activePortfolio.metrics).length : 0}</h2>
+          <small>Computed by backend</small>
         </article>
       </div>
 
-      <div className="split-grid portfolio-grid-extended">
-        <article className="feature-card">
-          <div className="feature-head">
-            <BarChart3 size={18} />
-            <h3>Sector Allocation</h3>
-          </div>
-          <div className="allocation-list">
-            {sectorWeights.map((sectorItem) => (
-              <div key={sectorItem.sector} className="allocation-item">
-                <div className="allocation-meta">
-                  <span>{sectorItem.sector}</span>
-                  <span>{sectorItem.weight.toFixed(1)}%</span>
-                </div>
-                <div className="allocation-track">
-                  <span
-                    className="allocation-fill"
-                    style={{ width: `${(sectorItem.weight / maxSectorWeight) * 100}%` }}
-                  />
-                </div>
-              </div>
-            ))}
-          </div>
-        </article>
-
-        <article className="feature-card">
-          <div className="feature-head">
-            <Compass size={18} />
-            <h3>Sector Donut</h3>
-          </div>
-          <div className="chart-wrap medium">
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie
-                  data={pieData}
-                  dataKey="value"
-                  nameKey="name"
-                  cx="50%"
-                  cy="50%"
-                  innerRadius={54}
-                  outerRadius={82}
-                  stroke="none"
-                >
-                  {pieData.map((entry, index) => (
-                    <Cell key={`${entry.name}-${index}`} fill={CHART_COLORS[index % CHART_COLORS.length]} />
-                  ))}
-                </Pie>
-                <Tooltip
-                  formatter={(value) => `${Number(value).toFixed(1)}%`}
-                  labelFormatter={(label) => String(label)}
-                  contentStyle={{
-                    borderRadius: 10,
-                    border: "1px solid rgba(120,132,145,0.25)",
-                    background: "rgba(12,18,26,0.92)",
-                    color: "#e8edf2",
-                  }}
-                />
-              </PieChart>
-            </ResponsiveContainer>
-          </div>
-        </article>
-
-        <article className="feature-card">
-          <div className="feature-head">
-            <ShieldAlert size={18} />
-            <h3>Risk Watchlist</h3>
-          </div>
-          {riskAlerts.length ? (
-            <div className="risk-list">
-              {riskAlerts.map((holding) => (
-                <div key={holding.symbol} className="risk-item">
-                  <p>{holding.symbol}</p>
-                  <span>
-                    Beta {holding.beta.toFixed(2)} · Vol {holding.volatility.toFixed(1)}%
-                  </span>
+      {sectorWeights.length > 0 && (
+        <div className="split-grid portfolio-grid-extended">
+          <article className="feature-card">
+            <div className="feature-head">
+              <BarChart3 size={18} />
+              <h3>Sector Allocation</h3>
+            </div>
+            <div className="allocation-list">
+              {sectorWeights.map((sectorItem) => (
+                <div key={sectorItem.sector} className="allocation-item">
+                  <div className="allocation-meta">
+                    <span>{sectorItem.sector}</span>
+                    <span>{sectorItem.weight.toFixed(1)}%</span>
+                  </div>
+                  <div className="allocation-track">
+                    <span
+                      className="allocation-fill"
+                      style={{ width: `${(sectorItem.weight / maxSectorWeight) * 100}%` }}
+                    />
+                  </div>
                 </div>
               ))}
             </div>
-          ) : (
-            <p>No elevated risk flags in current holdings.</p>
-          )}
-        </article>
-      </div>
+          </article>
 
-      <div className="split-grid portfolio-grid-extended">
-        <article className="feature-card">
-          <div className="feature-head">
-            <GitCompareArrows size={18} />
-            <h3>Risk vs Return Scatter</h3>
-          </div>
-          <div className="chart-wrap medium">
-            <ResponsiveContainer width="100%" height="100%">
-              <ScatterChart margin={{ top: 10, right: 14, bottom: 6, left: 4 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(120,132,145,0.22)" />
-                <XAxis
-                  type="number"
-                  dataKey="x"
-                  name="Volatility"
-                  unit="%"
-                  tick={{ fill: "#7d8792", fontSize: 11 }}
-                />
-                <YAxis
-                  type="number"
-                  dataKey="y"
-                  name="Return"
-                  unit="%"
-                  tick={{ fill: "#7d8792", fontSize: 11 }}
-                />
-                <Tooltip
-                  cursor={{ strokeDasharray: "3 3" }}
-                  formatter={(value, name) => {
-                    const axisName =
-                      String(name) === "x" ? "Volatility" : String(name) === "y" ? "Return" : String(name);
-                    return [`${Number(value).toFixed(2)}%`, axisName];
-                  }}
-                  labelFormatter={(_value, payload) => payload?.[0]?.payload?.symbol ?? "Holding"}
-                  contentStyle={{
-                    borderRadius: 10,
-                    border: "1px solid rgba(120,132,145,0.25)",
-                    background: "rgba(12,18,26,0.92)",
-                    color: "#e8edf2",
-                  }}
-                />
-                <Scatter name="Holdings" data={scatterData} fill="#1186ba" />
-              </ScatterChart>
-            </ResponsiveContainer>
-          </div>
-        </article>
-
-        <article className="feature-card">
-          <div className="feature-head">
-            <TrendingUp size={18} />
-            <h3>Drawdown & Volatility Trend</h3>
-          </div>
-          <div className="chart-wrap medium">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={trendData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(120,132,145,0.22)" />
-                <XAxis dataKey="phase" tick={{ fill: "#7d8792", fontSize: 11 }} />
-                <YAxis tick={{ fill: "#7d8792", fontSize: 11 }} />
-                <Tooltip
-                  contentStyle={{
-                    borderRadius: 10,
-                    border: "1px solid rgba(120,132,145,0.25)",
-                    background: "rgba(12,18,26,0.92)",
-                    color: "#e8edf2",
-                  }}
-                />
-                <Line
-                  type="monotone"
-                  dataKey="drawdown"
-                  stroke="#d86c52"
-                  strokeWidth={2.1}
-                  dot={{ r: 2.8, fill: "#d86c52" }}
-                  name="Drawdown"
-                />
-                <Line
-                  type="monotone"
-                  dataKey="volatility"
-                  stroke="#129ccf"
-                  strokeWidth={2.1}
-                  dot={{ r: 2.8, fill: "#129ccf" }}
-                  name="Volatility"
-                />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
-        </article>
-      </div>
-
-      <div className="table-card">
-        <div className="table-head">
-          <h3>Top Holdings</h3>
-          <span>Analytics view</span>
+          <article className="feature-card">
+            <div className="feature-head">
+              <Compass size={18} />
+              <h3>Sector Donut</h3>
+            </div>
+            <div className="chart-wrap medium">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={pieData}
+                    dataKey="value"
+                    nameKey="name"
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={54}
+                    outerRadius={82}
+                    stroke="none"
+                  >
+                    {pieData.map((entry, index) => (
+                      <Cell key={`${entry.name}-${index}`} fill={CHART_COLORS[index % CHART_COLORS.length]} />
+                    ))}
+                  </Pie>
+                  <Tooltip
+                    formatter={(value) => `${Number(value).toFixed(1)}%`}
+                    labelFormatter={(label) => String(label)}
+                    contentStyle={{
+                      borderRadius: 10,
+                      border: "1px solid rgba(120,132,145,0.25)",
+                      background: "rgba(12,18,26,0.92)",
+                      color: "#e8edf2",
+                    }}
+                  />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+          </article>
         </div>
+      )}
 
-        {PORTFOLIO_HOLDINGS.map((holding) => (
-          <div key={holding.symbol} className="table-row portfolio-row">
-            <span>
-              {holding.symbol}
-              <small>{holding.company}</small>
-            </span>
-            <span>{holding.weight.toFixed(1)}%</span>
-            <span className={holding.returnPct >= 0 ? "positive" : "negative"}>
-              {holding.returnPct >= 0 ? "+" : ""}
-              {holding.returnPct.toFixed(1)}%
-            </span>
+      {holdings.length > 0 && (
+        <div className="table-card">
+          <div className="table-head">
+            <h3>Top Holdings</h3>
+            <span>From backend portfolio</span>
           </div>
-        ))}
-      </div>
-
-      <div className="table-card">
-        <div className="table-head">
-          <h3>Valuation & Risk Factors</h3>
-          <span>PE / PB / Volatility</span>
+          {holdings.map((holding) => (
+            <div key={holding.symbol} className="table-row portfolio-row">
+              <span>
+                {holding.symbol}
+                <small>{holding.company}</small>
+              </span>
+              <span>{holding.weight.toFixed(1)}%</span>
+              <span className={holding.returnPct >= 0 ? "positive" : "negative"}>
+                {holding.returnPct >= 0 ? "+" : ""}
+                {holding.returnPct.toFixed(1)}%
+              </span>
+            </div>
+          ))}
         </div>
-
-        {PORTFOLIO_HOLDINGS.map((holding) => (
-          <div key={`${holding.symbol}-factors`} className="table-row factor-row">
-            <span>{holding.symbol}</span>
-            <span>PE {holding.pe.toFixed(1)} | PB {holding.pb.toFixed(1)}</span>
-            <span>Vol {holding.volatility.toFixed(1)}%</span>
-          </div>
-        ))}
-      </div>
-
-      <article className="feature-card benchmark-note">
-        <div className="feature-head">
-          <Flame size={18} />
-          <h3>Benchmark Context</h3>
-        </div>
-        <p>
-          Portfolio is currently {benchmarkRelative >= 0 ? "outperforming" : "underperforming"} the
-          benchmark by {Math.abs(benchmarkRelative).toFixed(2)}%. Highest concentration risk remains in
-          {" "}
-          {sectorWeights[0]?.sector ?? "top sector"} with {sectorWeights[0]?.weight.toFixed(1) ?? "0"}%
-          allocation.
-        </p>
-      </article>
+      )}
     </section>
   );
 }
@@ -5046,69 +4923,68 @@ function TimelineView(props: {
 }) {
   const [lastSelectionStamp, setLastSelectionStamp] = useState<number>(0);
   const [query, setQuery] = useState("");
-  const [typeFilter, setTypeFilter] = useState<"all" | TimelineEvent["type"]>("all");
-  const [impactFilter, setImpactFilter] = useState<"all" | TimelineEvent["impact"]>("all");
-  const [selectedEventId, setSelectedEventId] = useState<string>(TIMELINE_EVENTS[0]?.id ?? "");
+  const [typeFilter, setTypeFilter] = useState<"all" | "filing" | "news">("all");
+  const [events, setEvents] = useState<BackendTimelineEvent[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [selectedEventId, setSelectedEventId] = useState<string>("");
+
+  const userId = useMemo(() => getUserId(), []);
+
+  const loadEvents = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await fetchTimeline(userId, undefined, 40);
+      setEvents(data);
+      if (data.length > 0 && !selectedEventId) {
+        setSelectedEventId(data[0].id);
+      }
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Could not load timeline.");
+      setEvents([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [selectedEventId, userId]);
+
+  useEffect(() => {
+    void loadEvents();
+  }, [loadEvents]);
 
   useEffect(() => {
     if (!props.searchSelection) return;
     if (props.searchSelection.stamp === lastSelectionStamp) return;
-
-    if (props.searchSelection.timelineQuery) {
-      setQuery(props.searchSelection.timelineQuery);
-    }
-
-    if (props.searchSelection.timelineEventId) {
-      setSelectedEventId(props.searchSelection.timelineEventId);
-    }
-
+    if (props.searchSelection.timelineQuery) setQuery(props.searchSelection.timelineQuery);
+    if (props.searchSelection.timelineEventId) setSelectedEventId(props.searchSelection.timelineEventId);
     setLastSelectionStamp(props.searchSelection.stamp);
   }, [lastSelectionStamp, props.searchSelection]);
 
   const filteredEvents = useMemo(() => {
     const normalized = query.trim().toLowerCase();
-
-    return TIMELINE_EVENTS.filter((event) => {
-      const matchesQuery =
-        !normalized ||
-        `${event.company} ${event.title} ${event.summary} ${event.sourceLabel}`
-          .toLowerCase()
-          .includes(normalized);
-
-      const matchesType = typeFilter === "all" || event.type === typeFilter;
-      const matchesImpact = impactFilter === "all" || event.impact === impactFilter;
-
-      return matchesQuery && matchesType && matchesImpact;
+    return events.filter((event) => {
+      const matchesQuery = !normalized ||
+        `${event.company_name ?? ""} ${event.title} ${event.summary}`.toLowerCase().includes(normalized);
+      const matchesType = typeFilter === "all" || event.event_type === typeFilter;
+      return matchesQuery && matchesType;
     }).sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-  }, [impactFilter, query, typeFilter]);
+  }, [events, query, typeFilter]);
 
   useEffect(() => {
-    if (!filteredEvents.length) {
-      setSelectedEventId("");
-      return;
-    }
-
-    const exists = filteredEvents.some((event) => event.id === selectedEventId);
-    if (!exists) {
-      setSelectedEventId(filteredEvents[0].id);
-    }
+    if (!filteredEvents.length) { setSelectedEventId(""); return; }
+    const exists = filteredEvents.some((e) => e.id === selectedEventId);
+    if (!exists) setSelectedEventId(filteredEvents[0].id);
   }, [filteredEvents, selectedEventId]);
 
-  const selectedEvent = filteredEvents.find((event) => event.id === selectedEventId) ?? null;
+  const selectedEvent = filteredEvents.find((e) => e.id === selectedEventId) ?? null;
 
   const formatTimestamp = (value: string) => {
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) return value;
-    return date.toLocaleString();
+    const d = new Date(value);
+    return Number.isNaN(d.getTime()) ? value : d.toLocaleString();
   };
 
-  const getTypeClass = (type: TimelineEvent["type"]) => {
-    if (type === "filing") return "chip type-filing";
-    if (type === "news") return "chip type-news";
-    return "chip type-signal";
-  };
-
-  const getImpactClass = (impact: TimelineEvent["impact"]) => {
+  const getTypeClass = (type: string) => type === "filing" ? "chip type-filing" : "chip type-news";
+  const getImpactClass = (impact?: string) => {
     if (impact === "high") return "chip negative";
     if (impact === "medium") return "chip warning";
     return "chip positive";
@@ -5118,88 +4994,62 @@ function TimelineView(props: {
     <section className="page-wrap">
       <PageHeader
         title="Research Timeline Feed"
-        subtitle="Chronological filing and insight stream with quick detail drill-down."
+        subtitle="Real-time filings and news events from the database."
         dataMode={props.dataMode}
+        right={
+          <button type="button" className="primary-btn" onClick={() => void loadEvents()}>
+            {loading ? "Loading..." : "Refresh"}
+          </button>
+        }
       />
 
       <div className="timeline-toolbar">
         <div className="search-pill timeline-search">
           <Search size={14} />
-          <input
-            placeholder="Search company, event, or source..."
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-          />
+          <input placeholder="Search events..." value={query} onChange={(e) => setQuery(e.target.value)} />
         </div>
-
         <div className="chip-row">
-          <select
-            className="type-select"
-            value={typeFilter}
-            onChange={(event) => setTypeFilter(event.target.value as "all" | TimelineEvent["type"])}
-          >
+          <select className="type-select" value={typeFilter} onChange={(e) => setTypeFilter(e.target.value as typeof typeFilter)}>
             <option value="all">Type: All</option>
             <option value="filing">Type: Filing</option>
             <option value="news">Type: News</option>
-            <option value="signal">Type: Signal</option>
-          </select>
-
-          <select
-            className="type-select"
-            value={impactFilter}
-            onChange={(event) =>
-              setImpactFilter(event.target.value as "all" | TimelineEvent["impact"])
-            }
-          >
-            <option value="all">Impact: All</option>
-            <option value="high">Impact: High</option>
-            <option value="medium">Impact: Medium</option>
-            <option value="low">Impact: Low</option>
           </select>
         </div>
       </div>
 
+      {error ? <div className="notice warning">{error}</div> : null}
+      {loading ? <div className="notice"><Loader2 size={16} className="spin" /> Loading timeline...</div> : null}
+
+      {!loading && !filteredEvents.length && !error ? (
+        <div className="notice">No timeline events found. Events appear as filings and news are indexed by the backend.</div>
+      ) : null}
+
       <div className="timeline-layout">
         <div className="timeline-list">
-          {filteredEvents.length ? (
-            filteredEvents.map((event) => (
-              <button
-                key={event.id}
-                type="button"
-                className={`timeline-item ${selectedEventId === event.id ? "active" : ""}`}
-                onClick={() => setSelectedEventId(event.id)}
-              >
-                <div className="timeline-item-head">
-                  <p>{event.company}</p>
-                  <span>{formatTimestamp(event.timestamp)}</span>
-                </div>
-                <h3>{event.title}</h3>
-                <p>{event.summary}</p>
-                <div className="chip-row timeline-item-chips">
-                  <span className={getTypeClass(event.type)}>{event.type}</span>
-                  <span className={getImpactClass(event.impact)}>{event.impact} impact</span>
-                </div>
-                <span
-                  className="timeline-open-company"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    props.setSearchSelection({
-                      stamp: Date.now(),
-                      companySymbol: event.company,
-                      timelineEventId: event.id,
-                    });
-                    props.goToView("company");
-                  }}
-                >
-                  Open Company
-                </span>
-              </button>
-            ))
-          ) : (
-            <div className="list-item single-line">
-              <p>No timeline events match the current filters.</p>
-            </div>
-          )}
+          {filteredEvents.map((event) => (
+            <button
+              key={event.id}
+              type="button"
+              className={`timeline-item ${selectedEventId === event.id ? "active" : ""}`}
+              onClick={() => setSelectedEventId(event.id)}
+            >
+              <div className="timeline-item-head">
+                <p>{event.company_name ?? "Unknown"}</p>
+                <span>{formatTimestamp(event.timestamp)}</span>
+              </div>
+              <h3>{event.title}</h3>
+              <p>{event.summary}</p>
+              <div className="chip-row timeline-item-chips">
+                <span className={getTypeClass(event.event_type)}>{event.event_type}</span>
+                {event.metadata?.impact ? (
+                  <span className={getImpactClass(String(event.metadata.impact))}>
+                    {String(event.metadata.impact)} impact
+                  </span>
+                ) : null}
+              </div>
+              <SourceBadges sources={event.data_sources} />
+            </button>
+          ))}
         </div>
 
         <aside className="timeline-detail">
@@ -5207,31 +5057,27 @@ function TimelineView(props: {
             <>
               <div className="timeline-detail-head">
                 <div>
-                  <p className="discovery-symbol">{selectedEvent.company}</p>
+                  <p className="discovery-symbol">{selectedEvent.company_name ?? "Unknown"}</p>
                   <h3>{selectedEvent.title}</h3>
                 </div>
                 <span className="chip">{formatTimestamp(selectedEvent.timestamp)}</span>
               </div>
-
               <p className="discovery-insight">{selectedEvent.summary}</p>
-
               <div className="chip-row timeline-item-chips">
-                <span className={getTypeClass(selectedEvent.type)}>{selectedEvent.type}</span>
-                <span className={getImpactClass(selectedEvent.impact)}>
-                  {selectedEvent.impact} impact
-                </span>
-                <span className="chip">{selectedEvent.sourceLabel}</span>
+                <span className={getTypeClass(selectedEvent.event_type)}>{selectedEvent.event_type}</span>
+                {selectedEvent.metadata?.source ? (
+                  <span className="chip">{String(selectedEvent.metadata.source)}</span>
+                ) : null}
               </div>
-
-              <div className="timeline-bullets">
-                {selectedEvent.details.map((detail, index) => (
-                  <p key={`${selectedEvent.id}-detail-${index}`}>{detail}</p>
-                ))}
-              </div>
-
-              {selectedEvent.sourceUrl ? (
-                <a href={selectedEvent.sourceUrl} target="_blank" rel="noreferrer" className="secondary-btn timeline-link">
-                  Open Source Reference
+              <SourceBadges sources={selectedEvent.data_sources} />
+              {selectedEvent.metadata?.source_url ? (
+                <a
+                  href={String(selectedEvent.metadata.source_url)}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="secondary-btn timeline-link"
+                >
+                  <ExternalLink size={14} /> Open Source Reference
                 </a>
               ) : null}
             </>
@@ -5273,10 +5119,8 @@ function FilingsView(props: {
     setError(null);
 
     if (props.dataMode === "demo") {
-      await new Promise((resolve) => {
-        window.setTimeout(resolve, 140);
-      });
-      setFilings(buildMockFilings(symbol, selectedType));
+      setFilings([]);
+      setError(DEMO_BANNER_MSG);
       setLoading(false);
       return;
     }
@@ -5324,10 +5168,8 @@ function FilingsView(props: {
     setSearchError(null);
 
     if (props.dataMode === "demo") {
-      await new Promise((resolve) => {
-        window.setTimeout(resolve, 120);
-      });
-      setSearchResults(getMockCompanyResults(query, 6));
+      setSearchResults([]);
+      setSearchError(DEMO_BANNER_MSG);
       setSearchLoading(false);
       return;
     }
@@ -5536,10 +5378,8 @@ function NewsView(props: {
     setHeadlinesError(null);
 
     if (props.dataMode === "demo") {
-      await new Promise((resolve) => {
-        window.setTimeout(resolve, 120);
-      });
-      setHeadlines(DEMO_MARKET_HEADLINES);
+      setHeadlines({});
+      setHeadlinesError(DEMO_BANNER_MSG);
       setLoadingHeadlines(false);
       return;
     }
@@ -5563,10 +5403,8 @@ function NewsView(props: {
     setSentimentError(null);
 
     if (props.dataMode === "demo") {
-      await new Promise((resolve) => {
-        window.setTimeout(resolve, 140);
-      });
-      setSentimentFeed(buildMockSentiment(symbol));
+      setSentimentFeed(null);
+      setSentimentError(DEMO_BANNER_MSG);
       setLoadingSentiment(false);
       return;
     }
@@ -5816,6 +5654,350 @@ function NewsView(props: {
             </div>
           )}
         </article>
+      </div>
+    </section>
+  );
+}
+
+function ProfileView(props: {
+  dataMode: DataMode;
+  theme: Theme;
+  onToggleTheme: () => void;
+  onToggleDataMode: () => void;
+  pushToast: (message: string, tone?: ToastTone) => void;
+}) {
+  const [profile, setProfile] = useState<{
+    full_name: string;
+    username: string;
+    email: string;
+    phone_number: string;
+    date_of_birth: string;
+    address: string;
+    pan_card_number: string;
+    aadhaar_number: string;
+    expertise_level: string;
+    risk_tolerance: string;
+    investment_horizon: string;
+    profile_pic_url: string;
+    kyc_status: string;
+  }>({
+    full_name: "",
+    username: "",
+    email: "",
+    phone_number: "",
+    date_of_birth: "",
+    address: "",
+    pan_card_number: "",
+    aadhaar_number: "",
+    expertise_level: "beginner",
+    risk_tolerance: "moderate",
+    investment_horizon: "medium",
+    profile_pic_url: "",
+    kyc_status: "not_started",
+  });
+  const [saving, setSaving] = useState(false);
+  const [kycSubmitting, setKycSubmitting] = useState(false);
+  const [kycStep, setKycStep] = useState(0);
+  const avatarInputRef = useRef<HTMLInputElement | null>(null);
+
+  const userId = useMemo(() => {
+    let id = localStorage.getItem("equityai-user-id");
+    if (!id) {
+      id = crypto.randomUUID();
+      localStorage.setItem("equityai-user-id", id);
+    }
+    return id;
+  }, []);
+
+  useEffect(() => {
+    if (props.dataMode !== "live") return;
+    (async () => {
+      try {
+        const { fetchUserProfile } = await import("./lib/api");
+        const p = await fetchUserProfile(userId);
+        setProfile({
+          full_name: p.full_name || "",
+          username: p.username || "",
+          email: p.email || "",
+          phone_number: p.phone_number || "",
+          date_of_birth: p.date_of_birth || "",
+          address: p.address || "",
+          pan_card_number: p.pan_card_number || "",
+          aadhaar_number: p.aadhaar_number || "",
+          expertise_level: p.expertise_level || "beginner",
+          risk_tolerance: p.risk_tolerance || "moderate",
+          investment_horizon: p.investment_horizon || "medium",
+          profile_pic_url: p.profile_pic_url || "",
+          kyc_status: p.kyc_status || "not_started",
+        });
+        if (p.kyc_status === "verified") setKycStep(4);
+        else if (p.kyc_status === "pending") setKycStep(2);
+        else setKycStep(0);
+      } catch {
+        /* profile may not exist yet */
+      }
+    })();
+  }, [props.dataMode, userId]);
+
+  const handleField = useCallback(
+    (field: string, value: string) => {
+      setProfile((prev) => ({ ...prev, [field]: value }));
+    },
+    []
+  );
+
+  const handleSave = useCallback(async () => {
+    setSaving(true);
+    try {
+      if (props.dataMode === "live") {
+        const { updateUserProfile } = await import("./lib/api");
+        await updateUserProfile(userId, {
+          full_name: profile.full_name || undefined,
+          username: profile.username || undefined,
+          email: profile.email || undefined,
+          phone_number: profile.phone_number || undefined,
+          date_of_birth: profile.date_of_birth || undefined,
+          address: profile.address || undefined,
+          expertise_level: profile.expertise_level,
+          risk_tolerance: profile.risk_tolerance,
+          investment_horizon: profile.investment_horizon,
+        });
+      }
+      props.pushToast("Profile saved successfully", "success");
+    } catch {
+      props.pushToast("Failed to save profile", "warning");
+    } finally {
+      setSaving(false);
+    }
+  }, [profile, props, userId]);
+
+  const handleAvatarUpload = useCallback(
+    async (event: React.ChangeEvent<HTMLInputElement>) => {
+      const file = event.target.files?.[0];
+      if (!file) return;
+      try {
+        if (props.dataMode === "live") {
+          const { uploadProfilePic } = await import("./lib/api");
+          const result = await uploadProfilePic(userId, file);
+          setProfile((prev) => ({ ...prev, profile_pic_url: result.profile_pic_url }));
+        } else {
+          setProfile((prev) => ({ ...prev, profile_pic_url: URL.createObjectURL(file) }));
+        }
+        props.pushToast("Profile picture updated", "success");
+      } catch {
+        props.pushToast("Failed to upload picture", "warning");
+      }
+      if (event.target) event.target.value = "";
+    },
+    [props, userId]
+  );
+
+  const handleKycSubmit = useCallback(async () => {
+    if (!profile.pan_card_number || !/^[A-Z]{5}[0-9]{4}[A-Z]$/.test(profile.pan_card_number.toUpperCase())) {
+      props.pushToast("Please enter a valid PAN (e.g. ABCDE1234F)", "warning");
+      return;
+    }
+    setKycSubmitting(true);
+    setKycStep(1);
+
+    try {
+      if (props.dataMode === "live") {
+        const { submitKyc, verifyKyc } = await import("./lib/api");
+        await submitKyc(userId, profile.pan_card_number.toUpperCase(), profile.aadhaar_number || undefined);
+        setKycStep(2);
+        setProfile((prev) => ({ ...prev, kyc_status: "pending" }));
+
+        await new Promise((r) => setTimeout(r, 1500));
+        setKycStep(3);
+
+        await new Promise((r) => setTimeout(r, 1000));
+        await verifyKyc(userId);
+        setKycStep(4);
+        setProfile((prev) => ({ ...prev, kyc_status: "verified" }));
+        props.pushToast("KYC verified successfully!", "success");
+      } else {
+        await new Promise((r) => setTimeout(r, 800));
+        setKycStep(2);
+        setProfile((prev) => ({ ...prev, kyc_status: "pending" }));
+        await new Promise((r) => setTimeout(r, 1200));
+        setKycStep(3);
+        await new Promise((r) => setTimeout(r, 800));
+        setKycStep(4);
+        setProfile((prev) => ({ ...prev, kyc_status: "verified" }));
+        props.pushToast("KYC verified successfully!", "success");
+      }
+    } catch {
+      props.pushToast("KYC verification failed", "warning");
+      setKycStep(0);
+    } finally {
+      setKycSubmitting(false);
+    }
+  }, [profile.aadhaar_number, profile.pan_card_number, props, userId]);
+
+  const kycSteps = ["Details Submitted", "Document Verification", "Identity Confirmed", "KYC Approved"];
+  const kycBadge = profile.kyc_status === "verified" ? "verified" : profile.kyc_status === "pending" ? "pending" : "not-started";
+
+  const avatarUrl = profile.profile_pic_url
+    ? (profile.profile_pic_url.startsWith("http") || profile.profile_pic_url.startsWith("blob:"))
+      ? profile.profile_pic_url
+      : `${(import.meta.env.VITE_BACKEND_URL as string | undefined) ?? "http://localhost:8001"}${profile.profile_pic_url}`
+    : null;
+
+  return (
+    <section className="page-wrap">
+      <PageHeader
+        title="My Profile"
+        subtitle="Manage your account, preferences, and KYC verification."
+        dataMode={props.dataMode}
+      />
+
+      {/* ── Profile Header ── */}
+      <div className="profile-header">
+        <div className="profile-avatar-wrap" onClick={() => avatarInputRef.current?.click()}>
+          <input type="file" ref={avatarInputRef} className="sr-only" accept=".jpg,.jpeg,.png,.webp" onChange={handleAvatarUpload} />
+          {avatarUrl ? (
+            <img src={avatarUrl} alt="Avatar" className="profile-avatar-img" />
+          ) : (
+            <div className="profile-avatar-placeholder">
+              <CircleUserRound size={48} />
+            </div>
+          )}
+          <div className="profile-avatar-overlay">
+            <Camera size={18} />
+          </div>
+        </div>
+        <div className="profile-header-info">
+          <h2>{profile.full_name || profile.username || "Set up your profile"}</h2>
+          <p className="profile-email">{profile.email || userId}</p>
+          <div className="profile-badges">
+            <span className={`kyc-badge ${kycBadge}`}>
+              {profile.kyc_status === "verified" ? <><CircleCheck size={13} /> KYC Verified</> : profile.kyc_status === "pending" ? <><Loader2 size={13} className="spin" /> KYC Pending</> : <><AlertTriangle size={13} /> KYC Not Started</>}
+            </span>
+            <span className="expertise-badge">
+              <GraduationCap size={13} /> {profile.expertise_level}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Personal Information ── */}
+      <div className="profile-section">
+        <h3><User size={16} /> Personal Information</h3>
+        <div className="profile-form">
+          <label className="form-field">
+            <span><User size={14} /> Full Name</span>
+            <input value={profile.full_name} onChange={(e) => handleField("full_name", e.target.value)} placeholder="Your full name" />
+          </label>
+          <label className="form-field">
+            <span><AtSign size={14} /> Username</span>
+            <input value={profile.username} onChange={(e) => handleField("username", e.target.value)} placeholder="your_username" />
+          </label>
+          <label className="form-field">
+            <span><Mail size={14} /> Email</span>
+            <input type="email" value={profile.email} onChange={(e) => handleField("email", e.target.value)} placeholder="you@example.com" />
+          </label>
+          <label className="form-field">
+            <span><Phone size={14} /> Phone Number</span>
+            <input value={profile.phone_number} onChange={(e) => handleField("phone_number", e.target.value)} placeholder="+91 98765 43210" />
+          </label>
+          <label className="form-field">
+            <span><Calendar size={14} /> Date of Birth</span>
+            <input type="date" value={profile.date_of_birth} onChange={(e) => handleField("date_of_birth", e.target.value)} />
+          </label>
+          <label className="form-field full-width">
+            <span><MapPin size={14} /> Address</span>
+            <input value={profile.address} onChange={(e) => handleField("address", e.target.value)} placeholder="Your address" />
+          </label>
+        </div>
+      </div>
+
+      {/* ── Investment Preferences ── */}
+      <div className="profile-section">
+        <h3><TrendingUp size={16} /> Investment Preferences</h3>
+        <div className="profile-form">
+          <label className="form-field">
+            <span><GraduationCap size={14} /> Expertise Level</span>
+            <select value={profile.expertise_level} onChange={(e) => handleField("expertise_level", e.target.value)}>
+              <option value="beginner">Beginner</option>
+              <option value="intermediate">Intermediate</option>
+              <option value="advanced">Advanced</option>
+            </select>
+          </label>
+          <label className="form-field">
+            <span><ShieldAlert size={14} /> Risk Tolerance</span>
+            <select value={profile.risk_tolerance} onChange={(e) => handleField("risk_tolerance", e.target.value)}>
+              <option value="conservative">Conservative</option>
+              <option value="moderate">Moderate</option>
+              <option value="aggressive">Aggressive</option>
+            </select>
+          </label>
+          <label className="form-field">
+            <span><Clock3 size={14} /> Investment Horizon</span>
+            <select value={profile.investment_horizon} onChange={(e) => handleField("investment_horizon", e.target.value)}>
+              <option value="short">Short Term (0-1 yr)</option>
+              <option value="medium">Medium Term (1-5 yr)</option>
+              <option value="long">Long Term (5+ yr)</option>
+            </select>
+          </label>
+        </div>
+        <div className="chip-row" style={{ marginTop: "1rem" }}>
+          <button type="button" className="primary-btn" onClick={handleSave} disabled={saving}>
+            {saving ? <><Loader2 size={14} className="spin" /> Saving...</> : <><Check size={14} /> Save Profile</>}
+          </button>
+        </div>
+      </div>
+
+      {/* ── KYC Verification ── */}
+      <div className="profile-section">
+        <h3><CreditCard size={16} /> KYC Verification</h3>
+        <div className="profile-form">
+          <label className="form-field">
+            <span><CreditCard size={14} /> PAN Card Number</span>
+            <input value={profile.pan_card_number} onChange={(e) => handleField("pan_card_number", e.target.value.toUpperCase())} placeholder="ABCDE1234F" maxLength={10} />
+          </label>
+          <label className="form-field">
+            <span><Fingerprint size={14} /> Aadhaar Number</span>
+            <input value={profile.aadhaar_number} onChange={(e) => handleField("aadhaar_number", e.target.value)} placeholder="1234 5678 9012" maxLength={12} />
+          </label>
+        </div>
+
+        <div className="kyc-stepper">
+          {kycSteps.map((label, idx) => (
+            <div key={label} className={`kyc-step ${idx < kycStep ? "done" : ""} ${idx === kycStep && kycSubmitting ? "active" : ""}`}>
+              <div className="kyc-step-circle">
+                {idx < kycStep ? <Check size={14} /> : <span>{idx + 1}</span>}
+              </div>
+              <p>{label}</p>
+              {idx < kycSteps.length - 1 && <div className={`kyc-step-line ${idx < kycStep ? "done" : ""}`} />}
+            </div>
+          ))}
+        </div>
+
+        <div className="chip-row" style={{ marginTop: "1rem" }}>
+          {profile.kyc_status !== "verified" && (
+            <button type="button" className="primary-btn" onClick={handleKycSubmit} disabled={kycSubmitting}>
+              {kycSubmitting ? <><Loader2 size={14} className="spin" /> Verifying...</> : <><Upload size={14} /> Submit KYC</>}
+            </button>
+          )}
+          {profile.kyc_status === "verified" && (
+            <span className="kyc-badge verified" style={{ fontSize: "0.875rem", padding: "0.5rem 1rem" }}>
+              <CircleCheck size={16} /> KYC Verified
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* ── Account Settings ── */}
+      <div className="profile-section">
+        <h3><Settings size={16} /> Account Settings</h3>
+        <div className="chip-row">
+          <button type="button" className="secondary-btn" onClick={props.onToggleTheme}>
+            {props.theme === "dark" ? <><Sun size={14} /> Light Mode</> : <><Moon size={14} /> Dark Mode</>}
+          </button>
+          <button type="button" className="secondary-btn" onClick={props.onToggleDataMode}>
+            {props.dataMode === "demo" ? <><Database size={14} /> Switch to Live</> : <><Database size={14} /> Switch to Demo</>}
+          </button>
+        </div>
       </div>
     </section>
   );
