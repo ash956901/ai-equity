@@ -51,7 +51,7 @@ class QuotesService:
     async def _fetch_quote_from_api(self, company: Company) -> Optional[dict[str, Any]]:
         if company.isin:
             try:
-                from src.external_apis.Upstox_api.client import UpstoxClient
+                from src.integrations.market_data.upstox import UpstoxClient
 
                 client = UpstoxClient()
                 if client.access_token:
@@ -77,7 +77,7 @@ class QuotesService:
         kite_ticker = company.ticker_nse or company.ticker_bse
         if kite_ticker:
             try:
-                from src.external_apis.Kite_api.client import KiteClient
+                from src.integrations.market_data.kite import KiteClient
 
                 client = KiteClient()
                 exchange = "NSE" if company.ticker_nse else "BSE"
@@ -100,7 +100,7 @@ class QuotesService:
         fmp_ticker = company.ticker_nse or company.ticker_bse
         if fmp_ticker:
             try:
-                from src.external_apis.FMP_api.client import FMPClient
+                from src.integrations.market_data.fmp import FMPClient
 
                 client = FMPClient()
                 suffix = ".NS" if company.ticker_nse else ".BO"

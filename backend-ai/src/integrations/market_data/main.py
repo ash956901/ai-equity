@@ -1,17 +1,9 @@
-"""Legacy standalone entry point for external data APIs (optional).
+"""Standalone entry point for external market-data APIs (optional)."""
 
-Preferred path after Phase 4 migration:
-    python -m src.integrations.market_data.main
-
-This module remains as a compatibility wrapper.
-"""
-
+from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
-from dotenv import load_dotenv
-
-load_dotenv()
 
 from src.integrations.market_data.routes import (
     fmp_router,
@@ -21,6 +13,8 @@ from src.integrations.market_data.routes import (
     newsdata_router,
     upstox_router,
 )
+
+load_dotenv()
 
 app = FastAPI(
     title="Equity Finance APIs",

@@ -11,7 +11,7 @@ from src.domains.screens import screens_router
 from src.domains.timeline import timeline_router
 from src.domains.users import user_router
 from src.domains.watchlists import watchlists_router
-from src.external_apis import ALL_EXTERNAL_ROUTERS
+from src.integrations.market_data import ALL_EXTERNAL_ROUTERS
 
 
 def register_routers(app: FastAPI) -> None:

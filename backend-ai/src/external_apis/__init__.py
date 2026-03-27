@@ -1,4 +1,7 @@
-"""External data API integrations (FMP, FRED, NewsAPI, NewsDataIO, Upstox, Kite)."""
+"""External data API integrations (FMP, FRED, NewsAPI, NewsDataIO, Upstox, Kite).
+
+Legacy compatibility package retained during Phase 4 migration.
+"""
 
 from .FMP_api.routes import router as fmp_router
 from .FRED_api.routes import router as fred_router
