@@ -21,21 +21,20 @@ import {
   DASHBOARD_PREFERENCES_KEY,
   DATA_MODE_STORAGE_KEY,
   DEMO_BANNER_MSG,
-  QUICK_QUERY_TEMPLATES,
   THEME_STORAGE_KEY,
 } from "./app/constants";
 import { useAlertRules } from "./app/hooks/useAlertRules";
 import { useChatThreads } from "./app/hooks/useChatThreads";
 import { useFavorites } from "./app/hooks/useFavorites";
 import { useNotifications } from "./app/hooks/useNotifications";
+import { usePaletteSearch } from "./app/hooks/usePaletteSearch";
+import { useGlobalShortcuts } from "./app/hooks/useGlobalShortcuts";
 import type {
-  CommandItem,
   CompanySearchSelection,
   DashboardPreferences,
   DataMode,
   FavoriteItem,
   FilingsSearchSelection,
-  GlobalSearchResult,
   NewsSearchSelection,
   SearchSelection,
   Theme,
@@ -95,14 +94,10 @@ export default function App() {
     useState<DashboardPreferences>(getInitialDashboardPreferences);
   const [searchSelection, setSearchSelection] = useState<SearchSelection | null>(null);
   const [toasts, setToasts] = useState<ToastItem[]>([]);
-  const [globalSearchOpen, setGlobalSearchOpen] = useState(false);
-  const [globalSearchQuery, setGlobalSearchQuery] = useState("");
-  const [globalSearchIndex, setGlobalSearchIndex] = useState(0);
-  const [paletteOpen, setPaletteOpen] = useState(false);
-  const [paletteQuery, setPaletteQuery] = useState("");
-  const [paletteActiveIndex, setPaletteActiveIndex] = useState(0);
-  const paletteInputRef = useRef<HTMLInputElement | null>(null);
-  const globalSearchInputRef = useRef<HTMLInputElement | null>(null);
+// Palette and Global Search state are now managed by usePaletteSearch hook
+// The input refs are still needed for focusing the inputs
+const paletteInputRef = useRef<HTMLInputElement | null>(null);
+const globalSearchInputRef = useRef<HTMLInputElement | null>(null);
 
   const pushToast = useCallback((message: string, tone: ToastTone = "info") => {
     const id = `toast-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -189,17 +184,7 @@ export default function App() {
     );
   }, [dashboardPreferences]);
 
-  const openGlobalSearch = useCallback(() => {
-    setGlobalSearchOpen(true);
-    setGlobalSearchQuery("");
-    setGlobalSearchIndex(0);
-  }, []);
-
-  const closeGlobalSearch = useCallback(() => {
-    setGlobalSearchOpen(false);
-    setGlobalSearchQuery("");
-    setGlobalSearchIndex(0);
-  }, []);
+  // openGlobalSearch and closeGlobalSearch are provided by the usePaletteSearch hook
 
   const toggleTheme = useCallback(() => {
     const root = document.documentElement;
@@ -247,14 +232,9 @@ export default function App() {
     });
   }, [pushToast]);
 
+  // Navigation helper – UI state (palette / global search) is handled by the palette/search hook
   const goToView = useCallback((view: ViewKey) => {
     setActiveView(view);
-    setPaletteOpen(false);
-    setPaletteQuery("");
-    setPaletteActiveIndex(0);
-    setGlobalSearchOpen(false);
-    setGlobalSearchQuery("");
-    setGlobalSearchIndex(0);
 
     if (view === "filings") {
       createNotification({
@@ -343,88 +323,60 @@ export default function App() {
     pushToast("Dashboard layout reset", "success");
   }, [pushToast]);
 
-  const globalSearchResults = useMemo<GlobalSearchResult[]>(() => {
-    const query = globalSearchQuery.trim().toLowerCase();
-    const results: GlobalSearchResult[] = [];
+  // Palette and Global Search state & logic are now provided by usePaletteSearch
+  const {
+    globalSearchOpen,
+    globalSearchQuery,
+    globalSearchIndex,
+    setGlobalSearchOpen,
+    setGlobalSearchQuery,
+    setGlobalSearchIndex,
+    openGlobalSearch,
+    closeGlobalSearch,
+    globalSearchResults,
+    paletteOpen,
+    paletteQuery,
+    paletteActiveIndex,
+    setPaletteOpen,
+    setPaletteQuery,
+    setPaletteActiveIndex,
+    openPalette,
+    closePalette,
+    filteredCommands,
+  } = usePaletteSearch({
+    searchSelection,
+    goToView,
+    setSearchSelection,
+    theme,
+    dataMode,
+    toggleTheme,
+    toggleDataMode,
+    runAlertRulesCheck,
+    markAllNotificationsRead,
+    setAlertRulesOpen,
+    setNotificationsOpen,
+  });
 
-    if (!query) {
-      results.push(
-        {
-          id: "hint-company",
-          type: "company",
-          title: "Search company symbols",
-          subtitle: "Examples: RELIANCE, TCS, INFY",
-          onSelect: () => {
-            setSearchSelection({ stamp: Date.now(), discoveryQuery: "RELIANCE" });
-            goToView("discovery");
-          },
-        },
-        {
-          id: "hint-theme",
-          type: "theme",
-          title: "Jump to themes",
-          subtitle: "Examples: AI, Defense, Renewable",
-          onSelect: () => {
-            setSearchSelection({ stamp: Date.now(), discoveryTheme: "AI" });
-            goToView("discovery");
-          },
-        },
-        {
-          id: "hint-query",
-          type: "query",
-          title: "Ask Iris quickly",
-          subtitle: "Open chat with a prepared prompt",
-          onSelect: () => {
-            setSearchSelection({
-              stamp: Date.now(),
-              chatPrompt: "Summarize portfolio risk in simple language.",
-            });
-            goToView("chat");
-          },
-        }
-      );
-      return results;
-    }
+  // Keyboard shortcuts handling
+  useGlobalShortcuts({
+    paletteOpen,
+    setPaletteOpen,
+    closePalette,
+    filteredCommands,
+    paletteActiveIndex,
+    setPaletteActiveIndex,
+    setGlobalSearchOpen,
+    setGlobalSearchQuery,
+    setGlobalSearchIndex,
+    globalSearchOpen,
+    closeGlobalSearch,
+    globalSearchResults,
+    globalSearchIndex,
+  });
 
-    results.push({
-      id: `search-${query}`,
-      type: "company",
-      title: `Search: ${query}`,
-      subtitle: "Search company database",
-      onSelect: () => {
-        setSearchSelection({ stamp: Date.now(), discoveryQuery: query });
-        goToView("discovery");
-      },
-    });
 
-    for (const template of QUICK_QUERY_TEMPLATES) {
-      if (!template.toLowerCase().includes(query)) continue;
-      results.push({
-        id: `query-${template}`,
-        type: "query",
-        title: template,
-        subtitle: "Use as chat starter",
-        onSelect: () => {
-          setSearchSelection({ stamp: Date.now(), chatPrompt: template });
-          goToView("chat");
-        },
-      });
-    }
 
-    return results.slice(0, 18);
-  }, [globalSearchQuery, goToView]);
-
-  const openPalette = useCallback(() => {
-    setPaletteOpen(true);
-  }, []);
-
-  const closePalette = useCallback(() => {
-    setPaletteOpen(false);
-    setPaletteQuery("");
-    setPaletteActiveIndex(0);
-  }, []);
-
-  const paletteCommands = useMemo<CommandItem[]>(
+  /* const paletteCommands = useMemo<CommandItem[]>(
     () => [
       {
         id: "go-dashboard",
@@ -597,15 +549,7 @@ export default function App() {
     ]
   );
 
-  const filteredCommands = useMemo(() => {
-    const query = paletteQuery.trim().toLowerCase();
-    if (!query) return paletteCommands;
-
-    return paletteCommands.filter((command) => {
-      const haystack = `${command.label} ${command.keywords} ${command.hint ?? ""}`.toLowerCase();
-      return haystack.includes(query);
-    });
-  }, [paletteCommands, paletteQuery]);
+  // filteredCommands is now provided by usePaletteSearch hook
 
   useEffect(() => {
     if (!paletteOpen) return;
@@ -743,7 +687,7 @@ export default function App() {
     globalSearchResults,
     paletteActiveIndex,
     paletteOpen,
-  ]);
+  ]); */
 
   const page = useMemo(() => {
     switch (activeView) {
