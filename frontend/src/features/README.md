@@ -34,6 +34,7 @@ Migration policy:
 - `features/profile/ProfileView.tsx` extracted from `App.tsx`
 - `features/compare/ComparisonWorkspaceView.tsx` extracted from `App.tsx`
 - `features/chat/ChatView.tsx` extracted from `App.tsx`
+- `features/company/CompanyWorkspaceView.tsx` extracted from `App.tsx`
 - chat shared primitives extracted:
   - `features/chat/components/ThinkingDropdown.tsx`
   - `features/chat/components/ThinkingIndicator.tsx`
