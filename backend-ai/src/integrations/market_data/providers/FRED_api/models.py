@@ -1,7 +1,7 @@
 """
 Pydantic models for FRED API responses
 """
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 from typing import Optional, List
 from datetime import date
 
@@ -159,14 +159,15 @@ class EconomicDataPoint(BaseModel):
     value: Optional[float] = Field(None, description="Numeric value")
     value_str: str = Field(..., description="String value (original)")
     
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "date": "2024-01-01",
                 "value": 5.33,
-                "value_str": "5.33"
+                "value_str": "5.33",
             }
         }
+    )
 
 
 class YieldCurvePoint(BaseModel):
@@ -181,17 +182,18 @@ class YieldCurveResponse(BaseModel):
     date: str = Field(..., description="Yield curve date")
     curve_points: List[YieldCurvePoint] = Field(..., description="Yield curve points")
     
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "date": "2024-01-01",
                 "curve_points": [
                     {"maturity": "3M", "yield_value": 5.4, "date": "2024-01-01"},
                     {"maturity": "2Y", "yield_value": 4.8, "date": "2024-01-01"},
-                    {"maturity": "10Y", "yield_value": 4.2, "date": "2024-01-01"}
-                ]
+                    {"maturity": "10Y", "yield_value": 4.2, "date": "2024-01-01"},
+                ],
             }
         }
+    )
 
 
 class EconomicIndicatorSummary(BaseModel):
@@ -207,8 +209,8 @@ class EconomicIndicatorSummary(BaseModel):
     units: str = Field(..., description="Units of measurement")
     frequency: str = Field(..., description="Data frequency")
     
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "indicator_name": "Unemployment Rate",
                 "series_id": "UNRATE",
@@ -219,6 +221,7 @@ class EconomicIndicatorSummary(BaseModel):
                 "change": -0.1,
                 "change_percent": -2.63,
                 "units": "Percent",
-                "frequency": "Monthly"
+                "frequency": "Monthly",
             }
         }
+    )

@@ -64,7 +64,7 @@ async def get_ltp(
             'One or more instruments in "EXCHANGE:TRADINGSYMBOL" format. '
             "Example: i=NSE:INFY&i=BSE:RELIANCE"
         ),
-        example=["NSE:INFY", "NSE:RELIANCE"],
+        examples=["NSE:INFY", "NSE:RELIANCE"],
     ),
 ):
     """
@@ -102,7 +102,7 @@ async def get_ohlc(
             'One or more instruments in "EXCHANGE:TRADINGSYMBOL" format. '
             "Example: i=NSE:INFY&i=BSE:RELIANCE"
         ),
-        example=["NSE:INFY", "NSE:RELIANCE"],
+        examples=["NSE:INFY", "NSE:RELIANCE"],
     ),
 ):
     """
@@ -147,7 +147,7 @@ async def get_quote(
             'One or more instruments in "EXCHANGE:TRADINGSYMBOL" format. '
             "Example: i=NSE:INFY&i=BSE:RELIANCE"
         ),
-        example=["NSE:INFY"],
+        examples=["NSE:INFY"],
     ),
 ):
     """

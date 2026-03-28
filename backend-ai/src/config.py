@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Literal, Optional
 
 from dotenv import load_dotenv
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 ROOT_ENV_FILE = Path(__file__).resolve().parents[1] / ".env"
 
@@ -96,10 +96,11 @@ class Settings(BaseSettings):
     kite_api_secret: Optional[str] = None
     kite_access_token: Optional[str] = None
 
-    class Config:
-        env_file = str(ROOT_ENV_FILE)
-        env_file_encoding = "utf-8"
-        extra = "ignore"
+    model_config = SettingsConfigDict(
+        env_file=str(ROOT_ENV_FILE),
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
 
     def get_llm_model(self, override_model: Optional[str] = None) -> str:
         """Resolve active model name from explicit override, generic env var, or provider default."""
