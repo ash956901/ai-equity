@@ -88,6 +88,13 @@ import {
   fetchTimeline,
   listChatSessions,
   enrichCompany,
+  uploadDocument,
+  sendChatQuery,
+  fetchUserProfile,
+  updateUserProfile,
+  uploadProfilePic,
+  submitKyc,
+  verifyKyc,
   type ApiStatusResponse,
   type CompanySearchResult,
   type HealthResponse,
@@ -95,14 +102,13 @@ import {
   type SecFiling,
   type SentimentFeedResponse,
   type AICompany,
-  type AIFinancials,
   type AIRatios,
   type AIQuote,
   type AIPortfolio,
   type AIPortfolioDetail,
   type AIHoldingDetail,
   type TimelineEvent as BackendTimelineEvent,
-  type ChatSessionItem,
+  type ChatQueryRequest,
   type DataSourceInfo,
 } from "./lib/api";
 
@@ -2576,12 +2582,11 @@ function ChatView(props: {
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  const [_serverSessions, setServerSessions] = useState<ChatSessionItem[]>([]);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     const uid = getUserId();
-    listChatSessions(uid).then(setServerSessions).catch(() => {});
+    listChatSessions(uid).catch(() => {});
   }, []);
 
   const suggestions = [
@@ -2647,7 +2652,6 @@ function ChatView(props: {
       setIsUploading(true);
 
       try {
-        const { uploadDocument } = await import("./lib/api");
         const userId = localStorage.getItem("equityai-user-id") || crypto.randomUUID();
         localStorage.setItem("equityai-user-id", userId);
 
@@ -2710,12 +2714,11 @@ function ChatView(props: {
       const startTime = performance.now();
 
       try {
-        const { sendChatQuery } = await import("./lib/api");
         const userId = localStorage.getItem("equityai-user-id") || crypto.randomUUID();
         localStorage.setItem("equityai-user-id", userId);
 
         const expertiseLevel = activeThread.mode === "simple" ? "beginner" : "advanced";
-        const chatReq: import("./lib/api").ChatQueryRequest = {
+        const chatReq: ChatQueryRequest = {
           user_id: userId,
           query: text,
           expertise_level: expertiseLevel,
@@ -3158,8 +3161,6 @@ function ComparisonWorkspaceView(props: {
   }, [lastSelectionStamp, props.searchSelection]);
 
   const [selectedCompanies, setSelectedCompanies] = useState<DiscoveryCompany[]>([]);
-  const [_compareLoading, _setCompareLoading] = useState(false);
-  const [_compareResult, _setCompareResult] = useState<string>("");
 
   useEffect(() => {
     if (!selectedSymbols.length) return;
@@ -3470,10 +3471,8 @@ function CompanyWorkspaceView(props: {
   const [companyDetail, setCompanyDetail] = useState<AICompany | null>(null);
   const [companyQuote, setCompanyQuote] = useState<AIQuote | null>(null);
   const [companyRatios, setCompanyRatios] = useState<AIRatios | null>(null);
-  const [_companyFinancials, _setCompanyFinancials] = useState<AIFinancials | null>(null);
   const [companyLoading, setCompanyLoading] = useState(false);
   const [companyTimeline, setCompanyTimeline] = useState<BackendTimelineEvent[]>([]);
-  const [_companySearchResults, setCompanySearchResults] = useState<AICompany[]>([]);
 
   const loadCompanyById = useCallback(async (companyId: string) => {
     setCompanyLoading(true);
@@ -3486,7 +3485,6 @@ function CompanyWorkspaceView(props: {
       if (detail.status === "fulfilled") {
         detailData = detail.value;
         setCompanyDetail(detailData);
-        setCompanySearchResults([detailData]);
       }
       if (ratios.status === "fulfilled") setCompanyRatios(ratios.value);
       fetchCompanyQuote(companyId).then(setCompanyQuote).catch(() => {});
@@ -3501,7 +3499,7 @@ function CompanyWorkspaceView(props: {
         }).catch(() => {});
       }
     } catch {
-      setCompanySearchResults([]);
+      // Ignore lookup failures; UI shows fallback messaging.
     } finally {
       setCompanyLoading(false);
     }
@@ -3511,7 +3509,6 @@ function CompanyWorkspaceView(props: {
     setCompanyLoading(true);
     try {
       const results = await searchCompaniesDB(symbol, 5);
-      setCompanySearchResults(results);
       if (results.length > 0) {
         const matched = results[0];
         const [detail, ratios] = await Promise.allSettled([
@@ -3537,7 +3534,7 @@ function CompanyWorkspaceView(props: {
         }
       }
     } catch {
-      setCompanySearchResults([]);
+      // Ignore lookup failures; UI shows fallback messaging.
     } finally {
       setCompanyLoading(false);
     }
@@ -3942,6 +3939,8 @@ function CompanyWorkspaceView(props: {
     reportGeneratedAt,
     reportSections,
     reportTitle,
+    companyLabel,
+    nseOrBseTicker,
     dataMode,
     topThemes,
   ]);
@@ -5713,7 +5712,6 @@ function ProfileView(props: {
     if (props.dataMode !== "live") return;
     (async () => {
       try {
-        const { fetchUserProfile } = await import("./lib/api");
         const p = await fetchUserProfile(userId);
         setProfile({
           full_name: p.full_name || "",
@@ -5750,7 +5748,6 @@ function ProfileView(props: {
     setSaving(true);
     try {
       if (props.dataMode === "live") {
-        const { updateUserProfile } = await import("./lib/api");
         await updateUserProfile(userId, {
           full_name: profile.full_name || undefined,
           username: profile.username || undefined,
@@ -5777,7 +5774,6 @@ function ProfileView(props: {
       if (!file) return;
       try {
         if (props.dataMode === "live") {
-          const { uploadProfilePic } = await import("./lib/api");
           const result = await uploadProfilePic(userId, file);
           setProfile((prev) => ({ ...prev, profile_pic_url: result.profile_pic_url }));
         } else {
@@ -5802,7 +5798,6 @@ function ProfileView(props: {
 
     try {
       if (props.dataMode === "live") {
-        const { submitKyc, verifyKyc } = await import("./lib/api");
         await submitKyc(userId, profile.pan_card_number.toUpperCase(), profile.aadhaar_number || undefined);
         setKycStep(2);
         setProfile((prev) => ({ ...prev, kyc_status: "pending" }));

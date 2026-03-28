@@ -20,3 +20,15 @@ npm run build
 ```bash
 npm run lint
 ```
+
+## Test
+
+```bash
+npm run test
+```
+
+Watch mode:
+
+```bash
+npm run test:watch
+```
