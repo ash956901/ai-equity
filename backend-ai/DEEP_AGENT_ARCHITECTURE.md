@@ -1,108 +1,59 @@
-# AI Equity Research Platform - Deep Multi-Agent Backend Architecture
+# Deep Agent Architecture (Current)
 
-## 1) High-level architecture
+This document describes the **current** deep-agent implementation used by backend-ai.
 
-This implementation introduces a production-oriented, backend-only, deep-agent system built around a LangGraph orchestrator.
+## High-level flow
 
-Data flow:
+User/API request -> Orchestrator agent (Iris) -> Specialist sub-agents -> Tool layer -> Final synthesis
 
-User/CLI -> ResearchOrchestratorAgent -> Specialist Deep Agents -> Tool Layer -> Agent Outputs -> Orchestrator Synthesis -> Structured Final Output
+The orchestrator and sub-agents are built with `deepagents` and use memory/checkpoint
+configuration for continuity.
 
-Key architectural properties:
+## Core modules
 
-- Deep agents with memory + state + reasoning loops
-- LangGraph DAG-based orchestration with dynamic plan routing
-- RAG-oriented retrieval path (`RetrievalAgent` + embedding/vector tools)
-- Hybrid semantic + numerical analysis (`RetrievalAgent` + `FinancialAnalysisAgent` + `PortfolioAgent`)
-- File-system observability for each run (`workflow_runs/...`)
-- Pluggable tools and model/provider abstraction via config and env vars
+- Orchestrator builder: `src/agents/orchestrator.py`
+- Memory + skills config: `src/agents/memory.py`
+- Prompt definitions: `src/agents/prompts/`
+- Sub-agent registry: `src/agents/subagents/__init__.py`
+- Tool implementations: `src/agents/tools/`
+- API entrypoint using orchestrator: `src/domains/chat/service.py`
 
-## 2) What already existed vs what was added
+## Sub-agents
 
-### Already implemented in repository
+Declared in `src/agents/subagents/`:
 
-- Existing LangGraph workflow and specialist agents in [src/agents](src/agents)
-- Vector service integration with Qdrant in [src/services/vector_service.py](src/services/vector_service.py)
-- Baseline tool modules in [src/tools](src/tools)
-- LLM provider abstraction in [src/llm/__init__.py](src/llm/__init__.py)
+- `company-analysis`
+- `comparison`
+- `portfolio`
+- `news-sentiment`
+- `doc-insight`
 
-### Added in this implementation
+Each sub-agent defines:
 
-- Deep orchestrator package: [src/deep_research](src/deep_research)
-- New master agent: `ResearchOrchestratorAgent`
-- Deep specialist agents:
-  - `RetrievalAgent`
-  - `DocumentIntelligenceAgent`
-  - `FinancialAnalysisAgent`
-  - `ComparisonAgent`
-  - `PortfolioAgent`
-  - `ReportGenerationAgent`
-  - `WebSearchAgent`
-- End-to-end run observability with required artifacts:
-  - `user_input.json`
-  - `orchestrator_plan.json`
-  - `agent_calls.log`
-  - `tool_calls.log`
-  - `intermediate_outputs/*.json`
-  - `final_output.json`
-- Fully interactive CLI entrypoint: [run_research_orchestrator.py](run_research_orchestrator.py)
+- `name`
+- `description`
+- `system_prompt`
+- `tools`
 
-## 3) Folder structure
+## Memory model
 
-- [src/deep_research/__init__.py](src/deep_research/__init__.py)
-- [src/deep_research/state.py](src/deep_research/state.py)
-- [src/deep_research/observability.py](src/deep_research/observability.py)
-- [src/deep_research/tools.py](src/deep_research/tools.py)
-- [src/deep_research/agents.py](src/deep_research/agents.py)
-- [src/deep_research/orchestrator.py](src/deep_research/orchestrator.py)
-- [run_research_orchestrator.py](run_research_orchestrator.py)
+`src/agents/memory.py` configures:
 
-## 4) Runtime behavior summary
+- `StoreBackend` for persistent `/memories/` paths
+- `StateBackend` for ephemeral state
+- `MemorySaver` checkpointer for thread/session continuity
+- skill seeding from `src/agents/skills/*/SKILL.md`
 
-1. CLI captures user intent dynamically (no workflow defaults).
-2. `ResearchOrchestratorAgent` creates a per-run folder and writes `user_input.json`.
-3. Orchestrator creates dynamic execution plan and writes `orchestrator_plan.json`.
-4. LangGraph dispatcher executes specialist deep agents in plan order.
-5. Each agent runs a reasoning loop and calls tools dynamically.
-6. Tool calls and agent calls are logged to `tool_calls.log` and `agent_calls.log`.
-7. Intermediate outputs are serialized in `intermediate_outputs/`.
-8. Final structured result is emitted and saved to `final_output.json`.
+## API usage
 
-## 5) CLI interaction model
+Primary runtime path:
 
-Interactive prompts include:
+- `POST /chat/query` -> `src/domains/chat/routes.py` -> `src/domains/chat/service.py`
 
-- Query/objective
-- Company names
-- Document upload paths (PDF/PPT)
-- URLs
-- Analysis type
-- Comparison option + company metrics
-- Portfolio option + per-holding metrics
-- Report generation toggle
-- Web augmentation toggle
-- Retrieval top-K
+The service builds/uses the orchestrator via `build_research_agent()` and stores chat
+messages in DB (`ChatSession`, `ChatMessage`).
 
-## 6) Environment variables
+## Notes
 
-Added config keys:
-
-- `WORKFLOW_RUNS_DIR`
-- `DEEP_AGENT_MAX_STEPS`
-- `TAVILY_API_KEY` (optional)
-
-They are reflected in [src/config.py](src/config.py) and [.env.example](../.env.example).
-
-## 7) Example run script
-
-Run from `backend-ai` folder:
-
-- `python run_research_orchestrator.py`
-
-This starts an interactive multi-turn deep-agent session.
-
-## 8) Extensibility
-
-- Add new agent by implementing `DeepAgentBase` and wiring a node in [src/deep_research/orchestrator.py](src/deep_research/orchestrator.py)
-- Add new tools in [src/deep_research/tools.py](src/deep_research/tools.py)
-- Swap models via existing LLM/embedding config in [src/config.py](src/config.py)
+- This backend no longer uses the old `src/deep_research` package layout.
+- If architecture changes again, update this file in the same PR to avoid drift.
