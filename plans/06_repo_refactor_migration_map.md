@@ -122,6 +122,34 @@ Goals:
 - added upload-service unit tests for core behaviors:
   - `tests/domains/chat/test_upload_service.py`
 
+### Backend quality hardening (post-P1)
+
+- backend hygiene baseline tightened:
+  - root `requirements.txt` removed in favor of `backend-ai/requirements.txt`
+  - root `scripts/*` removed after migration to `backend-ai/scripts/*`
+  - `.gitignore` updated to block backend runtime artifacts and caches
+- route/service boundary tightened:
+  - `src/domains/companies/routes.py` now delegates `/companies/stats` via
+    `CompaniesService` (route stays thin)
+  - `src/domains/users/routes.py` removed redundant broad try/except wrappers;
+    service layer now owns domain error handling
+- compatibility boundaries documented explicitly:
+  - `src/api/__init__.py` marked as legacy route shim package
+  - `src/external_apis/__init__.py` documents integration-provider ownership
+- warning cleanup and test hardening:
+  - migrated Pydantic model config in
+    `src/integrations/market_data/providers/FRED_api/models.py` to ConfigDict
+  - replaced deprecated FastAPI `Query(example=...)` with `examples=` in
+    `src/integrations/market_data/providers/Kite_api/routes.py`
+  - added tests:
+    - `tests/app/test_routers_registration.py`
+    - `tests/domains/companies/test_companies_service.py`
+    - `tests/domains/users/test_users_routes.py`
+    - `tests/integrations/test_legacy_external_api_wrappers.py`
+- CI guardrail added:
+  - `.github/workflows/backend.yml` runs backend install, import smoke, and
+    `PYTHONPATH=. pytest tests -q`
+
 ## Phase 5 - Frontend Split by Feature
 
 ### Current

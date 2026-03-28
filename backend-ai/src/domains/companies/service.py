@@ -14,6 +14,7 @@ from src.services.market_data.enrichment_service import (
     CompanySearchService,
 )
 from src.services.market_data.quotes_service import QuotesService
+from src.services.stock_universe import StockUniverseService
 from src.services.financial_service import FinancialService
 from src.utils.data_sources import company_sources, financial_sources, quote_sources
 
@@ -28,6 +29,11 @@ class CompaniesService:
         self._enrichment = CompanyEnrichmentService(self._market_data_context)
         self._search = CompanySearchService(self._market_data_context)
         self._financial = FinancialService(db)
+
+    def get_universe_stats(self) -> dict[str, Any]:
+        """Return stock-universe sync statistics."""
+        svc = StockUniverseService(self.db)
+        return svc.get_universe_stats()
 
     def list_companies(
         self,

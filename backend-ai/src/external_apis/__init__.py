@@ -1,6 +1,9 @@
 """External data API integrations (FMP, FRED, NewsAPI, NewsDataIO, Upstox, Kite).
 
 Legacy compatibility package retained during Phase 4 migration.
+
+Canonical provider implementations live under:
+``src.integrations.market_data.providers``.
 """
 
 from .FMP_api.routes import router as fmp_router

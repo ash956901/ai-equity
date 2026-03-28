@@ -1,10 +1,9 @@
 """User profile and KYC API routes."""
 
-from pathlib import Path
 from typing import Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, UploadFile
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -12,29 +11,6 @@ from src.db.database import get_db
 from src.domains.users.service import UsersService
 
 router = APIRouter(prefix="/users", tags=["users"])
-
-AVATAR_DIR = Path("uploads/avatars")
-AVATAR_DIR.mkdir(parents=True, exist_ok=True)
-
-class UserProfileResponse(BaseModel):
-    id: str
-    email: str
-    username: Optional[str] = None
-    full_name: Optional[str] = None
-    phone_number: Optional[str] = None
-    date_of_birth: Optional[str] = None
-    address: Optional[str] = None
-    pan_card_number: Optional[str] = None
-    aadhaar_number: Optional[str] = None
-    profile_pic_url: Optional[str] = None
-    expertise_level: str = "beginner"
-    risk_tolerance: Optional[str] = None
-    investment_horizon: Optional[str] = None
-    kyc_status: str = "not_started"
-    kyc_submitted_at: Optional[str] = None
-    is_active: bool = True
-    created_at: str
-    updated_at: str
 
 
 class UserProfileUpdate(BaseModel):
@@ -72,13 +48,7 @@ def update_user_profile(
     """Update user profile fields."""
     service = UsersService(db)
     update_data = body.model_dump(exclude_unset=True)
-    try:
-        return service.update_user_profile(user_id=user_id, update_data=update_data)
-    except HTTPException:
-        raise
-    except Exception as e:
-        db.rollback()
-        raise HTTPException(status_code=500, detail=str(e))
+    return service.update_user_profile(user_id=user_id, update_data=update_data)
 
 
 @router.post("/{user_id}/profile-pic")
@@ -89,13 +59,7 @@ async def upload_profile_pic(
 ):
     """Upload a profile picture."""
     service = UsersService(db)
-    try:
-        return await service.upload_profile_pic(user_id=user_id, file=file)
-    except HTTPException:
-        raise
-    except Exception as e:
-        db.rollback()
-        raise HTTPException(status_code=500, detail=str(e))
+    return await service.upload_profile_pic(user_id=user_id, file=file)
 
 
 @router.post("/{user_id}/kyc/submit")
@@ -106,17 +70,11 @@ def submit_kyc(
 ):
     """Submit KYC verification request."""
     service = UsersService(db)
-    try:
-        return service.submit_kyc(
-            user_id=user_id,
-            pan_card_number=body.pan_card_number,
-            aadhaar_number=body.aadhaar_number,
-        )
-    except HTTPException:
-        raise
-    except Exception as e:
-        db.rollback()
-        raise HTTPException(status_code=500, detail=str(e))
+    return service.submit_kyc(
+        user_id=user_id,
+        pan_card_number=body.pan_card_number,
+        aadhaar_number=body.aadhaar_number,
+    )
 
 
 @router.get("/{user_id}/kyc/status")
@@ -130,10 +88,4 @@ def get_kyc_status(user_id: UUID, db: Session = Depends(get_db)):
 def verify_kyc(user_id: UUID, db: Session = Depends(get_db)):
     """Dummy KYC verification -- auto-approves for demo purposes."""
     service = UsersService(db)
-    try:
-        return service.verify_kyc(user_id)
-    except HTTPException:
-        raise
-    except Exception as e:
-        db.rollback()
-        raise HTTPException(status_code=500, detail=str(e))
+    return service.verify_kyc(user_id)

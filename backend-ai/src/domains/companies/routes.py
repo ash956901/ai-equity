@@ -47,10 +47,8 @@ def search_companies(
 @router.get("/stats")
 def universe_stats(db: Session = Depends(get_db)) -> Dict[str, Any]:
     """Get statistics about the loaded stock universe."""
-    from src.services.stock_universe import StockUniverseService
-
-    svc = StockUniverseService(db)
-    return svc.get_universe_stats()
+    service = CompaniesService(db)
+    return service.get_universe_stats()
 
 
 @router.get("/{company_id}")
