@@ -4,7 +4,6 @@ import {
   BookmarkCheck,
   Building2,
   Bot,
-  CheckCheck,
   CircleUserRound,
   Clock3,
   Compass,
@@ -20,9 +19,7 @@ import {
   ShieldAlert,
   Sparkles,
   Sun,
-  Trash2,
   Wallet,
-  X,
 } from "lucide-react";
 import { DashboardView } from "./features/dashboard/DashboardView";
 import { SettingsView } from "./features/settings/SettingsView";
@@ -35,6 +32,12 @@ import { ProfileView } from "./features/profile/ProfileView";
 import { ComparisonWorkspaceView } from "./features/compare/ComparisonWorkspaceView";
 import { ChatView } from "./features/chat/ChatView";
 import { CompanyWorkspaceView } from "./features/company/CompanyWorkspaceView";
+import { CommandPalette } from "./app/components/CommandPalette";
+import { GlobalSearchOverlay } from "./app/components/GlobalSearchOverlay";
+import { NotificationsPanel } from "./app/components/NotificationsPanel";
+import { FavoritesPanel } from "./app/components/FavoritesPanel";
+import { AlertRulesPanel } from "./app/components/AlertRulesPanel";
+import { ToastStack } from "./app/components/ToastStack";
 
 type ViewKey =
   | "dashboard"
@@ -1544,429 +1547,68 @@ export default function App() {
 
       <main className="main-panel">{page}</main>
 
-      {paletteOpen ? (
-        <div className="command-overlay" role="dialog" aria-modal="true" aria-label="Command palette">
-          <button type="button" className="command-backdrop" onClick={closePalette} />
-          <div className="command-panel">
-            <div className="command-input-row">
-              <Search size={15} />
-              <input
-                ref={paletteInputRef}
-                value={paletteQuery}
-                onChange={(event) => setPaletteQuery(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter") {
-                    event.preventDefault();
-                    const command = filteredCommands[paletteActiveIndex] ?? filteredCommands[0];
-                    command?.action();
-                    return;
-                  }
+      <CommandPalette
+        open={paletteOpen}
+        query={paletteQuery}
+        activeIndex={paletteActiveIndex}
+        commands={filteredCommands}
+        inputRef={paletteInputRef}
+        setQuery={setPaletteQuery}
+        setActiveIndex={setPaletteActiveIndex}
+        onClose={closePalette}
+      />
 
-                  if (event.key === "ArrowDown") {
-                    event.preventDefault();
-                    setPaletteActiveIndex((current) =>
-                      filteredCommands.length ? (current + 1) % filteredCommands.length : 0
-                    );
-                    return;
-                  }
+      <GlobalSearchOverlay
+        open={globalSearchOpen}
+        query={globalSearchQuery}
+        activeIndex={globalSearchIndex}
+        results={globalSearchResults}
+        inputRef={globalSearchInputRef}
+        setQuery={setGlobalSearchQuery}
+        setActiveIndex={setGlobalSearchIndex}
+        onClose={closeGlobalSearch}
+      />
 
-                  if (event.key === "ArrowUp") {
-                    event.preventDefault();
-                    setPaletteActiveIndex((current) =>
-                      filteredCommands.length
-                        ? (current - 1 + filteredCommands.length) % filteredCommands.length
-                        : 0
-                    );
-                    return;
-                  }
+      <NotificationsPanel
+        open={notificationsOpen}
+        filter={notificationFilter}
+        notifications={filteredNotifications}
+        onClose={() => setNotificationsOpen(false)}
+        onFilterChange={setNotificationFilter}
+        onMarkAllRead={markAllNotificationsRead}
+        onMarkRead={markNotificationRead}
+        onDismiss={dismissNotification}
+      />
 
-                  if (event.key === "Escape") {
-                    event.preventDefault();
-                    closePalette();
-                  }
-                }}
-                placeholder="Search commands, pages, and actions..."
-              />
-            </div>
+      <FavoritesPanel
+        open={favoritesOpen}
+        filter={favoriteFilter}
+        favorites={filteredFavorites}
+        onClose={() => setFavoritesOpen(false)}
+        onFilterChange={setFavoriteFilter}
+        onOpenFavorite={handleFavoriteSelect}
+        onRemoveFavorite={removeFavorite}
+      />
 
-            <div className="command-list" role="listbox" aria-activedescendant={filteredCommands[paletteActiveIndex]?.id}>
-              {filteredCommands.length ? (
-                filteredCommands.map((command, index) => (
-                  <button
-                    type="button"
-                    key={command.id}
-                    id={command.id}
-                    role="option"
-                    aria-selected={index === paletteActiveIndex}
-                    className={`command-item ${index === paletteActiveIndex ? "active" : ""}`}
-                    onMouseEnter={() => setPaletteActiveIndex(index)}
-                    onClick={command.action}
-                  >
-                    <span>{command.label}</span>
-                    <span>{command.hint ?? "Action"}</span>
-                  </button>
-                ))
-              ) : (
-                <p className="command-empty">No matching commands.</p>
-              )}
-            </div>
-          </div>
-        </div>
-      ) : null}
+      <AlertRulesPanel
+        open={alertRulesOpen}
+        rules={alertRules}
+        ruleName={ruleName}
+        ruleType={ruleType}
+        ruleSymbol={ruleSymbol}
+        ruleThreshold={ruleThreshold}
+        onClose={() => setAlertRulesOpen(false)}
+        onRuleNameChange={setRuleName}
+        onRuleTypeChange={setRuleType}
+        onRuleSymbolChange={setRuleSymbol}
+        onRuleThresholdChange={setRuleThreshold}
+        onCreateRule={createAlertRule}
+        onRunCheck={runAlertRulesCheck}
+        onToggleRule={toggleAlertRule}
+        onDeleteRule={deleteAlertRule}
+      />
 
-      {globalSearchOpen ? (
-        <div className="global-search-overlay" role="dialog" aria-modal="true" aria-label="Global search">
-          <button type="button" className="global-search-backdrop" onClick={closeGlobalSearch} />
-
-          <div className="global-search-panel">
-            <div className="global-search-head">
-              <p className="results-title">Global Search</p>
-              <span className="chip">Search company, theme, event, or query</span>
-            </div>
-
-            <div className="command-input-row">
-              <Search size={15} />
-              <input
-                ref={globalSearchInputRef}
-                value={globalSearchQuery}
-                onChange={(event) => setGlobalSearchQuery(event.target.value)}
-                placeholder="Try: RELIANCE, defense, AI, risk..."
-              />
-            </div>
-
-            <div className="global-search-results">
-              {globalSearchResults.length ? (
-                globalSearchResults.map((result, index) => (
-                  <button
-                    type="button"
-                    key={result.id}
-                    className={`global-search-item ${index === globalSearchIndex ? "active" : ""}`}
-                    onMouseEnter={() => setGlobalSearchIndex(index)}
-                    onClick={result.onSelect}
-                  >
-                    <div>
-                      <p>{result.title}</p>
-                      <span>{result.subtitle}</span>
-                    </div>
-                    <span className={`chip global-search-type ${result.type}`}>{result.type}</span>
-                  </button>
-                ))
-              ) : (
-                <p className="command-empty">No matches found.</p>
-              )}
-            </div>
-          </div>
-        </div>
-      ) : null}
-
-      {notificationsOpen ? (
-        <div className="notification-overlay" role="dialog" aria-modal="true" aria-label="Notifications panel">
-          <button
-            type="button"
-            className="notification-backdrop"
-            onClick={() => setNotificationsOpen(false)}
-          />
-
-          <aside className="notification-panel">
-            <div className="notification-panel-head">
-              <div>
-                <p className="results-title">Alerts Center</p>
-                <h3>Notifications</h3>
-              </div>
-              <button
-                type="button"
-                className="notification-close"
-                onClick={() => setNotificationsOpen(false)}
-                aria-label="Close notifications panel"
-              >
-                <X size={16} />
-              </button>
-            </div>
-
-            <div className="notification-panel-actions">
-              <select
-                className="type-select"
-                value={notificationFilter}
-                onChange={(event) =>
-                  setNotificationFilter(event.target.value as "all" | NotificationCategory)
-                }
-              >
-                <option value="all">All categories</option>
-                <option value="filing">Filing</option>
-                <option value="risk">Risk</option>
-                <option value="theme">Theme</option>
-                <option value="system">System</option>
-              </select>
-
-              <button type="button" className="secondary-btn mini-btn" onClick={markAllNotificationsRead}>
-                <CheckCheck size={14} />
-                Mark all read
-              </button>
-            </div>
-
-            <div className="notification-list">
-              {filteredNotifications.length ? (
-                filteredNotifications.map((notification) => (
-                  <article
-                    key={notification.id}
-                    className={`notification-item ${notification.read ? "read" : "unread"}`}
-                  >
-                    <div className="notification-item-head">
-                      <span className={`chip notif-${notification.category}`}>{notification.category}</span>
-                      <span className={`chip notif-severity-${notification.severity}`}>
-                        {notification.severity}
-                      </span>
-                    </div>
-
-                    <h4>{notification.title}</h4>
-                    <p>{notification.message}</p>
-                    <small>{new Date(notification.timestamp).toLocaleString()}</small>
-
-                    <div className="notification-item-actions">
-                      {!notification.read ? (
-                        <button
-                          type="button"
-                          className="secondary-btn mini-btn"
-                          onClick={() => markNotificationRead(notification.id)}
-                        >
-                          Mark read
-                        </button>
-                      ) : null}
-                      <button
-                        type="button"
-                        className="secondary-btn mini-btn"
-                        onClick={() => dismissNotification(notification.id)}
-                      >
-                        Dismiss
-                      </button>
-                    </div>
-                  </article>
-                ))
-              ) : (
-                <div className="list-item single-line">
-                  <p>No notifications in this category.</p>
-                </div>
-              )}
-            </div>
-          </aside>
-        </div>
-      ) : null}
-
-      {favoritesOpen ? (
-        <div className="favorites-overlay" role="dialog" aria-modal="true" aria-label="Favorites panel">
-          <button
-            type="button"
-            className="favorites-backdrop"
-            onClick={() => setFavoritesOpen(false)}
-          />
-
-          <aside className="favorites-panel">
-            <div className="notification-panel-head">
-              <div>
-                <p className="results-title">Saved Items</p>
-                <h3>Favorites</h3>
-              </div>
-              <button
-                type="button"
-                className="notification-close"
-                onClick={() => setFavoritesOpen(false)}
-                aria-label="Close favorites panel"
-              >
-                <X size={16} />
-              </button>
-            </div>
-
-            <div className="notification-panel-actions">
-              <select
-                className="type-select"
-                value={favoriteFilter}
-                onChange={(event) => setFavoriteFilter(event.target.value as "all" | FavoriteType)}
-              >
-                <option value="all">All favorites</option>
-                <option value="company">Company</option>
-                <option value="filing">Filing</option>
-                <option value="headline">Headline</option>
-              </select>
-            </div>
-
-            <div className="notification-list">
-              {filteredFavorites.length ? (
-                filteredFavorites.map((favorite) => (
-                  <article key={favorite.id} className="notification-item unread">
-                    <div className="notification-item-head">
-                      <span className={`chip favorite-${favorite.type}`}>{favorite.type}</span>
-                      <span className="chip">{new Date(favorite.createdAt).toLocaleDateString()}</span>
-                    </div>
-
-                    <h4>{favorite.title}</h4>
-                    {favorite.subtitle ? <p>{favorite.subtitle}</p> : null}
-                    {favorite.symbol ? <small>Symbol: {favorite.symbol}</small> : null}
-
-                    <div className="notification-item-actions">
-                      <button
-                        type="button"
-                        className="secondary-btn mini-btn"
-                        onClick={() => handleFavoriteSelect(favorite)}
-                      >
-                        Open
-                      </button>
-                      <button
-                        type="button"
-                        className="secondary-btn mini-btn"
-                        onClick={() => removeFavorite(favorite.id)}
-                      >
-                        <Trash2 size={13} />
-                        Remove
-                      </button>
-                    </div>
-                  </article>
-                ))
-              ) : (
-                <div className="list-item single-line">
-                  <p>No favorites saved yet.</p>
-                </div>
-              )}
-            </div>
-          </aside>
-        </div>
-      ) : null}
-
-      {alertRulesOpen ? (
-        <div className="favorites-overlay" role="dialog" aria-modal="true" aria-label="Alert rules panel">
-          <button
-            type="button"
-            className="favorites-backdrop"
-            onClick={() => setAlertRulesOpen(false)}
-          />
-
-          <aside className="favorites-panel">
-            <div className="notification-panel-head">
-              <div>
-                <p className="results-title">Automation</p>
-                <h3>Alert Rules Builder</h3>
-              </div>
-              <button
-                type="button"
-                className="notification-close"
-                onClick={() => setAlertRulesOpen(false)}
-                aria-label="Close alert rules panel"
-              >
-                <X size={16} />
-              </button>
-            </div>
-
-            <div className="rule-builder-form">
-              <input
-                className="rule-input"
-                placeholder="Rule name"
-                value={ruleName}
-                onChange={(event) => setRuleName(event.target.value)}
-              />
-
-              <select
-                className="type-select"
-                value={ruleType}
-                onChange={(event) => setRuleType(event.target.value as AlertRuleType)}
-              >
-                <option value="filing_event">Filing Event</option>
-                <option value="risk_beta_above">Risk: Beta Above</option>
-                <option value="theme_score_above">Theme Score Above</option>
-              </select>
-
-              <input
-                className="rule-input"
-                placeholder="Symbol (e.g. RELIANCE or PORTFOLIO)"
-                value={ruleSymbol}
-                onChange={(event) => setRuleSymbol(event.target.value)}
-              />
-
-              {ruleType !== "filing_event" ? (
-                <input
-                  className="rule-input"
-                  placeholder="Threshold"
-                  value={ruleThreshold}
-                  onChange={(event) => setRuleThreshold(event.target.value)}
-                />
-              ) : null}
-
-              <div className="rule-actions">
-                <button type="button" className="primary-btn" onClick={createAlertRule}>
-                  Add Rule
-                </button>
-                <button type="button" className="secondary-btn mini-btn" onClick={runAlertRulesCheck}>
-                  Run Check
-                </button>
-              </div>
-            </div>
-
-            <div className="notification-list">
-              {alertRules.length ? (
-                alertRules.map((rule) => (
-                  <article key={rule.id} className={`notification-item ${rule.enabled ? "unread" : "read"}`}>
-                    <div className="notification-item-head">
-                      <span className="chip notif-system">{rule.type.replace(/_/g, " ")}</span>
-                      <span className={`chip ${rule.enabled ? "positive" : ""}`}>
-                        {rule.enabled ? "enabled" : "disabled"}
-                      </span>
-                    </div>
-
-                    <h4>{rule.name}</h4>
-                    <p>
-                      Symbol: {rule.symbol}
-                      {rule.threshold !== undefined ? ` · threshold ${rule.threshold}` : ""}
-                    </p>
-                    <small>
-                      {rule.lastTriggeredAt
-                        ? `Last triggered: ${new Date(rule.lastTriggeredAt).toLocaleString()}`
-                        : "Not triggered yet"}
-                    </small>
-
-                    <div className="notification-item-actions">
-                      <button
-                        type="button"
-                        className="secondary-btn mini-btn"
-                        onClick={() => toggleAlertRule(rule.id)}
-                      >
-                        {rule.enabled ? "Disable" : "Enable"}
-                      </button>
-                      <button
-                        type="button"
-                        className="secondary-btn mini-btn"
-                        onClick={() => deleteAlertRule(rule.id)}
-                      >
-                        <Trash2 size={13} />
-                        Delete
-                      </button>
-                    </div>
-                  </article>
-                ))
-              ) : (
-                <div className="list-item single-line">
-                  <p>No alert rules created yet.</p>
-                </div>
-              )}
-            </div>
-          </aside>
-        </div>
-      ) : null}
-
-      {toasts.length ? (
-        <div className="toast-stack" aria-live="polite" aria-atomic="false">
-          {toasts.map((toast) => (
-            <div key={toast.id} className={`toast-item toast-${toast.tone}`}>
-              <p>{toast.message}</p>
-              <button
-                type="button"
-                className="toast-close"
-                onClick={() => removeToast(toast.id)}
-                aria-label="Dismiss toast"
-              >
-                <X size={14} />
-              </button>
-            </div>
-          ))}
-        </div>
-      ) : null}
+      <ToastStack toasts={toasts} onRemove={removeToast} />
     </div>
   );
 }
