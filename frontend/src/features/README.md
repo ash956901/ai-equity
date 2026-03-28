@@ -21,3 +21,20 @@ Migration policy:
 - keep props stable while extracting
 - then extract state/hooks
 - finally move feature-specific API and types
+
+## Current extraction status
+
+- `features/dashboard/DashboardView.tsx` extracted from `App.tsx`
+- `features/settings/SettingsView.tsx` extracted from `App.tsx`
+- `features/discovery/DiscoveryView.tsx` extracted from `App.tsx`
+- `features/timeline/TimelineView.tsx` extracted from `App.tsx`
+- `features/portfolio/PortfolioView.tsx` extracted from `App.tsx`
+- `features/filings/FilingsView.tsx` extracted from `App.tsx`
+- `features/news/NewsView.tsx` extracted from `App.tsx`
+- `features/profile/ProfileView.tsx` extracted from `App.tsx`
+- `features/compare/ComparisonWorkspaceView.tsx` extracted from `App.tsx`
+- `features/chat/ChatView.tsx` extracted from `App.tsx`
+- `features/company/CompanyWorkspaceView.tsx` extracted from `App.tsx`
+- chat shared primitives extracted:
+  - `features/chat/components/ThinkingDropdown.tsx`
+  - `features/chat/components/ThinkingIndicator.tsx`
