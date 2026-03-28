@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle,
   ArrowUp,
@@ -8,7 +8,6 @@ import {
   Bell,
   Bookmark,
   BookmarkCheck,
-  Brain,
   Building2,
   BookOpenText,
   Bot,
@@ -16,8 +15,6 @@ import {
   Camera,
   Check,
   CheckCheck,
-  ChevronDown,
-  ChevronRight,
   CircleCheck,
   CircleUserRound,
   Clock3,
@@ -71,9 +68,6 @@ import {
 } from "recharts";
 import {
   ApiError,
-  fetchApiStatus,
-  fetchBackendHealth,
-  fetchHoldingsCount,
   fetchMarketHeadlines,
   fetchSecFilings,
   fetchTickerSentiment,
@@ -95,9 +89,7 @@ import {
   uploadProfilePic,
   submitKyc,
   verifyKyc,
-  type ApiStatusResponse,
   type CompanySearchResult,
-  type HealthResponse,
   type NewsDataResponse,
   type SecFiling,
   type SentimentFeedResponse,
@@ -111,6 +103,12 @@ import {
   type ChatQueryRequest,
   type DataSourceInfo,
 } from "./lib/api";
+import { PageHeader } from "./shared/ui/PageHeader";
+import { SourceBadges } from "./shared/ui/SourceBadges";
+import { ThinkingDropdown } from "./features/chat/components/ThinkingDropdown";
+import { ThinkingIndicator } from "./features/chat/components/ThinkingIndicator";
+import { DashboardView } from "./features/dashboard/DashboardView";
+import { SettingsView } from "./features/settings/SettingsView";
 
 type ViewKey =
   | "dashboard"
@@ -287,11 +285,6 @@ const PDF_TEMPLATES: Record<ReportAudience, PdfTemplate> = {
   },
 };
 
-interface DashboardWidget {
-  id: string;
-  label: string;
-}
-
 type AlertRuleType = "filing_event" | "risk_beta_above" | "theme_score_above";
 
 interface AlertRule {
@@ -335,15 +328,6 @@ const QUICK_QUERY_TEMPLATES = [
   "What changed in defense theme this week?",
   "Give a 5-point summary for my timeline events.",
   "Which themes look overheated right now?",
-];
-
-const DASHBOARD_WIDGETS: DashboardWidget[] = [
-  { id: "kpi-portfolio", label: "Portfolio Companies" },
-  { id: "kpi-headlines", label: "Live Headlines" },
-  { id: "kpi-health", label: "Backend Health" },
-  { id: "kpi-api", label: "API Version" },
-  { id: "feature-concentration", label: "Portfolio Concentration" },
-  { id: "feature-headline", label: "Latest Market Headline" },
 ];
 
 const REPORT_SECTION_OPTIONS: ReportSectionOption[] = [
@@ -557,27 +541,6 @@ function getInitialAlertRules(): AlertRule[] {
   } catch {
     return [];
   }
-}
-
-function SourceBadges({ sources }: { sources?: DataSourceInfo[] }) {
-  if (!sources?.length) return null;
-  return (
-    <div className="source-badges">
-      {sources.map((src, i) => (
-        <a
-          key={`${src.name}-${i}`}
-          href={src.url.startsWith("/") ? undefined : src.url}
-          target={src.url.startsWith("/") ? undefined : "_blank"}
-          rel="noopener noreferrer"
-          className="source-badge"
-        >
-          <Database size={10} />
-          <span>{src.name}</span>
-          {!src.url.startsWith("/") && <ExternalLink size={10} />}
-        </a>
-      ))}
-    </div>
-  );
 }
 
 function getUserId(): string {
@@ -2289,278 +2252,6 @@ export default function App() {
           ))}
         </div>
       ) : null}
-    </div>
-  );
-}
-
-function PageHeader(props: {
-  title: string;
-  subtitle: string;
-  dataMode?: DataMode;
-  right?: ReactNode;
-}) {
-  return (
-    <header className="page-header">
-      <div>
-        <h1>{props.title}</h1>
-        <p>{props.subtitle}</p>
-        <div className="page-header-meta">
-          <span className={`chip data-mode-chip ${props.dataMode === "demo" ? "demo" : "live"}`}>
-            {props.dataMode === "demo" ? "Demo Data" : "Live API"}
-          </span>
-        </div>
-      </div>
-      {props.right ? <div>{props.right}</div> : null}
-    </header>
-  );
-}
-
-function DashboardView(props: {
-  dataMode: DataMode;
-  preferences: DashboardPreferences;
-  onToggleDensity: () => void;
-  onToggleWidget: (widgetId: string) => void;
-  onResetPreferences: () => void;
-}) {
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [health, setHealth] = useState<HealthResponse>({});
-  const [apiStatus, setApiStatus] = useState<ApiStatusResponse>({});
-  const [headlines, setHeadlines] = useState<NewsDataResponse>({});
-  const [holdingsCount, setHoldingsCount] = useState<number>(0);
-
-  const loadDashboardData = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-
-    if (props.dataMode === "demo") {
-      setHealth({ status: "demo", message: DEMO_BANNER_MSG });
-      setApiStatus({ api_version: "demo", status: "demo" });
-      setHeadlines({});
-      setHoldingsCount(0);
-      setLoading(false);
-      return;
-    }
-
-    const [healthRes, apiRes, headlinesRes, holdingsRes] = await Promise.allSettled([
-      fetchBackendHealth(),
-      fetchApiStatus(),
-      fetchMarketHeadlines(),
-      fetchHoldingsCount(),
-    ]);
-
-    if (healthRes.status === "fulfilled") setHealth(healthRes.value);
-    if (apiRes.status === "fulfilled") setApiStatus(apiRes.value);
-    if (headlinesRes.status === "fulfilled") setHeadlines(headlinesRes.value);
-    if (holdingsRes.status === "fulfilled") setHoldingsCount(holdingsRes.value);
-
-    const failedCount = [healthRes, apiRes, headlinesRes, holdingsRes].filter(
-      (result) => result.status === "rejected"
-    ).length;
-
-    if (failedCount === 4) {
-      setError("Could not connect to backend services. Check server status.");
-    } else if (failedCount > 0) {
-      setError("Some widgets are unavailable right now.");
-    }
-
-    setLoading(false);
-  }, [props.dataMode]);
-
-  useEffect(() => {
-    void loadDashboardData();
-  }, [loadDashboardData]);
-
-  const isWidgetVisible = useCallback(
-    (id: string) => !props.preferences.hiddenWidgets.includes(id),
-    [props.preferences.hiddenWidgets]
-  );
-
-  const cardDensityClass = props.preferences.density === "compact" ? "card-compact" : "";
-
-  const headlineCount = headlines.results?.length ?? headlines.totalResults ?? 0;
-  const latestHeadline = headlines.results?.[0]?.title ?? "No headlines yet";
-
-  return (
-    <section className="page-wrap">
-      <PageHeader
-        title="Market Command Center"
-        subtitle="Track activity, spot risks, and jump into analysis flows quickly."
-        dataMode={props.dataMode}
-        right={
-          <div className="dashboard-actions">
-            <button type="button" className="secondary-btn mini-btn" onClick={props.onToggleDensity}>
-              Density: {props.preferences.density}
-            </button>
-            <button type="button" className="secondary-btn mini-btn" onClick={props.onResetPreferences}>
-              Reset Layout
-            </button>
-            <button type="button" className="primary-btn" onClick={() => void loadDashboardData()}>
-              {loading ? "Refreshing..." : "Refresh Data"}
-            </button>
-          </div>
-        }
-      />
-
-      <div className="dashboard-widget-toggles">
-        {DASHBOARD_WIDGETS.map((widget) => (
-          <button
-            key={widget.id}
-            type="button"
-            className={`widget-toggle-chip ${isWidgetVisible(widget.id) ? "active" : ""}`}
-            onClick={() => props.onToggleWidget(widget.id)}
-          >
-            {widget.label}
-          </button>
-        ))}
-      </div>
-
-      {error ? <div className="notice warning">{error}</div> : null}
-
-      <div className="kpi-grid">
-        {isWidgetVisible("kpi-portfolio") ? (
-          <article className={`kpi-card ${cardDensityClass}`}>
-            <p>Portfolio Companies</p>
-            <h2>{loading ? "--" : holdingsCount}</h2>
-            <small>From Upstox holdings</small>
-          </article>
-        ) : null}
-
-        {isWidgetVisible("kpi-headlines") ? (
-          <article className={`kpi-card ${cardDensityClass}`}>
-            <p>Live Headlines</p>
-            <h2>{loading ? "--" : headlineCount}</h2>
-            <small>From NewsData market feed</small>
-          </article>
-        ) : null}
-
-        {isWidgetVisible("kpi-health") ? (
-          <article className={`kpi-card ${cardDensityClass}`}>
-            <p>Backend Health</p>
-            <h2>{loading ? "--" : (health.status ?? "unknown")}</h2>
-            <small>{health.message ?? "No status message"}</small>
-          </article>
-        ) : null}
-
-        {isWidgetVisible("kpi-api") ? (
-          <article className={`kpi-card ${cardDensityClass}`}>
-            <p>API Version</p>
-            <h2>{loading ? "--" : (apiStatus.api_version ?? "n/a")}</h2>
-            <small>Status: {apiStatus.status ?? "unknown"}</small>
-          </article>
-        ) : null}
-      </div>
-
-      <div className="split-grid">
-        {isWidgetVisible("feature-concentration") ? (
-          <article className={`feature-card ${cardDensityClass}`}>
-            <div className="feature-head">
-              <BarChart3 size={18} />
-              <h3>Portfolio Concentration</h3>
-            </div>
-            <p>
-              Top 3 positions account for 47% of capital. Consider rebalancing to reduce concentration risk.
-            </p>
-          </article>
-        ) : null}
-
-        {isWidgetVisible("feature-headline") ? (
-          <article className={`feature-card ${cardDensityClass}`}>
-            <div className="feature-head">
-              <TrendingUp size={18} />
-              <h3>Latest Market Headline</h3>
-            </div>
-            <p>{loading ? "Loading latest headline..." : latestHeadline}</p>
-          </article>
-        ) : null}
-      </div>
-    </section>
-  );
-}
-
-function ThinkingDropdown({ message }: { message: ChatMessage }) {
-  const [open, setOpen] = useState(false);
-  const hasTrace = !!(message.agentEvents?.length || message.toolCalls?.length);
-  if (!hasTrace && !message.executionPlan?.length) return null;
-
-  const durationLabel =
-    message.thinkingDurationSec != null
-      ? message.thinkingDurationSec < 1
-        ? "Thought for <1 sec"
-        : `Thought for ${message.thinkingDurationSec} sec${message.thinkingDurationSec !== 1 ? "s" : ""}`
-      : "Thought process";
-
-  return (
-    <div className="thinking-dropdown">
-      <button
-        type="button"
-        className="thinking-toggle"
-        onClick={() => setOpen((v) => !v)}
-      >
-        <Brain size={14} />
-        <span>{durationLabel}</span>
-        {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-      </button>
-      {open && (
-        <div className="thinking-details">
-          {message.executionPlan?.length ? (
-            <div className="thinking-section">
-              <span className="thinking-label">Plan</span>
-              <span className="thinking-plan-flow">
-                {message.executionPlan.map((step, i) => (
-                  <span key={`${step}-${i}`} className="thinking-plan-step">
-                    {i > 0 && <span className="thinking-arrow">→</span>}
-                    {step}
-                  </span>
-                ))}
-              </span>
-            </div>
-          ) : null}
-          {message.agentEvents?.length ? (
-            <div className="thinking-section">
-              <span className="thinking-label">Agents</span>
-              <div className="thinking-events">
-                {message.agentEvents.map((ev, i) => (
-                  <div key={`${ev.agent}-${ev.event}-${i}`} className="thinking-event-row">
-                    <span className={`thinking-event-dot ${ev.event}`} />
-                    <span className="thinking-event-agent">{ev.agent}</span>
-                    <span className="thinking-event-status">{ev.event}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          ) : null}
-          {message.toolCalls?.length ? (
-            <div className="thinking-section">
-              <span className="thinking-label">Tool calls</span>
-              <div className="thinking-events">
-                {message.toolCalls.map((tc, i) => (
-                  <div key={`${tc.agent}-${tc.tool}-${i}`} className="thinking-event-row">
-                    <span className={`thinking-event-dot ${tc.status}`} />
-                    <span className="thinking-event-agent">{tc.agent}</span>
-                    <span className="thinking-event-tool">.{tc.tool}</span>
-                    <span className={`thinking-tool-status ${tc.status}`}>{tc.status}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          ) : null}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function ThinkingIndicator() {
-  return (
-    <div className="thinking-indicator">
-      <Brain size={14} className="thinking-icon-pulse" />
-      <span>Thinking</span>
-      <span className="thinking-dots">
-        <span className="dot" />
-        <span className="dot" />
-        <span className="dot" />
-      </span>
     </div>
   );
 }
@@ -5993,57 +5684,6 @@ function ProfileView(props: {
             {props.dataMode === "demo" ? <><Database size={14} /> Switch to Live</> : <><Database size={14} /> Switch to Demo</>}
           </button>
         </div>
-      </div>
-    </section>
-  );
-}
-
-function SettingsView(props: {
-  theme: Theme;
-  dataMode: DataMode;
-  onToggleTheme: () => void;
-  onToggleDataMode: () => void;
-  favoritesCount: number;
-  unreadNotifications: number;
-}) {
-  return (
-    <section className="page-wrap">
-      <PageHeader
-        title="Workspace Settings"
-        subtitle="Configure integrations, notifications, and assistant preferences."
-        dataMode={props.dataMode}
-      />
-
-      <div className="list-card">
-        <div className="list-item">
-          <p>API Integrations</p>
-          <span>Configured</span>
-        </div>
-        <div className="list-item">
-          <p>Notification Rules</p>
-          <span>{props.unreadNotifications} unread</span>
-        </div>
-        <div className="list-item">
-          <p>Saved Favorites</p>
-          <span>{props.favoritesCount} items</span>
-        </div>
-        <div className="list-item">
-          <p>Theme & Layout</p>
-          <span>{props.theme === "dark" ? "Aesthetic Dark" : "Modern Light"}</span>
-        </div>
-        <div className="list-item">
-          <p>Data Mode</p>
-          <span>{props.dataMode === "demo" ? "Demo Data" : "Live API"}</span>
-        </div>
-      </div>
-
-      <div className="chip-row">
-        <button type="button" className="secondary-btn" onClick={props.onToggleTheme}>
-          {props.theme === "dark" ? "Use Light Mode" : "Use Dark Mode"}
-        </button>
-        <button type="button" className="secondary-btn" onClick={props.onToggleDataMode}>
-          {props.dataMode === "demo" ? "Switch to Live API" : "Switch to Demo Data"}
-        </button>
       </div>
     </section>
   );
