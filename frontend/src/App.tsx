@@ -1,15 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import {
-  Bell,
-  BookmarkCheck,
-  Command,
-  Database,
-  Moon,
-  Search,
-  ShieldAlert,
-  Sparkles,
-  Sun,
-} from "lucide-react";
 import { DashboardView } from "./features/dashboard/DashboardView";
 import { SettingsView } from "./features/settings/SettingsView";
 import { DiscoveryView } from "./features/discovery/DiscoveryView";
@@ -27,13 +16,13 @@ import { NotificationsPanel } from "./app/components/NotificationsPanel";
 import { FavoritesPanel } from "./app/components/FavoritesPanel";
 import { AlertRulesPanel } from "./app/components/AlertRulesPanel";
 import { ToastStack } from "./app/components/ToastStack";
+import { SidebarShell } from "./app/components/SidebarShell";
 import {
   DASHBOARD_PREFERENCES_KEY,
   DATA_MODE_STORAGE_KEY,
   DEMO_BANNER_MSG,
   QUICK_QUERY_TEMPLATES,
   THEME_STORAGE_KEY,
-  navItems,
 } from "./app/constants";
 import { useAlertRules } from "./app/hooks/useAlertRules";
 import { useChatThreads } from "./app/hooks/useChatThreads";
@@ -913,125 +902,26 @@ export default function App() {
 
   return (
     <div className="app-shell">
-      <aside className="side-panel">
-        <div className="brand-block">
-          <div className="brand-mark">
-            <Sparkles size={16} />
-          </div>
-          <div>
-            <p className="brand-title">EquityAI</p>
-            <p className="brand-subtitle">Research Console</p>
-          </div>
-        </div>
-
-        <button
-          type="button"
-          className="notification-bell"
-          onClick={() => setNotificationsOpen(true)}
-          aria-label="Open notifications"
-        >
-          <span className="notification-bell-left">
-            <Bell size={15} />
-            Notifications
-          </span>
-          <span className={`notification-count ${unreadCount ? "has-unread" : ""}`}>
-            {unreadCount}
-          </span>
-        </button>
-
-        <button
-          type="button"
-          className="notification-bell"
-          onClick={() => setAlertRulesOpen(true)}
-          aria-label="Open alert rules"
-        >
-          <span className="notification-bell-left">
-            <ShieldAlert size={15} />
-            Alert Rules
-          </span>
-          <span className={`notification-count ${activeRulesCount ? "has-unread" : ""}`}>
-            {activeRulesCount}
-          </span>
-        </button>
-
-        <button
-          type="button"
-          className="favorites-bell"
-          onClick={() => setFavoritesOpen(true)}
-          aria-label="Open favorites"
-        >
-          <span className="notification-bell-left">
-            <BookmarkCheck size={15} />
-            Favorites
-          </span>
-          <span className="notification-count">{favorites.length}</span>
-        </button>
-
-        <button
-          type="button"
-          className="secondary-btn mini-btn favorites-clear-btn"
-          onClick={() => {
-            setFavorites([]);
-            pushToast("Favorites cleared", "info");
-          }}
-        >
-          Clear Favorites
-        </button>
-
-        <button type="button" className="theme-toggle" onClick={toggleTheme}>
-          {theme === "dark" ? <Sun size={15} /> : <Moon size={15} />}
-          <span>{theme === "dark" ? "Switch to light" : "Switch to dark"}</span>
-        </button>
-
-        <button type="button" className="theme-toggle" onClick={toggleDataMode}>
-          <Database size={15} />
-          <span>{dataMode === "demo" ? "Mode: Demo Data" : "Mode: Live API"}</span>
-        </button>
-
-        <button type="button" className="command-shortcut" onClick={openPalette}>
-          <span className="command-shortcut-left">
-            <Command size={14} />
-            Command Palette
-          </span>
-          <span className="kbd-chip">Ctrl/Cmd + K</span>
-        </button>
-
-        <button type="button" className="global-search-shortcut" onClick={openGlobalSearch}>
-          <span className="command-shortcut-left">
-            <Search size={14} />
-            Global Search
-          </span>
-          <span className="kbd-chip">Ctrl/Cmd + J</span>
-        </button>
-
-        <nav className="nav-stack">
-          {navItems.map((item) => {
-            const Icon = item.icon;
-            const isActive = activeView === item.key;
-            return (
-              <button
-                key={item.key}
-                type="button"
-                onClick={() => goToView(item.key)}
-                className={`nav-item ${isActive ? "active" : ""}`}
-              >
-                <span className="nav-icon">
-                  <Icon size={16} />
-                </span>
-                <span className="nav-copy">
-                  <span className="nav-label">{item.label}</span>
-                  <span className="nav-caption">{item.caption}</span>
-                </span>
-              </button>
-            );
-          })}
-        </nav>
-
-        <div className="side-footer">
-          <p className="status-label">System Health</p>
-          <div className="status-pill">{dataMode === "demo" ? "Demo mode active" : "Live API mode"}</div>
-        </div>
-      </aside>
+      <SidebarShell
+        activeView={activeView}
+        unreadCount={unreadCount}
+        activeRulesCount={activeRulesCount}
+        favoritesCount={favorites.length}
+        theme={theme}
+        dataMode={dataMode}
+        onOpenNotifications={() => setNotificationsOpen(true)}
+        onOpenAlertRules={() => setAlertRulesOpen(true)}
+        onOpenFavorites={() => setFavoritesOpen(true)}
+        onClearFavorites={() => {
+          setFavorites([]);
+          pushToast("Favorites cleared", "info");
+        }}
+        onToggleTheme={toggleTheme}
+        onToggleDataMode={toggleDataMode}
+        onOpenPalette={openPalette}
+        onOpenGlobalSearch={openGlobalSearch}
+        onGoToView={goToView}
+      />
 
       <main className="main-panel">{page}</main>
 
