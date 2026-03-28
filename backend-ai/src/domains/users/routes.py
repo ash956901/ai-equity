@@ -32,6 +32,53 @@ class KycSubmitRequest(BaseModel):
     aadhaar_number: Optional[str] = Field(None, max_length=12)
 
 
+class ProfileOption(BaseModel):
+    value: str
+    label: str
+
+
+class ProfileConfigResponse(BaseModel):
+    expertise_levels: list[ProfileOption]
+    risk_tolerance_levels: list[ProfileOption]
+    investment_horizons: list[ProfileOption]
+    kyc_statuses: list[ProfileOption]
+    defaults: dict[str, str]
+
+
+@router.get("/profile/config", response_model=ProfileConfigResponse)
+def get_profile_config():
+    """Fetch profile configuration values used by frontend profile forms."""
+    return ProfileConfigResponse(
+        expertise_levels=[
+            ProfileOption(value="beginner", label="Beginner"),
+            ProfileOption(value="intermediate", label="Intermediate"),
+            ProfileOption(value="advanced", label="Advanced"),
+        ],
+        risk_tolerance_levels=[
+            ProfileOption(value="conservative", label="Conservative"),
+            ProfileOption(value="moderate", label="Moderate"),
+            ProfileOption(value="aggressive", label="Aggressive"),
+        ],
+        investment_horizons=[
+            ProfileOption(value="short", label="Short Term (0-1 yr)"),
+            ProfileOption(value="medium", label="Medium Term (1-5 yr)"),
+            ProfileOption(value="long", label="Long Term (5+ yr)"),
+        ],
+        kyc_statuses=[
+            ProfileOption(value="not_started", label="Not Started"),
+            ProfileOption(value="pending", label="Pending"),
+            ProfileOption(value="verified", label="Verified"),
+            ProfileOption(value="rejected", label="Rejected"),
+        ],
+        defaults={
+            "expertise_level": "beginner",
+            "risk_tolerance": "moderate",
+            "investment_horizon": "medium",
+            "kyc_status": "not_started",
+        },
+    )
+
+
 @router.get("/{user_id}")
 def get_user_profile(user_id: UUID, db: Session = Depends(get_db)):
     """Fetch user profile."""
