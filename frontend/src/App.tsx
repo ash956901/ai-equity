@@ -2,24 +2,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Bell,
   BookmarkCheck,
-  Building2,
-  Bot,
-  CircleUserRound,
-  Clock3,
-  Compass,
   Command,
   Database,
-  FileText,
-  GitCompareArrows,
-  LayoutDashboard,
   Moon,
-  Newspaper,
   Search,
-  Settings,
   ShieldAlert,
   Sparkles,
   Sun,
-  Wallet,
 } from "lucide-react";
 import { DashboardView } from "./features/dashboard/DashboardView";
 import { SettingsView } from "./features/settings/SettingsView";
@@ -38,250 +27,34 @@ import { NotificationsPanel } from "./app/components/NotificationsPanel";
 import { FavoritesPanel } from "./app/components/FavoritesPanel";
 import { AlertRulesPanel } from "./app/components/AlertRulesPanel";
 import { ToastStack } from "./app/components/ToastStack";
-
-type ViewKey =
-  | "dashboard"
-  | "chat"
-  | "compare"
-  | "company"
-  | "discovery"
-  | "portfolio"
-  | "filings"
-  | "timeline"
-  | "news"
-  | "profile"
-  | "settings";
-type Theme = "light" | "dark";
-type DataMode = "live" | "demo";
-type DashboardDensity = "comfortable" | "compact";
-
-interface DashboardPreferences {
-  density: DashboardDensity;
-  hiddenWidgets: string[];
-}
-
-type NotificationCategory = "filing" | "risk" | "theme" | "system";
-type NotificationSeverity = "high" | "medium" | "low";
-
-interface NotificationItem {
-  id: string;
-  title: string;
-  message: string;
-  category: NotificationCategory;
-  severity: NotificationSeverity;
-  timestamp: string;
-  read: boolean;
-}
-
-type ToastTone = "info" | "success" | "warning";
-
-type ExplanationMode = "analyst" | "simple";
-
-interface AgentEvent {
-  timestamp: string;
-  agent: string;
-  event: string;
-}
-
-interface ToolCallEvent {
-  timestamp: string;
-  agent: string;
-  tool: string;
-  status: string;
-}
-
-interface ChatMessage {
-  id: string;
-  role: "assistant" | "user";
-  text: string;
-  sources?: string[];
-  isThinking?: boolean;
-  thinkingDurationSec?: number;
-  executionPlan?: string[];
-  agentEvents?: AgentEvent[];
-  toolCalls?: ToolCallEvent[];
-  attachedFile?: string;
-}
-
-interface ChatThread {
-  id: string;
-  title: string;
-  pinned: boolean;
-  createdAt: string;
-  updatedAt: string;
-  mode: ExplanationMode;
-  messages: ChatMessage[];
-  backendSessionId?: string;
-}
-
-interface ToastItem {
-  id: string;
-  message: string;
-  tone: ToastTone;
-}
-
-interface SearchSelection {
-  stamp: number;
-  companySymbol?: string;
-  companyId?: string;
-  compareSymbols?: string[];
-  discoveryQuery?: string;
-  discoveryTheme?: string;
-  filingsSymbol?: string;
-  newsSymbol?: string;
-  timelineQuery?: string;
-  timelineEventId?: string;
-  chatPrompt?: string;
-  reportScope?: "company" | "comparison";
-  reportCompareSymbols?: string[];
-}
-
-type CompanySearchSelection = {
-  stamp: number;
-  companySymbol: string;
-  companyId?: string;
-};
-
-type TimelineChatSearchSelection = {
-  stamp: number;
-  chatPrompt: string;
-};
-
-type FilingsSearchSelection = {
-  stamp: number;
-  companySymbol: string;
-  filingsSymbol: string;
-};
-
-type NewsSearchSelection = {
-  stamp: number;
-  companySymbol: string;
-  newsSymbol: string;
-};
-
-type FavoriteType = "company" | "filing" | "headline";
-
-interface FavoriteItem {
-  id: string;
-  type: FavoriteType;
-  symbol?: string;
-  title: string;
-  subtitle?: string;
-  url?: string;
-  createdAt: string;
-}
-
-type AlertRuleType = "filing_event" | "risk_beta_above" | "theme_score_above";
-
-interface AlertRule {
-  id: string;
-  name: string;
-  type: AlertRuleType;
-  symbol: string;
-  threshold?: number;
-  enabled: boolean;
-  createdAt: string;
-  lastCheckedAt?: string;
-  lastTriggeredAt?: string;
-}
-
-type GlobalSearchResultType = "company" | "theme" | "event" | "query";
-
-interface GlobalSearchResult {
-  id: string;
-  type: GlobalSearchResultType;
-  title: string;
-  subtitle: string;
-  onSelect: () => void;
-}
-
-const QUICK_QUERY_TEMPLATES = [
-  "Summarize the latest filing impact for RELIANCE.",
-  "Explain top portfolio risks in simple language.",
-  "Compare sentiment momentum: TCS vs INFY.",
-  "What changed in defense theme this week?",
-  "Give a 5-point summary for my timeline events.",
-  "Which themes look overheated right now?",
-];
-
-const DEFAULT_NOTIFICATIONS: NotificationItem[] = [
-  {
-    id: "notif-1",
-    title: "New filing detected for RELIANCE",
-    message: "Quarterly update added to feed. Review margin and capex commentary.",
-    category: "filing",
-    severity: "high",
-    timestamp: "2026-03-21T19:15:00+05:30",
-    read: false,
-  },
-  {
-    id: "notif-2",
-    title: "Portfolio risk signal changed",
-    message: "Your risk monitor moved from stable to watch for one banking position.",
-    category: "risk",
-    severity: "medium",
-    timestamp: "2026-03-21T16:00:00+05:30",
-    read: false,
-  },
-  {
-    id: "notif-3",
-    title: "Theme momentum alert: Defense",
-    message: "Defense theme score crossed 90 in discovery engine for 2 tracked companies.",
-    category: "theme",
-    severity: "medium",
-    timestamp: "2026-03-21T14:10:00+05:30",
-    read: true,
-  },
-  {
-    id: "notif-4",
-    title: "System sync completed",
-    message: "Local cache refreshed successfully. Data sources are ready for the next run.",
-    category: "system",
-    severity: "low",
-    timestamp: "2026-03-21T09:30:00+05:30",
-    read: true,
-  },
-];
-
-interface CommandItem {
-  id: string;
-  label: string;
-  hint?: string;
-  keywords: string;
-  action: () => void;
-}
-
-interface NavItem {
-  key: ViewKey;
-  label: string;
-  icon: typeof LayoutDashboard;
-  caption: string;
-}
-
-const navItems: NavItem[] = [
-  { key: "dashboard", label: "Dashboard", icon: LayoutDashboard, caption: "Overview" },
-  { key: "compare", label: "Compare", icon: GitCompareArrows, caption: "Side-by-side" },
-  { key: "company", label: "Company", icon: Building2, caption: "Workspace" },
-  { key: "chat", label: "Iris Chat", icon: Bot, caption: "Copilot" },
-  { key: "discovery", label: "Discovery", icon: Compass, caption: "Themes" },
-  { key: "portfolio", label: "Portfolio", icon: Wallet, caption: "Exposure" },
-  { key: "filings", label: "Filings", icon: FileText, caption: "Reports" },
-  { key: "timeline", label: "Timeline", icon: Clock3, caption: "Feed" },
-  { key: "news", label: "News", icon: Newspaper, caption: "Sentiment" },
-  { key: "profile", label: "Profile", icon: CircleUserRound, caption: "Account" },
-  { key: "settings", label: "Settings", icon: Settings, caption: "Preferences" },
-];
-
-const THEME_STORAGE_KEY = "equityai-theme";
-const DATA_MODE_STORAGE_KEY = "equityai-data-mode";
-const NOTIFICATIONS_STORAGE_KEY = "equityai-notifications";
-const FAVORITES_STORAGE_KEY = "equityai-favorites";
-const DASHBOARD_PREFERENCES_KEY = "equityai-dashboard-preferences";
-const ALERT_RULES_STORAGE_KEY = "equityai-alert-rules";
-const CHAT_THREADS_STORAGE_KEY = "equityai-chat-threads";
-const CHAT_ACTIVE_THREAD_STORAGE_KEY = "equityai-chat-active-thread";
-
-const DEMO_BANNER_MSG = "Demo mode — showing cached data. Switch to Live API for real-time results.";
+import {
+  DASHBOARD_PREFERENCES_KEY,
+  DATA_MODE_STORAGE_KEY,
+  DEMO_BANNER_MSG,
+  QUICK_QUERY_TEMPLATES,
+  THEME_STORAGE_KEY,
+  navItems,
+} from "./app/constants";
+import { useAlertRules } from "./app/hooks/useAlertRules";
+import { useChatThreads } from "./app/hooks/useChatThreads";
+import { useFavorites } from "./app/hooks/useFavorites";
+import { useNotifications } from "./app/hooks/useNotifications";
+import type {
+  CommandItem,
+  CompanySearchSelection,
+  DashboardPreferences,
+  DataMode,
+  FavoriteItem,
+  FilingsSearchSelection,
+  GlobalSearchResult,
+  NewsSearchSelection,
+  SearchSelection,
+  Theme,
+  TimelineChatSearchSelection,
+  ToastItem,
+  ToastTone,
+  ViewKey,
+} from "./app/types";
 
 type ViewTransitionCapable = {
   startViewTransition?: (updateCallback: () => void) => { finished: Promise<void> };
@@ -300,36 +73,6 @@ function getInitialDataMode(): DataMode {
   const saved = window.localStorage.getItem(DATA_MODE_STORAGE_KEY);
   if (saved === "live" || saved === "demo") return saved;
   return "live";
-}
-
-function getInitialNotifications(): NotificationItem[] {
-  const saved = window.localStorage.getItem(NOTIFICATIONS_STORAGE_KEY);
-  if (!saved) return DEFAULT_NOTIFICATIONS;
-
-  try {
-    const parsed = JSON.parse(saved) as NotificationItem[];
-    if (Array.isArray(parsed)) {
-      return parsed;
-    }
-    return DEFAULT_NOTIFICATIONS;
-  } catch {
-    return DEFAULT_NOTIFICATIONS;
-  }
-}
-
-function getInitialFavorites(): FavoriteItem[] {
-  const saved = window.localStorage.getItem(FAVORITES_STORAGE_KEY);
-  if (!saved) return [];
-
-  try {
-    const parsed = JSON.parse(saved) as FavoriteItem[];
-    if (Array.isArray(parsed)) {
-      return parsed;
-    }
-    return [];
-  } catch {
-    return [];
-  }
 }
 
 function getInitialDashboardPreferences(): DashboardPreferences {
@@ -355,101 +98,6 @@ function getInitialDashboardPreferences(): DashboardPreferences {
   }
 }
 
-function getInitialAlertRules(): AlertRule[] {
-  const saved = window.localStorage.getItem(ALERT_RULES_STORAGE_KEY);
-  if (!saved) {
-    return [
-      {
-        id: "rule-1",
-        name: "Reliance filing updates",
-        type: "filing_event",
-        symbol: "RELIANCE",
-        enabled: true,
-        createdAt: new Date().toISOString(),
-      },
-      {
-        id: "rule-2",
-        name: "Portfolio beta guardrail",
-        type: "risk_beta_above",
-        symbol: "PORTFOLIO",
-        threshold: 1.1,
-        enabled: true,
-        createdAt: new Date().toISOString(),
-      },
-      {
-        id: "rule-3",
-        name: "Defense theme momentum",
-        type: "theme_score_above",
-        symbol: "HAL",
-        threshold: 90,
-        enabled: false,
-        createdAt: new Date().toISOString(),
-      },
-    ];
-  }
-
-  try {
-    const parsed = JSON.parse(saved) as AlertRule[];
-    if (Array.isArray(parsed)) {
-      return parsed;
-    }
-    return [];
-  } catch {
-    return [];
-  }
-}
-
-function createInitialThread(promptText?: string): ChatThread {
-  const now = new Date().toISOString();
-  const messageSeed = promptText?.trim();
-
-  const messages: ChatMessage[] = [
-    {
-      id: `assistant-${Date.now()}-intro`,
-      role: "assistant",
-      text: "Iris is ready. Start with filings, risk, sentiment, or a compare query.",
-      sources: ["Workspace context", "Timeline feed", "Discovery themes"],
-    },
-  ];
-
-  if (messageSeed) {
-    messages.push({
-      id: `user-${Date.now()}-seed`,
-      role: "user",
-      text: messageSeed,
-    });
-    messages.push({
-      id: `assistant-${Date.now()}-seed`,
-      role: "assistant",
-      text: `Got it. I will analyze: "${messageSeed}" and structure the answer with risks, catalysts, and next checks.`,
-      sources: ["Prompt intent parser", "Research heuristics"],
-    });
-  }
-
-  return {
-    id: `thread-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-    title: messageSeed ? messageSeed.slice(0, 44) : "New thread",
-    pinned: false,
-    createdAt: now,
-    updatedAt: now,
-    mode: "analyst",
-    messages,
-  };
-}
-
-function getInitialChatThreads(): ChatThread[] {
-  const saved = window.localStorage.getItem(CHAT_THREADS_STORAGE_KEY);
-  if (!saved) return [createInitialThread()];
-
-  try {
-    const parsed = JSON.parse(saved) as ChatThread[];
-    if (!Array.isArray(parsed) || !parsed.length) return [createInitialThread()];
-    return parsed.filter((thread) => thread.id && Array.isArray(thread.messages));
-  } catch {
-    return [createInitialThread()];
-  }
-}
-
 export default function App() {
   const [activeView, setActiveView] = useState<ViewKey>("dashboard");
   const [theme, setTheme] = useState<Theme>(getInitialTheme);
@@ -457,117 +105,15 @@ export default function App() {
   const [dashboardPreferences, setDashboardPreferences] =
     useState<DashboardPreferences>(getInitialDashboardPreferences);
   const [searchSelection, setSearchSelection] = useState<SearchSelection | null>(null);
-  const [favorites, setFavorites] = useState<FavoriteItem[]>(getInitialFavorites);
-  const [alertRules, setAlertRules] = useState<AlertRule[]>(getInitialAlertRules);
-  const [favoritesOpen, setFavoritesOpen] = useState(false);
-  const [favoriteFilter, setFavoriteFilter] = useState<"all" | FavoriteType>("all");
-  const [notifications, setNotifications] = useState<NotificationItem[]>(getInitialNotifications);
-  const [notificationsOpen, setNotificationsOpen] = useState(false);
-  const [notificationFilter, setNotificationFilter] = useState<"all" | NotificationCategory>("all");
   const [toasts, setToasts] = useState<ToastItem[]>([]);
-  const [alertRulesOpen, setAlertRulesOpen] = useState(false);
-  const [ruleName, setRuleName] = useState("");
-  const [ruleType, setRuleType] = useState<AlertRuleType>("filing_event");
-  const [ruleSymbol, setRuleSymbol] = useState("RELIANCE");
-  const [ruleThreshold, setRuleThreshold] = useState("1.1");
   const [globalSearchOpen, setGlobalSearchOpen] = useState(false);
   const [globalSearchQuery, setGlobalSearchQuery] = useState("");
   const [globalSearchIndex, setGlobalSearchIndex] = useState(0);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [paletteQuery, setPaletteQuery] = useState("");
   const [paletteActiveIndex, setPaletteActiveIndex] = useState(0);
-  const [chatThreads, setChatThreads] = useState<ChatThread[]>(getInitialChatThreads);
-  const [activeChatThreadId, setActiveChatThreadId] = useState("");
   const paletteInputRef = useRef<HTMLInputElement | null>(null);
   const globalSearchInputRef = useRef<HTMLInputElement | null>(null);
-
-  useEffect(() => {
-    const root = document.documentElement;
-    root.dataset.theme = theme;
-    root.classList.toggle("theme-dark", theme === "dark");
-    root.classList.toggle("theme-light", theme === "light");
-    window.localStorage.setItem(THEME_STORAGE_KEY, theme);
-  }, [theme]);
-
-  useEffect(() => {
-    window.localStorage.setItem(NOTIFICATIONS_STORAGE_KEY, JSON.stringify(notifications));
-  }, [notifications]);
-
-  useEffect(() => {
-    window.localStorage.setItem(DATA_MODE_STORAGE_KEY, dataMode);
-  }, [dataMode]);
-
-  useEffect(() => {
-    window.localStorage.setItem(FAVORITES_STORAGE_KEY, JSON.stringify(favorites));
-  }, [favorites]);
-
-  useEffect(() => {
-    window.localStorage.setItem(ALERT_RULES_STORAGE_KEY, JSON.stringify(alertRules));
-  }, [alertRules]);
-
-  useEffect(() => {
-    window.localStorage.setItem(CHAT_THREADS_STORAGE_KEY, JSON.stringify(chatThreads));
-  }, [chatThreads]);
-
-  useEffect(() => {
-    if (!activeChatThreadId) return;
-    window.localStorage.setItem(CHAT_ACTIVE_THREAD_STORAGE_KEY, activeChatThreadId);
-  }, [activeChatThreadId]);
-
-  useEffect(() => {
-    if (!chatThreads.length) {
-      const thread = createInitialThread();
-      setChatThreads([thread]);
-      setActiveChatThreadId(thread.id);
-      return;
-    }
-
-    if (activeChatThreadId && chatThreads.some((thread) => thread.id === activeChatThreadId)) {
-      return;
-    }
-
-    const saved = window.localStorage.getItem(CHAT_ACTIVE_THREAD_STORAGE_KEY);
-    if (saved && chatThreads.some((thread) => thread.id === saved)) {
-      setActiveChatThreadId(saved);
-      return;
-    }
-
-    setActiveChatThreadId(chatThreads[0].id);
-  }, [activeChatThreadId, chatThreads]);
-
-  useEffect(() => {
-    window.localStorage.setItem(
-      DASHBOARD_PREFERENCES_KEY,
-      JSON.stringify(dashboardPreferences)
-    );
-  }, [dashboardPreferences]);
-
-  const unreadCount = useMemo(
-    () => notifications.filter((notification) => !notification.read).length,
-    [notifications]
-  );
-
-  const filteredNotifications = useMemo(
-    () =>
-      notifications.filter(
-        (notification) =>
-          notificationFilter === "all" || notification.category === notificationFilter
-      ),
-    [notificationFilter, notifications]
-  );
-
-  const filteredFavorites = useMemo(
-    () =>
-      favorites.filter((favorite) =>
-        favoriteFilter === "all" ? true : favorite.type === favoriteFilter
-      ),
-    [favoriteFilter, favorites]
-  );
-
-  const activeRulesCount = useMemo(
-    () => alertRules.filter((rule) => rule.enabled).length,
-    [alertRules]
-  );
 
   const pushToast = useCallback((message: string, tone: ToastTone = "info") => {
     const id = `toast-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -582,84 +128,77 @@ export default function App() {
     setToasts((current) => current.filter((toast) => toast.id !== id));
   }, []);
 
-  const markAllNotificationsRead = useCallback(() => {
-    setNotifications((current) => current.map((notification) => ({ ...notification, read: true })));
-    pushToast("All notifications marked as read", "success");
-  }, [pushToast]);
+  const {
+    notificationsOpen,
+    setNotificationsOpen,
+    notificationFilter,
+    setNotificationFilter,
+    unreadCount,
+    filteredNotifications,
+    markAllNotificationsRead,
+    markNotificationRead,
+    dismissNotification,
+    createNotification,
+  } = useNotifications({ pushToast });
 
-  const markNotificationRead = useCallback((id: string) => {
-    setNotifications((current) =>
-      current.map((notification) =>
-        notification.id === id ? { ...notification, read: true } : notification
-      )
+  const {
+    favorites,
+    setFavorites,
+    favoritesOpen,
+    setFavoritesOpen,
+    favoriteFilter,
+    setFavoriteFilter,
+    filteredFavorites,
+    addFavorite,
+    removeFavorite,
+    isFavorited,
+  } = useFavorites({ pushToast });
+
+  const {
+    alertRules,
+    alertRulesOpen,
+    setAlertRulesOpen,
+    ruleName,
+    setRuleName,
+    ruleType,
+    setRuleType,
+    ruleSymbol,
+    setRuleSymbol,
+    ruleThreshold,
+    setRuleThreshold,
+    activeRulesCount,
+    createAlertRule,
+    toggleAlertRule,
+    deleteAlertRule,
+    runAlertRulesCheck,
+  } = useAlertRules({ pushToast });
+
+  const {
+    chatThreads,
+    setChatThreads,
+    activeChatThreadId,
+    setActiveChatThreadId,
+    createInitialThread,
+  } = useChatThreads();
+
+  useEffect(() => {
+    const root = document.documentElement;
+    root.dataset.theme = theme;
+    root.classList.toggle("theme-dark", theme === "dark");
+    root.classList.toggle("theme-light", theme === "light");
+    window.localStorage.setItem(THEME_STORAGE_KEY, theme);
+  }, [theme]);
+
+  useEffect(() => {
+    window.localStorage.setItem(DATA_MODE_STORAGE_KEY, dataMode);
+  }, [dataMode]);
+
+  useEffect(() => {
+    window.localStorage.setItem(
+      DASHBOARD_PREFERENCES_KEY,
+      JSON.stringify(dashboardPreferences)
     );
-    pushToast("Notification marked as read", "success");
-  }, [pushToast]);
-
-  const dismissNotification = useCallback((id: string) => {
-    setNotifications((current) => current.filter((notification) => notification.id !== id));
-    pushToast("Notification dismissed", "info");
-  }, [pushToast]);
-
-  const addFavorite = useCallback(
-    (favorite: Omit<FavoriteItem, "id" | "createdAt">) => {
-      const key = `${favorite.type}::${favorite.title}::${favorite.symbol ?? ""}`.toLowerCase();
-
-      setFavorites((current) => {
-        const exists = current.some(
-          (item) => `${item.type}::${item.title}::${item.symbol ?? ""}`.toLowerCase() === key
-        );
-
-        if (exists) {
-          pushToast("Already in favorites", "info");
-          return current;
-        }
-
-        const next: FavoriteItem = {
-          ...favorite,
-          id: `fav-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-          createdAt: new Date().toISOString(),
-        };
-
-        pushToast("Saved to favorites", "success");
-        return [next, ...current].slice(0, 120);
-      });
-    },
-    [pushToast]
-  );
-
-  const removeFavorite = useCallback(
-    (id: string) => {
-      setFavorites((current) => current.filter((item) => item.id !== id));
-      pushToast("Removed from favorites", "info");
-    },
-    [pushToast]
-  );
-
-  const isFavorited = useCallback(
-    (favorite: Pick<FavoriteItem, "type" | "title" | "symbol">) => {
-      const key = `${favorite.type}::${favorite.title}::${favorite.symbol ?? ""}`.toLowerCase();
-      return favorites.some(
-        (item) => `${item.type}::${item.title}::${item.symbol ?? ""}`.toLowerCase() === key
-      );
-    },
-    [favorites]
-  );
-
-  const createNotification = useCallback(
-    (notification: Omit<NotificationItem, "id" | "timestamp" | "read">) => {
-      const entry: NotificationItem = {
-        ...notification,
-        id: `notif-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-        timestamp: new Date().toISOString(),
-        read: false,
-      };
-
-      setNotifications((current) => [entry, ...current].slice(0, 30));
-      pushToast(notification.title, notification.severity === "high" ? "warning" : "info");
-    },
-    [pushToast]
-  );
+  }, [dashboardPreferences]);
 
   const openGlobalSearch = useCallback(() => {
     setGlobalSearchOpen(true);
@@ -784,7 +323,7 @@ export default function App() {
       setFavoritesOpen(false);
       pushToast("Opened from favorites", "info");
     },
-    [goToView, pushToast]
+    [goToView, pushToast, setFavoritesOpen]
   );
 
   const toggleDashboardDensity = useCallback(() => {
@@ -813,62 +352,6 @@ export default function App() {
   const resetDashboardPreferences = useCallback(() => {
     setDashboardPreferences({ density: "comfortable", hiddenWidgets: [] });
     pushToast("Dashboard layout reset", "success");
-  }, [pushToast]);
-
-  const createAlertRule = useCallback(() => {
-    const normalizedSymbol = ruleSymbol.trim().toUpperCase();
-    if (!ruleName.trim() || !normalizedSymbol) {
-      pushToast("Rule name and symbol are required", "warning");
-      return;
-    }
-
-    const thresholdValue = Number(ruleThreshold);
-    const needsThreshold = ruleType !== "filing_event";
-    const parsedThreshold = needsThreshold && Number.isFinite(thresholdValue) ? thresholdValue : undefined;
-
-    const newRule: AlertRule = {
-      id: `rule-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-      name: ruleName.trim(),
-      type: ruleType,
-      symbol: normalizedSymbol,
-      threshold: parsedThreshold,
-      enabled: true,
-      createdAt: new Date().toISOString(),
-    };
-
-    setAlertRules((current) => [newRule, ...current].slice(0, 80));
-    pushToast("Alert rule created", "success");
-    setRuleName("");
-  }, [pushToast, ruleName, ruleSymbol, ruleThreshold, ruleType]);
-
-  const toggleAlertRule = useCallback((id: string) => {
-    setAlertRules((current) =>
-      current.map((rule) =>
-        rule.id === id
-          ? {
-              ...rule,
-              enabled: !rule.enabled,
-              lastCheckedAt: new Date().toISOString(),
-            }
-          : rule
-      )
-    );
-  }, []);
-
-  const deleteAlertRule = useCallback(
-    (id: string) => {
-      setAlertRules((current) => current.filter((rule) => rule.id !== id));
-      pushToast("Alert rule removed", "info");
-    },
-    [pushToast]
-  );
-
-  const runAlertRulesCheck = useCallback(() => {
-    const now = new Date().toISOString();
-    setAlertRules((current) =>
-      current.map((rule) => ({ ...rule, lastCheckedAt: now }))
-    );
-    pushToast("Alert rules evaluated via backend", "info");
   }, [pushToast]);
 
   const globalSearchResults = useMemo<GlobalSearchResult[]>(() => {
@@ -1112,6 +595,8 @@ export default function App() {
       goToView,
       markAllNotificationsRead,
       runAlertRulesCheck,
+      setAlertRulesOpen,
+      setNotificationsOpen,
       searchSelection?.companySymbol,
       searchSelection?.discoveryQuery,
       searchSelection?.filingsSymbol,
@@ -1414,6 +899,8 @@ export default function App() {
     pushToast,
     resetDashboardPreferences,
     searchSelection,
+    setActiveChatThreadId,
+    setChatThreads,
     chatThreads,
     theme,
     toggleDashboardDensity,
@@ -1421,6 +908,7 @@ export default function App() {
     toggleDataMode,
     toggleTheme,
     unreadCount,
+    createInitialThread,
   ]);
 
   return (
