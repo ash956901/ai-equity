@@ -45,7 +45,9 @@ import type {
 } from "./app/types";
 
 type ViewTransitionCapable = {
-  startViewTransition?: (updateCallback: () => void) => { finished: Promise<void> };
+  startViewTransition?: (updateCallback: () => void) => {
+    finished: Promise<void>;
+  };
 };
 
 function getInitialTheme(): Theme {
@@ -74,10 +76,15 @@ function getInitialDashboardPreferences(): DashboardPreferences {
 
   try {
     const parsed = JSON.parse(saved) as DashboardPreferences;
-    if (parsed && (parsed.density === "comfortable" || parsed.density === "compact")) {
+    if (
+      parsed &&
+      (parsed.density === "comfortable" || parsed.density === "compact")
+    ) {
       return {
         density: parsed.density,
-        hiddenWidgets: Array.isArray(parsed.hiddenWidgets) ? parsed.hiddenWidgets : [],
+        hiddenWidgets: Array.isArray(parsed.hiddenWidgets)
+          ? parsed.hiddenWidgets
+          : [],
       };
     }
     return { density: "comfortable", hiddenWidgets: [] };
@@ -92,12 +99,13 @@ export default function App() {
   const [dataMode, setDataMode] = useState<DataMode>(getInitialDataMode);
   const [dashboardPreferences, setDashboardPreferences] =
     useState<DashboardPreferences>(getInitialDashboardPreferences);
-  const [searchSelection, setSearchSelection] = useState<SearchSelection | null>(null);
+  const [searchSelection, setSearchSelection] =
+    useState<SearchSelection | null>(null);
   const [toasts, setToasts] = useState<ToastItem[]>([]);
-// Palette and Global Search state are now managed by usePaletteSearch hook
-// The input refs are still needed for focusing the inputs
-const paletteInputRef = useRef<HTMLInputElement | null>(null);
-const globalSearchInputRef = useRef<HTMLInputElement | null>(null);
+  // Palette and Global Search state are now managed by usePaletteSearch hook
+  // The input refs are still needed for focusing the inputs
+  const paletteInputRef = useRef<HTMLInputElement | null>(null);
+  const globalSearchInputRef = useRef<HTMLInputElement | null>(null);
 
   const pushToast = useCallback((message: string, tone: ToastTone = "info") => {
     const id = `toast-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -180,7 +188,7 @@ const globalSearchInputRef = useRef<HTMLInputElement | null>(null);
   useEffect(() => {
     window.localStorage.setItem(
       DASHBOARD_PREFERENCES_KEY,
-      JSON.stringify(dashboardPreferences)
+      JSON.stringify(dashboardPreferences),
     );
   }, [dashboardPreferences]);
 
@@ -188,8 +196,11 @@ const globalSearchInputRef = useRef<HTMLInputElement | null>(null);
 
   const toggleTheme = useCallback(() => {
     const root = document.documentElement;
-    const startViewTransition = (document as unknown as ViewTransitionCapable).startViewTransition;
-    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const startViewTransition = (document as unknown as ViewTransitionCapable)
+      .startViewTransition;
+    const reducedMotion = window.matchMedia(
+      "(prefers-reduced-motion: reduce)",
+    ).matches;
     const clearTransitionClass = () => {
       root.classList.remove("theme-transitioning");
     };
@@ -227,42 +238,50 @@ const globalSearchInputRef = useRef<HTMLInputElement | null>(null);
   const toggleDataMode = useCallback(() => {
     setDataMode((current) => {
       const next = current === "live" ? "demo" : "live";
-      pushToast(next === "demo" ? "Demo mode enabled" : "Live API mode enabled", "info");
+      pushToast(
+        next === "demo" ? "Demo mode enabled" : "Live API mode enabled",
+        "info",
+      );
       return next;
     });
   }, [pushToast]);
 
   // Navigation helper – UI state (palette / global search) is handled by the palette/search hook
-  const goToView = useCallback((view: ViewKey) => {
-    setActiveView(view);
+  const goToView = useCallback(
+    (view: ViewKey) => {
+      setActiveView(view);
 
-    if (view === "filings") {
-      createNotification({
-        title: "Filings workspace opened",
-        message: "Track new regulatory disclosures and key updates from one place.",
-        category: "filing",
-        severity: "low",
-      });
-    }
+      if (view === "filings") {
+        createNotification({
+          title: "Filings workspace opened",
+          message:
+            "Track new regulatory disclosures and key updates from one place.",
+          category: "filing",
+          severity: "low",
+        });
+      }
 
-    if (view === "news") {
-      createNotification({
-        title: "News radar opened",
-        message: "Sentiment and headline monitoring is now active for quick scanning.",
-        category: "theme",
-        severity: "low",
-      });
-    }
+      if (view === "news") {
+        createNotification({
+          title: "News radar opened",
+          message:
+            "Sentiment and headline monitoring is now active for quick scanning.",
+          category: "theme",
+          severity: "low",
+        });
+      }
 
-    if (view === "timeline") {
-      createNotification({
-        title: "Timeline feed opened",
-        message: "Chronological event stream is ready for review.",
-        category: "system",
-        severity: "low",
-      });
-    }
-  }, [createNotification]);
+      if (view === "timeline") {
+        createNotification({
+          title: "Timeline feed opened",
+          message: "Chronological event stream is ready for review.",
+          category: "system",
+          severity: "low",
+        });
+      }
+    },
+    [createNotification],
+  );
 
   const handleFavoriteSelect = useCallback(
     (favorite: FavoriteItem) => {
@@ -292,7 +311,7 @@ const globalSearchInputRef = useRef<HTMLInputElement | null>(null);
       setFavoritesOpen(false);
       pushToast("Opened from favorites", "info");
     },
-    [goToView, pushToast, setFavoritesOpen]
+    [goToView, pushToast, setFavoritesOpen],
   );
 
   const toggleDashboardDensity = useCallback(() => {
@@ -375,319 +394,6 @@ const globalSearchInputRef = useRef<HTMLInputElement | null>(null);
   });
 
 
-
-  /* const paletteCommands = useMemo<CommandItem[]>(
-    () => [
-      {
-        id: "go-dashboard",
-        label: "Go to Dashboard",
-        hint: "Navigation",
-        keywords: "dashboard home overview",
-        action: () => goToView("dashboard"),
-      },
-      {
-        id: "go-compare",
-        label: "Go to Comparison Workspace",
-        hint: "Navigation",
-        keywords: "compare side by side symbols",
-        action: () => {
-          setSearchSelection({ stamp: Date.now(), compareSymbols: ["RELIANCE", "TCS"] });
-          goToView("compare");
-        },
-      },
-      {
-        id: "go-company",
-        label: "Go to Company Workspace",
-        hint: "Navigation",
-        keywords: "company workspace symbol details",
-        action: () => {
-          setSearchSelection({ stamp: Date.now(), companySymbol: "RELIANCE" });
-          goToView("company");
-        },
-      },
-      {
-        id: "go-company-from-context",
-        label: "Open Company from Current Context",
-        hint: "Navigation",
-        keywords: "company current symbol context",
-        action: () => {
-          const symbol =
-            searchSelection?.companySymbol ??
-            searchSelection?.filingsSymbol ??
-            searchSelection?.newsSymbol ??
-            searchSelection?.discoveryQuery ??
-            "RELIANCE";
-          setSearchSelection({ stamp: Date.now(), companySymbol: symbol });
-          goToView("company");
-        },
-      },
-      {
-        id: "go-chat",
-        label: "Go to Iris Chat",
-        hint: "Navigation",
-        keywords: "chat copilot iris assistant",
-        action: () => goToView("chat"),
-      },
-      {
-        id: "go-discovery",
-        label: "Go to Discovery",
-        hint: "Navigation",
-        keywords: "discovery themes ai defense sectors",
-        action: () => goToView("discovery"),
-      },
-      {
-        id: "go-portfolio",
-        label: "Go to Portfolio",
-        hint: "Navigation",
-        keywords: "portfolio holdings risk exposure",
-        action: () => goToView("portfolio"),
-      },
-      {
-        id: "go-timeline",
-        label: "Go to Timeline",
-        hint: "Navigation",
-        keywords: "timeline feed events filings history",
-        action: () => goToView("timeline"),
-      },
-      {
-        id: "go-filings",
-        label: "Go to Filings",
-        hint: "Navigation",
-        keywords: "filings sec reports documents",
-        action: () => goToView("filings"),
-      },
-      {
-        id: "go-news",
-        label: "Go to News & Sentiment",
-        hint: "Navigation",
-        keywords: "news sentiment headlines",
-        action: () => goToView("news"),
-      },
-      {
-        id: "go-settings",
-        label: "Go to Settings",
-        hint: "Navigation",
-        keywords: "settings preferences configuration",
-        action: () => goToView("settings"),
-      },
-      {
-        id: "toggle-theme",
-        label: theme === "dark" ? "Switch to Light Theme" : "Switch to Dark Theme",
-        hint: "Appearance",
-        keywords: "theme light dark appearance",
-        action: () => {
-          toggleTheme();
-          closePalette();
-        },
-      },
-      {
-        id: "toggle-data-mode",
-        label: dataMode === "demo" ? "Switch to Live API Mode" : "Switch to Demo Data Mode",
-        hint: "Data",
-        keywords: "demo mock live api data mode",
-        action: () => {
-          toggleDataMode();
-          closePalette();
-        },
-      },
-      {
-        id: "open-alert-rules",
-        label: "Open Alert Rules Builder",
-        hint: "Automation",
-        keywords: "alert rules automation triggers notifications",
-        action: () => {
-          setAlertRulesOpen(true);
-          closePalette();
-        },
-      },
-      {
-        id: "run-alert-check",
-        label: "Run Alert Rules Check",
-        hint: "Automation",
-        keywords: "alert evaluate check now",
-        action: () => {
-          runAlertRulesCheck();
-          closePalette();
-        },
-      },
-      {
-        id: "open-notifications",
-        label: "Open Notifications",
-        hint: "Inbox",
-        keywords: "notifications alerts inbox bell",
-        action: () => {
-          setNotificationsOpen(true);
-          closePalette();
-        },
-      },
-      {
-        id: "mark-all-read",
-        label: "Mark All Notifications Read",
-        hint: "Inbox",
-        keywords: "notifications read clear alerts",
-        action: () => {
-          markAllNotificationsRead();
-          closePalette();
-        },
-      },
-    ],
-    [
-      closePalette,
-      goToView,
-      markAllNotificationsRead,
-      runAlertRulesCheck,
-      setAlertRulesOpen,
-      setNotificationsOpen,
-      searchSelection?.companySymbol,
-      searchSelection?.discoveryQuery,
-      searchSelection?.filingsSymbol,
-      searchSelection?.newsSymbol,
-      dataMode,
-      theme,
-      toggleDataMode,
-      toggleTheme,
-    ]
-  );
-
-  // filteredCommands is now provided by usePaletteSearch hook
-
-  useEffect(() => {
-    if (!paletteOpen) return;
-    window.requestAnimationFrame(() => {
-      paletteInputRef.current?.focus();
-    });
-  }, [paletteOpen]);
-
-  useEffect(() => {
-    if (!globalSearchOpen) return;
-    window.requestAnimationFrame(() => {
-      globalSearchInputRef.current?.focus();
-    });
-  }, [globalSearchOpen]);
-
-  useEffect(() => {
-    setPaletteActiveIndex(0);
-  }, [paletteQuery]);
-
-  useEffect(() => {
-    setGlobalSearchIndex(0);
-  }, [globalSearchQuery]);
-
-  useEffect(() => {
-    const handleGlobalShortcuts = (event: KeyboardEvent) => {
-      const target = event.target as HTMLElement | null;
-      const isTypingContext =
-        target?.tagName === "INPUT" ||
-        target?.tagName === "TEXTAREA" ||
-        target?.isContentEditable;
-
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
-        event.preventDefault();
-        setPaletteOpen((current) => !current);
-        return;
-      }
-
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "j") {
-        event.preventDefault();
-        setGlobalSearchOpen((current) => {
-          if (current) {
-            setGlobalSearchQuery("");
-            setGlobalSearchIndex(0);
-            return false;
-          }
-          return true;
-        });
-        return;
-      }
-
-      if (globalSearchOpen) {
-        if (event.key === "Escape") {
-          event.preventDefault();
-          closeGlobalSearch();
-          return;
-        }
-
-        if (event.key === "ArrowDown") {
-          event.preventDefault();
-          setGlobalSearchIndex((current) =>
-            globalSearchResults.length ? (current + 1) % globalSearchResults.length : 0
-          );
-          return;
-        }
-
-        if (event.key === "ArrowUp") {
-          event.preventDefault();
-          setGlobalSearchIndex((current) =>
-            globalSearchResults.length
-              ? (current - 1 + globalSearchResults.length) % globalSearchResults.length
-              : 0
-          );
-          return;
-        }
-
-        if (event.key === "Enter") {
-          event.preventDefault();
-          const result = globalSearchResults[globalSearchIndex] ?? globalSearchResults[0];
-          result?.onSelect();
-        }
-        return;
-      }
-
-      if (!paletteOpen) return;
-
-      if (isTypingContext) {
-        if (event.key === "Escape") {
-          event.preventDefault();
-          closePalette();
-        }
-        return;
-      }
-
-      if (event.key === "Escape") {
-        event.preventDefault();
-        closePalette();
-        return;
-      }
-
-      if (event.key === "ArrowDown") {
-        event.preventDefault();
-        setPaletteActiveIndex((current) =>
-          filteredCommands.length ? (current + 1) % filteredCommands.length : 0
-        );
-        return;
-      }
-
-      if (event.key === "ArrowUp") {
-        event.preventDefault();
-        setPaletteActiveIndex((current) =>
-          filteredCommands.length
-            ? (current - 1 + filteredCommands.length) % filteredCommands.length
-            : 0
-        );
-        return;
-      }
-
-      if (event.key === "Enter") {
-        event.preventDefault();
-        const command = filteredCommands[paletteActiveIndex];
-        command?.action();
-      }
-    };
-
-    window.addEventListener("keydown", handleGlobalShortcuts);
-    return () => {
-      window.removeEventListener("keydown", handleGlobalShortcuts);
-    };
-  }, [
-    closeGlobalSearch,
-    closePalette,
-    filteredCommands,
-    globalSearchIndex,
-    globalSearchOpen,
-    globalSearchResults,
-    paletteActiveIndex,
-    paletteOpen,
-  ]); */
 
   const page = useMemo(() => {
     switch (activeView) {
