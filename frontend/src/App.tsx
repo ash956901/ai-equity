@@ -55,28 +55,19 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import {
   CartesianGrid,
-  Cell,
   Line,
   LineChart,
-  Pie,
-  PieChart,
   ResponsiveContainer,
   Tooltip,
   XAxis,
   YAxis,
 } from "recharts";
 import {
-  ApiError,
-  fetchMarketHeadlines,
   fetchSecFilings,
-  fetchTickerSentiment,
-  searchCompanies,
   fetchCompanyDetail,
   fetchCompanyRatios,
   fetchCompanyQuote,
   searchCompaniesDB,
-  fetchPortfolios,
-  fetchPortfolioDetail,
   fetchTimeline,
   listChatSessions,
   enrichCompany,
@@ -87,19 +78,12 @@ import {
   uploadProfilePic,
   submitKyc,
   verifyKyc,
-  type CompanySearchResult,
-  type NewsDataResponse,
   type SecFiling,
-  type SentimentFeedResponse,
   type AICompany,
   type AIRatios,
   type AIQuote,
-  type AIPortfolio,
-  type AIPortfolioDetail,
-  type AIHoldingDetail,
   type TimelineEvent as BackendTimelineEvent,
   type ChatQueryRequest,
-  type DataSourceInfo,
 } from "./lib/api";
 import { PageHeader } from "./shared/ui/PageHeader";
 import { SourceBadges } from "./shared/ui/SourceBadges";
@@ -109,6 +93,9 @@ import { DashboardView } from "./features/dashboard/DashboardView";
 import { SettingsView } from "./features/settings/SettingsView";
 import { DiscoveryView } from "./features/discovery/DiscoveryView";
 import { TimelineView } from "./features/timeline/TimelineView";
+import { PortfolioView } from "./features/portfolio/PortfolioView";
+import { FilingsView } from "./features/filings/FilingsView";
+import { NewsView } from "./features/news/NewsView";
 
 type ViewKey =
   | "dashboard"
@@ -229,6 +216,29 @@ interface SearchSelection {
   reportCompareSymbols?: string[];
 }
 
+type CompanySearchSelection = {
+  stamp: number;
+  companySymbol: string;
+  companyId?: string;
+};
+
+type TimelineChatSearchSelection = {
+  stamp: number;
+  chatPrompt: string;
+};
+
+type FilingsSearchSelection = {
+  stamp: number;
+  companySymbol: string;
+  filingsSymbol: string;
+};
+
+type NewsSearchSelection = {
+  stamp: number;
+  companySymbol: string;
+  newsSymbol: string;
+};
+
 type FavoriteType = "company" | "filing" | "headline";
 
 interface FavoriteItem {
@@ -297,18 +307,6 @@ interface AlertRule {
   createdAt: string;
   lastCheckedAt?: string;
   lastTriggeredAt?: string;
-}
-
-interface PortfolioHolding {
-  symbol: string;
-  company: string;
-  sector: string;
-  weight: number;
-  returnPct: number;
-  beta: number;
-  pe: number;
-  pb: number;
-  volatility: number;
 }
 
 type GlobalSearchResultType = "company" | "theme" | "event" | "query";
@@ -415,17 +413,6 @@ const CHAT_THREADS_STORAGE_KEY = "equityai-chat-threads";
 const CHAT_ACTIVE_THREAD_STORAGE_KEY = "equityai-chat-active-thread";
 
 const DEMO_BANNER_MSG = "Demo mode — showing cached data. Switch to Live API for real-time results.";
-
-const CHART_COLORS = [
-  "#0f86ba",
-  "#20a6d5",
-  "#13b3a1",
-  "#4fa15d",
-  "#e8a640",
-  "#c66c41",
-  "#8b7ad3",
-  "#b262bb",
-];
 
 type ViewTransitionCapable = {
   startViewTransition?: (updateCallback: () => void) => { finished: Promise<void> };
@@ -1615,8 +1602,10 @@ export default function App() {
             searchSelection={searchSelection}
             addFavorite={addFavorite}
             isFavorited={isFavorited}
-            goToView={goToView}
-            setSearchSelection={setSearchSelection}
+            goToView={(view) => goToView(view)}
+            setSearchSelection={(selection: CompanySearchSelection) =>
+              setSearchSelection((current) => ({ ...current, ...selection }))
+            }
           />
         );
       case "portfolio":
@@ -1628,8 +1617,10 @@ export default function App() {
             dataMode={dataMode}
             addFavorite={addFavorite}
             isFavorited={isFavorited}
-            goToView={goToView}
-            setSearchSelection={setSearchSelection}
+            goToView={(view) => goToView(view)}
+            setSearchSelection={(selection: FilingsSearchSelection) =>
+              setSearchSelection((current) => ({ ...current, ...selection }))
+            }
           />
         );
       case "timeline":
@@ -1637,8 +1628,10 @@ export default function App() {
           <TimelineView
             dataMode={dataMode}
             searchSelection={searchSelection}
-            goToView={goToView}
-            setSearchSelection={setSearchSelection}
+            goToView={(view) => goToView(view)}
+            setSearchSelection={(selection: TimelineChatSearchSelection) =>
+              setSearchSelection((current) => ({ ...current, ...selection }))
+            }
           />
         );
       case "news":
@@ -1648,8 +1641,10 @@ export default function App() {
             dataMode={dataMode}
             addFavorite={addFavorite}
             isFavorited={isFavorited}
-            goToView={goToView}
-            setSearchSelection={setSearchSelection}
+            goToView={(view) => goToView(view)}
+            setSearchSelection={(selection: NewsSearchSelection) =>
+              setSearchSelection((current) => ({ ...current, ...selection }))
+            }
           />
         );
       case "profile":
@@ -4189,797 +4184,6 @@ function CompanyWorkspaceView(props: {
           </p>
         )}
       </article>
-    </section>
-  );
-}
-
-
-function PortfolioView(props: { dataMode: DataMode }) {
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [portfolios, setPortfolios] = useState<AIPortfolio[]>([]);
-  const [activePortfolio, setActivePortfolio] = useState<AIPortfolioDetail | null>(null);
-  const [holdings, setHoldings] = useState<PortfolioHolding[]>([]);
-  const [dataSources, setDataSources] = useState<DataSourceInfo[]>([]);
-
-  const userId = useMemo(() => getUserId(), []);
-
-  const loadPortfolio = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const list = await fetchPortfolios(userId);
-      setPortfolios(list);
-      if (list.length > 0) {
-        const primary = list.find((p) => p.is_primary) ?? list[0];
-        const detail = await fetchPortfolioDetail(primary.id);
-        setActivePortfolio(detail);
-        setDataSources(detail.data_sources ?? []);
-        const mapped: PortfolioHolding[] = (detail.holdings ?? []).map((h: AIHoldingDetail) => ({
-          symbol: h.ticker_nse ?? h.company_id.slice(0, 6),
-          company: h.company_name ?? "Unknown",
-          sector: h.sector ?? "Unknown",
-          weight: h.weight ?? 0,
-          returnPct: h.return_pct ?? 0,
-          beta: 1.0,
-          pe: 0,
-          pb: 0,
-          volatility: 0,
-        }));
-        setHoldings(mapped);
-      }
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not load portfolio. Create one to get started.");
-      setHoldings([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [userId]);
-
-  useEffect(() => {
-    void loadPortfolio();
-  }, [loadPortfolio]);
-
-  const totalWeight = useMemo(
-    () => holdings.reduce((acc, h) => acc + h.weight, 0) || 100,
-    [holdings]
-  );
-
-  const weightedReturn = useMemo(
-    () => holdings.reduce((acc, h) => acc + (h.returnPct * h.weight) / 100, 0),
-    [holdings]
-  );
-
-  const portfolioBeta = useMemo(
-    () => holdings.length ? holdings.reduce((acc, h) => acc + (h.beta * h.weight) / totalWeight, 0) : 1,
-    [holdings, totalWeight]
-  );
-
-  const sectorWeights = useMemo(() => {
-    const map = new Map<string, number>();
-    for (const h of holdings) {
-      map.set(h.sector, (map.get(h.sector) ?? 0) + h.weight);
-    }
-    return Array.from(map.entries())
-      .map(([sector, weight]) => ({ sector, weight }))
-      .sort((a, b) => b.weight - a.weight);
-  }, [holdings]);
-
-  const pieData = useMemo(
-    () => sectorWeights.map((item) => ({ name: item.sector, value: Number(item.weight.toFixed(2)) })),
-    [sectorWeights]
-  );
-
-  const maxSectorWeight = sectorWeights[0]?.weight ?? 1;
-
-  if (loading) {
-    return (
-      <section className="page-wrap">
-        <PageHeader title="Portfolio Intelligence" subtitle="Loading portfolio data..." dataMode={props.dataMode} />
-        <div className="notice"><Loader2 size={16} className="spin" /> Loading your portfolio...</div>
-      </section>
-    );
-  }
-
-  return (
-    <section className="page-wrap">
-      <PageHeader
-        title="Portfolio Intelligence"
-        subtitle="Exposure, risk concentration, and opportunity signals from your broker portfolio."
-        dataMode={props.dataMode}
-        right={
-          <button type="button" className="primary-btn" onClick={() => void loadPortfolio()}>
-            Refresh Portfolio
-          </button>
-        }
-      />
-
-      {error ? <div className="notice warning">{error}</div> : null}
-
-      <SourceBadges sources={dataSources} />
-
-      {!holdings.length && !error ? (
-        <div className="notice">
-          No holdings found. Create a portfolio and add holdings via the API, or connect your Upstox/Kite broker account.
-        </div>
-      ) : null}
-
-      <div className="kpi-grid portfolio-kpi-grid">
-        <article className="kpi-card">
-          <p>Portfolio Return (MTD)</p>
-          <h2 className={weightedReturn >= 0 ? "positive" : "negative"}>{weightedReturn.toFixed(2)}%</h2>
-          <small>Weighted by current allocation</small>
-        </article>
-        <article className="kpi-card">
-          <p>Portfolio Beta</p>
-          <h2>{portfolioBeta.toFixed(2)}</h2>
-          <small>Benchmark beta reference = 1.00</small>
-        </article>
-        <article className="kpi-card">
-          <p>Holdings Count</p>
-          <h2>{holdings.length}</h2>
-          <small>{portfolios.length} portfolio(s)</small>
-        </article>
-        <article className="kpi-card">
-          <p>Metrics</p>
-          <h2>{activePortfolio?.metrics ? Object.keys(activePortfolio.metrics).length : 0}</h2>
-          <small>Computed by backend</small>
-        </article>
-      </div>
-
-      {sectorWeights.length > 0 && (
-        <div className="split-grid portfolio-grid-extended">
-          <article className="feature-card">
-            <div className="feature-head">
-              <BarChart3 size={18} />
-              <h3>Sector Allocation</h3>
-            </div>
-            <div className="allocation-list">
-              {sectorWeights.map((sectorItem) => (
-                <div key={sectorItem.sector} className="allocation-item">
-                  <div className="allocation-meta">
-                    <span>{sectorItem.sector}</span>
-                    <span>{sectorItem.weight.toFixed(1)}%</span>
-                  </div>
-                  <div className="allocation-track">
-                    <span
-                      className="allocation-fill"
-                      style={{ width: `${(sectorItem.weight / maxSectorWeight) * 100}%` }}
-                    />
-                  </div>
-                </div>
-              ))}
-            </div>
-          </article>
-
-          <article className="feature-card">
-            <div className="feature-head">
-              <Compass size={18} />
-              <h3>Sector Donut</h3>
-            </div>
-            <div className="chart-wrap medium">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={pieData}
-                    dataKey="value"
-                    nameKey="name"
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={54}
-                    outerRadius={82}
-                    stroke="none"
-                  >
-                    {pieData.map((entry, index) => (
-                      <Cell key={`${entry.name}-${index}`} fill={CHART_COLORS[index % CHART_COLORS.length]} />
-                    ))}
-                  </Pie>
-                  <Tooltip
-                    formatter={(value) => `${Number(value).toFixed(1)}%`}
-                    labelFormatter={(label) => String(label)}
-                    contentStyle={{
-                      borderRadius: 10,
-                      border: "1px solid rgba(120,132,145,0.25)",
-                      background: "rgba(12,18,26,0.92)",
-                      color: "#e8edf2",
-                    }}
-                  />
-                </PieChart>
-              </ResponsiveContainer>
-            </div>
-          </article>
-        </div>
-      )}
-
-      {holdings.length > 0 && (
-        <div className="table-card">
-          <div className="table-head">
-            <h3>Top Holdings</h3>
-            <span>From backend portfolio</span>
-          </div>
-          {holdings.map((holding) => (
-            <div key={holding.symbol} className="table-row portfolio-row">
-              <span>
-                {holding.symbol}
-                <small>{holding.company}</small>
-              </span>
-              <span>{holding.weight.toFixed(1)}%</span>
-              <span className={holding.returnPct >= 0 ? "positive" : "negative"}>
-                {holding.returnPct >= 0 ? "+" : ""}
-                {holding.returnPct.toFixed(1)}%
-              </span>
-            </div>
-          ))}
-        </div>
-      )}
-    </section>
-  );
-}
-
-
-function FilingsView(props: {
-  searchSelection: SearchSelection | null;
-  dataMode: DataMode;
-  addFavorite: (favorite: Omit<FavoriteItem, "id" | "createdAt">) => void;
-  isFavorited: (favorite: Pick<FavoriteItem, "type" | "title" | "symbol">) => boolean;
-  goToView: (view: ViewKey) => void;
-  setSearchSelection: (selection: SearchSelection) => void;
-}) {
-  const [lastSelectionStamp, setLastSelectionStamp] = useState<number>(0);
-  const [symbolInput, setSymbolInput] = useState("AAPL");
-  const [activeSymbol, setActiveSymbol] = useState("AAPL");
-  const [filingType, setFilingType] = useState("");
-
-  const [filings, setFilings] = useState<SecFiling[]>([]);
-  const [searchResults, setSearchResults] = useState<CompanySearchResult[]>([]);
-
-  const [loading, setLoading] = useState(true);
-  const [searchLoading, setSearchLoading] = useState(false);
-
-  const [error, setError] = useState<string | null>(null);
-  const [searchError, setSearchError] = useState<string | null>(null);
-
-  const loadFilings = useCallback(async (symbol: string, selectedType?: string) => {
-    setLoading(true);
-    setError(null);
-
-    if (props.dataMode === "demo") {
-      setFilings([]);
-      setError(DEMO_BANNER_MSG);
-      setLoading(false);
-      return;
-    }
-
-    try {
-      const data = await fetchSecFilings(symbol, 12, selectedType);
-      setFilings(data);
-    } catch (loadError) {
-      if (loadError instanceof ApiError && loadError.status === 401) {
-        setError("Filings API is unauthorized (401) until backend key is configured.");
-      } else {
-        setError(`Could not load filings for ${symbol}.`);
-      }
-      setFilings([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [props.dataMode]);
-
-  useEffect(() => {
-    void loadFilings(activeSymbol, filingType || undefined);
-  }, [activeSymbol, filingType, loadFilings]);
-
-  useEffect(() => {
-    if (!props.searchSelection) return;
-    if (props.searchSelection.stamp === lastSelectionStamp) return;
-
-    if (props.searchSelection.filingsSymbol) {
-      const normalized = props.searchSelection.filingsSymbol.toUpperCase();
-      setActiveSymbol(normalized);
-      setSymbolInput(normalized);
-    }
-
-    setLastSelectionStamp(props.searchSelection.stamp);
-  }, [lastSelectionStamp, props.searchSelection]);
-
-  const handleSearch = useCallback(async () => {
-    const query = symbolInput.trim();
-    if (!query) {
-      setSearchResults([]);
-      return;
-    }
-
-    setSearchLoading(true);
-    setSearchError(null);
-
-    if (props.dataMode === "demo") {
-      setSearchResults([]);
-      setSearchError(DEMO_BANNER_MSG);
-      setSearchLoading(false);
-      return;
-    }
-
-    try {
-      const results = await searchCompanies(query, 6);
-      setSearchResults(results);
-    } catch (searchErr) {
-      if (searchErr instanceof ApiError && searchErr.status === 401) {
-        setSearchError("Company search is unauthorized (401) right now.");
-      } else {
-        setSearchError("Could not search companies right now.");
-      }
-      setSearchResults([]);
-    } finally {
-      setSearchLoading(false);
-    }
-  }, [props.dataMode, symbolInput]);
-
-  const applySymbol = useCallback((symbol?: string) => {
-    if (!symbol) return;
-    const normalized = symbol.toUpperCase();
-    setActiveSymbol(normalized);
-    setSymbolInput(normalized);
-  }, []);
-
-  const formatFilingDate = (value?: string) => {
-    if (!value) return "Unknown date";
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) return value;
-    return date.toLocaleDateString();
-  };
-
-  return (
-    <section className="page-wrap">
-      <PageHeader
-        title="Filings Tracker"
-        subtitle="Review latest results, corporate updates, and disclosure trends."
-        dataMode={props.dataMode}
-        right={
-          <form
-            className="search-pill"
-            onSubmit={(event) => {
-              event.preventDefault();
-              applySymbol(symbolInput.trim());
-            }}
-          >
-            <Search size={14} />
-            <input
-              placeholder="Search ticker"
-              value={symbolInput}
-              onChange={(event) => setSymbolInput(event.target.value)}
-            />
-          </form>
-        }
-      />
-
-      <div className="news-toolbar">
-        <div className="chip-row">
-          <span className="chip">Active Symbol: {activeSymbol}</span>
-          <span className="chip">Filings: {loading ? "--" : filings.length}</span>
-        </div>
-        <div className="chip-row">
-          <select
-            className="type-select"
-            value={filingType}
-            onChange={(event) => setFilingType(event.target.value)}
-          >
-            <option value="">All Types</option>
-            <option value="10-K">10-K</option>
-            <option value="10-Q">10-Q</option>
-            <option value="8-K">8-K</option>
-          </select>
-          <button type="button" className="secondary-btn mini-btn" onClick={() => void handleSearch()}>
-            {searchLoading ? "Searching..." : "Search Companies"}
-          </button>
-          <button
-            type="button"
-            className="secondary-btn mini-btn"
-            onClick={() => void loadFilings(activeSymbol, filingType || undefined)}
-          >
-            Refresh Filings
-          </button>
-        </div>
-      </div>
-
-      {error ? <div className="notice warning">{error}</div> : null}
-      {searchError ? <div className="notice warning">{searchError}</div> : null}
-
-      {searchResults.length ? (
-        <div className="search-results-card">
-          <p className="results-title">Company Matches</p>
-          <div className="chip-row">
-            {searchResults.map((result, index) => (
-              <button
-                type="button"
-                key={`${result.symbol ?? result.name ?? index}`}
-                className="chip pick-chip"
-                onClick={() => applySymbol(result.symbol)}
-              >
-                {(result.symbol ?? "N/A") + " · " + (result.name ?? "Unknown")}
-              </button>
-            ))}
-          </div>
-        </div>
-      ) : null}
-
-      <div className="list-card">
-        {loading ? <div className="list-item single-line"><p>Loading filings...</p></div> : null}
-
-        {!loading && !filings.length ? (
-          <div className="list-item single-line">
-            <p>No filings found for {activeSymbol}.</p>
-          </div>
-        ) : null}
-
-        {!loading
-          ? filings.map((filing, index) => (
-              <a
-                key={`${filing.url ?? filing.finalLink ?? index}`}
-                href={filing.finalLink ?? filing.url ?? "#"}
-                target="_blank"
-                rel="noreferrer"
-                className="list-item filing-item"
-              >
-                <div className="filing-content-wrap">
-                  <p>
-                    {(filing.type ?? "Filing") + " · " + (filing.title ?? `${activeSymbol} filing`)}
-                  </p>
-                  <span>{formatFilingDate(filing.filingDate ?? filing.acceptedDate)}</span>
-                </div>
-                <button
-                  type="button"
-                  className="favorite-icon-btn"
-                  onClick={(event) => {
-                    event.preventDefault();
-                    event.stopPropagation();
-                    props.addFavorite({
-                      type: "filing",
-                      symbol: activeSymbol,
-                      title: (filing.type ?? "Filing") + " · " + (filing.title ?? `${activeSymbol} filing`),
-                      subtitle: formatFilingDate(filing.filingDate ?? filing.acceptedDate),
-                      url: filing.finalLink ?? filing.url,
-                    });
-                  }}
-                  aria-label="Save filing to favorites"
-                >
-                  {props.isFavorited({
-                    type: "filing",
-                    symbol: activeSymbol,
-                    title: (filing.type ?? "Filing") + " · " + (filing.title ?? `${activeSymbol} filing`),
-                  }) ? (
-                    <BookmarkCheck size={14} />
-                  ) : (
-                    <Bookmark size={14} />
-                  )}
-                </button>
-                <button
-                  type="button"
-                  className="favorite-icon-btn"
-                  onClick={(event) => {
-                    event.preventDefault();
-                    event.stopPropagation();
-                    props.setSearchSelection({
-                      stamp: Date.now(),
-                      companySymbol: activeSymbol,
-                      filingsSymbol: activeSymbol,
-                    });
-                    props.goToView("company");
-                  }}
-                  aria-label="Open company workspace"
-                >
-                  <ArrowUpRight size={14} />
-                </button>
-              </a>
-            ))
-          : null}
-      </div>
-    </section>
-  );
-}
-
-function NewsView(props: {
-  searchSelection: SearchSelection | null;
-  dataMode: DataMode;
-  addFavorite: (favorite: Omit<FavoriteItem, "id" | "createdAt">) => void;
-  isFavorited: (favorite: Pick<FavoriteItem, "type" | "title" | "symbol">) => boolean;
-  goToView: (view: ViewKey) => void;
-  setSearchSelection: (selection: SearchSelection) => void;
-}) {
-  const [lastSelectionStamp, setLastSelectionStamp] = useState<number>(0);
-  const [symbolInput, setSymbolInput] = useState("RELIANCE");
-  const [activeSymbol, setActiveSymbol] = useState("RELIANCE");
-
-  const [headlines, setHeadlines] = useState<NewsDataResponse>({});
-  const [sentimentFeed, setSentimentFeed] = useState<SentimentFeedResponse | null>(null);
-
-  const [loadingHeadlines, setLoadingHeadlines] = useState(true);
-  const [loadingSentiment, setLoadingSentiment] = useState(true);
-
-  const [headlinesError, setHeadlinesError] = useState<string | null>(null);
-  const [sentimentError, setSentimentError] = useState<string | null>(null);
-
-  const loadHeadlines = useCallback(async () => {
-    setLoadingHeadlines(true);
-    setHeadlinesError(null);
-
-    if (props.dataMode === "demo") {
-      setHeadlines({});
-      setHeadlinesError(DEMO_BANNER_MSG);
-      setLoadingHeadlines(false);
-      return;
-    }
-
-    try {
-      const data = await fetchMarketHeadlines();
-      setHeadlines(data);
-    } catch (error) {
-      if (error instanceof ApiError && error.status === 401) {
-        setHeadlinesError("News API is not configured on backend yet (401).");
-      } else {
-        setHeadlinesError("Could not load market headlines.");
-      }
-    } finally {
-      setLoadingHeadlines(false);
-    }
-  }, [props.dataMode]);
-
-  const loadSentiment = useCallback(async (symbol: string) => {
-    setLoadingSentiment(true);
-    setSentimentError(null);
-
-    if (props.dataMode === "demo") {
-      setSentimentFeed(null);
-      setSentimentError(DEMO_BANNER_MSG);
-      setLoadingSentiment(false);
-      return;
-    }
-
-    try {
-      const data = await fetchTickerSentiment(symbol, 24, 8);
-      setSentimentFeed(data);
-    } catch (error) {
-      if (error instanceof ApiError && error.status === 401) {
-        setSentimentError("Sentiment feed is unauthorized until backend keys are configured.");
-      } else {
-        setSentimentError(`Could not load sentiment for ${symbol}.`);
-      }
-      setSentimentFeed(null);
-    } finally {
-      setLoadingSentiment(false);
-    }
-  }, [props.dataMode]);
-
-  useEffect(() => {
-    void loadHeadlines();
-  }, [loadHeadlines]);
-
-  useEffect(() => {
-    void loadSentiment(activeSymbol);
-  }, [activeSymbol, loadSentiment]);
-
-  useEffect(() => {
-    if (!props.searchSelection) return;
-    if (props.searchSelection.stamp === lastSelectionStamp) return;
-
-    if (props.searchSelection.newsSymbol) {
-      const normalized = props.searchSelection.newsSymbol.toUpperCase();
-      setSymbolInput(normalized);
-      setActiveSymbol(normalized);
-    }
-
-    setLastSelectionStamp(props.searchSelection.stamp);
-  }, [lastSelectionStamp, props.searchSelection]);
-
-  const sentimentCounts = {
-    positive:
-      sentimentFeed?.articles.filter((item) => item.sentiment?.toLowerCase() === "positive").length ?? 0,
-    neutral:
-      sentimentFeed?.articles.filter((item) => item.sentiment?.toLowerCase() === "neutral").length ?? 0,
-    negative:
-      sentimentFeed?.articles.filter((item) => item.sentiment?.toLowerCase() === "negative").length ?? 0,
-  };
-
-  return (
-    <section className="page-wrap">
-      <PageHeader
-        title="News & Sentiment Radar"
-        subtitle="Monitor market narratives and detect sector-level shifts quickly."
-        dataMode={props.dataMode}
-        right={
-          <form
-            className="search-pill"
-            onSubmit={(event) => {
-              event.preventDefault();
-              const normalized = symbolInput.trim().toUpperCase();
-              if (normalized) {
-                setActiveSymbol(normalized);
-              }
-            }}
-          >
-            <Search size={14} />
-            <input
-              placeholder="Ticker symbol"
-              value={symbolInput}
-              onChange={(event) => setSymbolInput(event.target.value)}
-            />
-          </form>
-        }
-      />
-
-      <div className="news-toolbar">
-        <div className="chip-row">
-          <span className="chip">Ticker: {activeSymbol}</span>
-          <span className="chip">Headlines: {headlines.results?.length ?? 0}</span>
-          <span className="chip">Sentiment: {sentimentFeed?.total_results ?? 0}</span>
-        </div>
-        <div className="chip-row">
-          <button type="button" className="secondary-btn mini-btn" onClick={() => void loadHeadlines()}>
-            Refresh Headlines
-          </button>
-          <button
-            type="button"
-            className="secondary-btn mini-btn"
-            onClick={() => void loadSentiment(activeSymbol)}
-          >
-            Refresh Sentiment
-          </button>
-        </div>
-      </div>
-
-      {headlinesError ? <div className="notice warning">{headlinesError}</div> : null}
-      {sentimentError ? <div className="notice warning">{sentimentError}</div> : null}
-
-      <div className="split-grid">
-        <article className="feature-card news-panel">
-          <div className="feature-head">
-            <Newspaper size={18} />
-            <h3>Top Headlines</h3>
-          </div>
-
-          {loadingHeadlines ? (
-            <p>Loading market headlines...</p>
-          ) : (
-            <div className="feed-list">
-              {(headlines.results ?? []).slice(0, 8).map((article, index) => (
-                <div key={`${article.article_id ?? article.link ?? index}`} className="feed-item-wrap">
-                  <a
-                    href={article.link ?? "#"}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="feed-item"
-                  >
-                    <p>{article.title ?? "Untitled headline"}</p>
-                    <span>
-                      {article.source_name ?? "Unknown source"}
-                      {article.pubDate ? ` · ${article.pubDate}` : ""}
-                    </span>
-                  </a>
-                  <button
-                    type="button"
-                    className="favorite-icon-btn"
-                    onClick={() =>
-                      props.addFavorite({
-                        type: "headline",
-                        symbol: activeSymbol,
-                        title: article.title ?? "Untitled headline",
-                        subtitle: article.source_name ?? "Unknown source",
-                        url: article.link,
-                      })
-                    }
-                    aria-label="Save headline to favorites"
-                  >
-                    {props.isFavorited({
-                      type: "headline",
-                      symbol: activeSymbol,
-                      title: article.title ?? "Untitled headline",
-                    }) ? (
-                      <BookmarkCheck size={14} />
-                    ) : (
-                      <Bookmark size={14} />
-                    )}
-                  </button>
-                  <button
-                    type="button"
-                    className="favorite-icon-btn"
-                    onClick={() => {
-                      props.setSearchSelection({
-                        stamp: Date.now(),
-                        companySymbol: activeSymbol,
-                        newsSymbol: activeSymbol,
-                      });
-                      props.goToView("company");
-                    }}
-                    aria-label="Open company workspace"
-                  >
-                    <ArrowUpRight size={14} />
-                  </button>
-                </div>
-              ))}
-              {!(headlines.results ?? []).length ? (
-                <p>No headlines available for now.</p>
-              ) : null}
-            </div>
-          )}
-        </article>
-
-        <article className="feature-card news-panel">
-          <div className="feature-head">
-            <TrendingUp size={18} />
-            <h3>Sentiment Feed ({activeSymbol})</h3>
-          </div>
-
-          <div className="chip-row sentiment-row">
-            <span className="chip positive">Positive: {sentimentCounts.positive}</span>
-            <span className="chip">Neutral: {sentimentCounts.neutral}</span>
-            <span className="chip negative">Negative: {sentimentCounts.negative}</span>
-          </div>
-
-          {loadingSentiment ? (
-            <p>Loading sentiment feed...</p>
-          ) : (
-            <div className="feed-list">
-              {(sentimentFeed?.articles ?? []).slice(0, 8).map((article, index) => (
-                <div key={`${article.article_id ?? article.link ?? index}`} className="feed-item-wrap">
-                  <a
-                    href={article.link ?? "#"}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="feed-item"
-                  >
-                    <p>{article.title ?? "Untitled article"}</p>
-                    <span>
-                      {article.sentiment ?? "unknown"}
-                      {article.source_name ? ` · ${article.source_name}` : ""}
-                    </span>
-                  </a>
-                  <button
-                    type="button"
-                    className="favorite-icon-btn"
-                    onClick={() =>
-                      props.addFavorite({
-                        type: "headline",
-                        symbol: activeSymbol,
-                        title: article.title ?? "Untitled article",
-                        subtitle: `${article.sentiment ?? "unknown"} · ${article.source_name ?? "Unknown source"}`,
-                        url: article.link,
-                      })
-                    }
-                    aria-label="Save sentiment article to favorites"
-                  >
-                    {props.isFavorited({
-                      type: "headline",
-                      symbol: activeSymbol,
-                      title: article.title ?? "Untitled article",
-                    }) ? (
-                      <BookmarkCheck size={14} />
-                    ) : (
-                      <Bookmark size={14} />
-                    )}
-                  </button>
-                  <button
-                    type="button"
-                    className="favorite-icon-btn"
-                    onClick={() => {
-                      props.setSearchSelection({
-                        stamp: Date.now(),
-                        companySymbol: activeSymbol,
-                        newsSymbol: activeSymbol,
-                      });
-                      props.goToView("company");
-                    }}
-                    aria-label="Open company workspace"
-                  >
-                    <ArrowUpRight size={14} />
-                  </button>
-                </div>
-              ))}
-              {!(sentimentFeed?.articles ?? []).length ? (
-                <p>No sentiment articles available for this symbol.</p>
-              ) : null}
-            </div>
-          )}
-        </article>
-      </div>
     </section>
   );
 }
