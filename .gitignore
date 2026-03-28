@@ -1,15 +1,32 @@
+# Virtual environments
 /.venv/
-*.env
-/data/
-.DS_Store
+venv/
+backend-ai/.venv/
 
-# Python bytecode and caches
+# Environment files
+*.env
+
+# Runtime data
+/data/
+backend-ai/uploads/
+backend-ai/data/
+
+# Python bytecode and test caches
 __pycache__/
 *.py[cod]
+.pytest_cache/
+backend-ai/.pytest_cache/
 
 # Logs and local run artifacts
 *.log
 workflow_runs/
+backend-ai/output.log
+backend-ai/output.txt
 
 # Frontend build artifacts
 frontend/dist/
+opencode.json
+
+# OS metadata files
+.DS_Store
+*.DS_Store

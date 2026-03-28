@@ -35,25 +35,12 @@ npm run lint
 npm run preview
 ```
 
-### Backend (in `backend/`)
-
-```bash
-# Install dependencies
-pip install -r requirements.txt
-
-# Run development server
-python main.py
-# or
-uvicorn main:app --reload --host 0.0.0.0 --port 8000
-
-# Run with auto-reload
-uvicorn main:app --reload
-```
-
 ### Backend-AI (in `backend-ai/`)
 
 ```bash
 # Install dependencies (if requirements.txt exists)
+python3 -m venv .venv
+source .venv/bin/activate
 pip install -r requirements.txt
 
 # Run the FastAPI server
@@ -237,32 +224,22 @@ frontend/src/
 └── main.tsx          # Entry point
 ```
 
-### Backend Structure
-
-```
-backend/
-├── FMP_api/          # Financial Modeling Prep integration
-├── FRED_api/         # Federal Reserve Economic Data
-├── Upstox_api/       # Indian market data
-├── NewsAPI/          # News aggregation
-├── NewsDataIO/       # Enhanced news with sentiment
-├── Kite_api/         # Zerodha Kite Connect
-├── main.py           # FastAPI application
-└── requirements.txt
-```
-
 ### Backend-AI Structure
 
 ```
 backend-ai/src/
-├── agents/           # AI agents (financial, sentiment, discovery, etc.)
-├── api/              # FastAPI routes
-├── db/               # Database clients (Postgres, Redis, Vector DB)
-├── etl/              # Data extraction and processing
-├── services/         # Business logic services
-├── tools/            # Tool functions for agents
-├── schemas/          # Pydantic models
-└── main.py           # Application entry point
+├── app/              # FastAPI app factory, middleware, router registration
+├── agents/           # Deep-agent orchestrator, prompts, subagents, tools
+├── domains/          # Domain routes + service layer (chat, companies, etc.)
+├── integrations/     # External provider integrations (market data)
+├── external_apis/    # Legacy compatibility wrappers to integrations
+├── api/              # Legacy route compatibility shims
+├── db/               # Database engine/session and SQLAlchemy models
+├── etl/              # Data extraction and refresh tasks
+├── services/         # Shared business services
+├── llm/              # LLM and embedding factory
+├── config.py         # Pydantic settings
+└── main.py           # Thin application entry point
 ```
 
 ---

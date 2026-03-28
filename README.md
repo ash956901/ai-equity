@@ -16,10 +16,10 @@ AI-native equity research platform for Indian equities (NSE/BSE). Provides insti
 
 ```bash
 docker compose up -d                                          # infrastructure
-python3 -m venv venv && source venv/bin/activate              # virtual env
-pip install -r requirements.txt                               # dependencies
-cp .env.example .env                                          # configure LLM key
-python scripts/seed_db.py                                     # seed database
+python3 -m venv backend-ai/.venv && source backend-ai/.venv/bin/activate  # backend virtual env
+pip install -r backend-ai/requirements.txt                    # backend dependencies
+cp backend-ai/.env.example backend-ai/.env                    # configure backend env
+python backend-ai/scripts/seed_db.py                          # seed database
 cd backend-ai && python -m uvicorn src.main:app --port 8001 --reload &  # backend
 cd ../frontend && npm install && npm run dev                  # frontend
 ```
@@ -43,6 +43,11 @@ Open http://localhost:5173 and switch to **Live** mode.
 ## Documentation
 
 See **[GETTING_STARTED.md](GETTING_STARTED.md)** for the full setup guide, feature documentation, API reference, and troubleshooting.
+
+## Repository Notes
+
+- Python dependencies are maintained in `backend-ai/requirements.txt`.
+- Operational backend scripts live in `backend-ai/scripts/` (seeding, debug helpers, local model setup).
 
 ## Tech Stack
 

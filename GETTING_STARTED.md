@@ -118,16 +118,16 @@ cd ai-equity
 docker compose up -d
 
 # 2. Create Python virtual environment and install deps
-python3 -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
+python3 -m venv backend-ai/.venv
+source backend-ai/.venv/bin/activate
+pip install -r backend-ai/requirements.txt
 
 # 3. Configure environment
-cp .env.example .env
-# Edit .env and add your LLM API key (see Step 2 below)
+cp backend-ai/.env.example backend-ai/.env
+# Edit backend-ai/.env and add your LLM API key (see Step 2 below)
 
 # 4. Seed the database
-python scripts/seed_db.py
+python backend-ai/scripts/seed_db.py
 
 # 5. Start the backend (terminal 1)
 cd backend-ai && python -m uvicorn src.main:app --port 8001 --reload
@@ -190,10 +190,10 @@ docker compose down -v       # stop and DELETE all data
 Copy the template and edit:
 
 ```bash
-cp .env.example .env
+cp backend-ai/.env.example backend-ai/.env
 ```
 
-**Minimum required configuration** -- edit `.env` and set one LLM provider:
+**Minimum required configuration** -- edit `backend-ai/.env` and set one LLM provider:
 
 #### Option A: Groq (recommended, free tier)
 
@@ -245,7 +245,7 @@ EMBEDDING_DIM=1536
 
 #### Optional: External data API keys
 
-Add these to your root `.env` file:
+Add these to your `backend-ai/.env` file:
 ```env
 FMP_API_KEY=your_key
 NEWS_API_KEY=your_key
@@ -266,11 +266,11 @@ The backend serves both AI agent endpoints and external data API proxies on a si
 cd ai-equity
 
 # Create virtual environment (skip if already done)
-python3 -m venv venv
-source venv/bin/activate
+python3 -m venv backend-ai/.venv
+source backend-ai/.venv/bin/activate
 
 # Install dependencies
-pip install -r requirements.txt
+pip install -r backend-ai/requirements.txt
 
 # Start the server
 cd backend-ai
@@ -333,8 +333,8 @@ Populate the database with 20 Indian companies, financial ratios, themes, news, 
 
 ```bash
 cd ai-equity
-source venv/bin/activate
-python scripts/seed_db.py
+source backend-ai/.venv/bin/activate
+python backend-ai/scripts/seed_db.py
 ```
 
 Output:
@@ -636,32 +636,22 @@ Returns events sorted by timestamp (newest first), each with `event_type` (filin
 
 ---
 
-### 6.11 Deep Research Orchestrator (CLI)
+### 6.11 Deep Agent Runtime
 
-An advanced multi-agent research system for deep analysis. This is a CLI tool, separate from the web interface.
+The web backend already uses the deep-agent orchestrator for Iris chat.
+
+Primary path:
+
+- `POST /chat/query` -> orchestrator + specialist sub-agents
+
+Useful local scripts (from repo root):
 
 ```bash
-cd ai-equity
-source venv/bin/activate
-cd backend-ai
-python run_research_orchestrator.py
+source backend-ai/.venv/bin/activate
+python backend-ai/scripts/run_agent.py
+python backend-ai/scripts/debug_run.py
+python backend-ai/scripts/test_imports.py
 ```
-
-The CLI prompts you interactively for:
-- Research query/objective
-- Company names
-- Document paths (PDF/PPT)
-- URLs to analyze
-- Whether to include web search, comparisons, portfolio analysis
-- Report generation preferences
-
-**Output artifacts** are saved to `workflow_runs/YYYY-MM-DD/HH-MM-SS_query_slug/`:
-- `user_input.json` -- captured inputs
-- `orchestrator_plan.json` -- the agent's execution plan
-- `agent_calls.log` -- log of all agent invocations
-- `tool_calls.log` -- log of all tool usage
-- `intermediate_outputs/` -- per-agent JSON outputs
-- `final_output.json` -- the final synthesized report
 
 ---
 
@@ -716,7 +706,7 @@ All APIs are served on a single server at port 8001.
 
 ## 8. LLM Configuration
 
-The platform supports four LLM providers. Change the provider in `.env`:
+The platform supports four LLM providers. Change the provider in `backend-ai/.env`:
 
 | Provider | `LLM_PROVIDER` | Default Model | Notes |
 |----------|----------------|---------------|-------|
@@ -726,7 +716,7 @@ The platform supports four LLM providers. Change the provider in `.env`:
 | DeepSeek | `deepseek` | `deepseek-chat` | Alternative API |
 
 **To switch providers:**
-1. Edit `.env` and set `LLM_PROVIDER` and the corresponding API key
+1. Edit `backend-ai/.env` and set `LLM_PROVIDER` and the corresponding API key
 2. Restart the backend-ai server
 
 **To use a different model within a provider:**
@@ -751,7 +741,7 @@ SELECT count(*) FROM companies;
 
 ```bash
 cd ai-equity
-source venv/bin/activate
+source backend-ai/.venv/bin/activate
 cd backend-ai
 
 # Generate a new migration after model changes
@@ -770,7 +760,7 @@ alembic current
 docker compose down -v                  # delete volumes
 docker compose up -d                    # fresh containers
 cd backend-ai && alembic upgrade head   # recreate tables
-cd .. && python scripts/seed_db.py      # re-seed
+cd .. && python backend-ai/scripts/seed_db.py      # re-seed
 ```
 
 ---
@@ -787,7 +777,7 @@ cd .. && python scripts/seed_db.py      # re-seed
 - Start infrastructure: `docker compose up -d`
 
 ### "No response generated" from chat
-- Check that a valid LLM provider is configured in `.env`
+- Check that a valid LLM provider is configured in `backend-ai/.env`
 - Check backend-ai logs for errors (the terminal running uvicorn)
 - Ensure the database has been seeded: `curl http://localhost:8001/companies/` should return companies
 
@@ -818,45 +808,26 @@ ai-equity/
 ├── backend-ai/               # Unified backend server (port 8001)
 │   ├── alembic/              #   Database migrations
 │   ├── src/
-│   │   ├── agents/           #   LangGraph agent nodes
-│   │   │   ├── state.py      #     ResearchState TypedDict
-│   │   │   ├── graph_builder.py   # Agent graph DAG
-│   │   │   ├── router_agent.py    # Query classification
-│   │   │   ├── company_analysis_agent.py
-│   │   │   ├── comparison_agent.py
-│   │   │   ├── portfolio_agent.py
-│   │   │   ├── news_sentiment_agent.py
-│   │   │   ├── doc_insight_agent.py
-│   │   │   └── synthesis_agent.py
-│   │   ├── api/              #   FastAPI route handlers
-│   │   │   ├── routes_chat.py
-│   │   │   ├── routes_company.py
-│   │   │   ├── routes_portfolio.py
-│   │   │   ├── routes_compare.py
-│   │   │   ├── routes_alerts.py
-│   │   │   ├── routes_watchlists.py
-│   │   │   ├── routes_timeline.py
-│   │   │   ├── routes_upload.py
-│   │   │   └── routes_screens.py
-│   │   ├── external_apis/    #   External financial data API proxies
-│   │   │   ├── FMP_api/      #     Financial Modeling Prep
-│   │   │   ├── FRED_api/     #     Federal Reserve data
-│   │   │   ├── Kite_api/     #     Zerodha broker
-│   │   │   ├── NewsAPI/      #     General news
-│   │   │   ├── NewsDataIO/   #     Financial news
-│   │   │   ├── Upstox_api/   #     Indian broker
-│   │   │   └── main.py       #     Standalone entry point (optional)
-│   │   ├── db/               #   Database models and session
-│   │   │   ├── database.py
-│   │   │   └── models.py     #   19 SQLAlchemy models
-│   │   ├── deep_research/    #   Deep multi-agent orchestrator
-│   │   ├── etl/              #   Data ingestion crawlers
+│   │   ├── app/              #   FastAPI factory/middleware/routers/lifespan
+│   │   ├── domains/          #   Domain routes + services
+│   │   ├── services/         #   Shared business services
+│   │   ├── integrations/     #   Market data provider ownership
+│   │   ├── external_apis/    #   Legacy compatibility wrappers
+│   │   ├── api/              #   Legacy route compatibility shims
+│   │   ├── agents/           #   Deep orchestrator + sub-agents + tools
+│   │   ├── etl/              #   Data ingestion and refresh tasks
 │   │   ├── llm/              #   LLM/embedding factory
-│   │   ├── services/         #   Business logic layer
-│   │   ├── tools/            #   LangChain tools
+│   │   ├── db/               #   Database session + SQLAlchemy models
 │   │   ├── config.py         #   Pydantic settings
-│   │   └── main.py           #   FastAPI entry point
-│   └── run_research_orchestrator.py  # CLI deep research
+│   │   └── main.py           #   Thin FastAPI entry point
+│   ├── scripts/              #   Operational scripts
+│   │   ├── seed_db.py
+│   │   ├── run_agent.py
+│   │   ├── debug_run.py
+│   │   ├── test_imports.py
+│   │   ├── download_models.ps1
+│   │   └── README.md
+│   └── requirements.txt
 │
 ├── frontend/                 # React SPA (port 5173)
 │   ├── src/
@@ -868,10 +839,6 @@ ai-equity/
 │   └── vite.config.ts
 │
 ├── plans/                    # Architecture documentation
-├── scripts/
-│   └── seed_db.py            # Database seeder
 ├── docker-compose.yml        # Infrastructure containers
-├── requirements.txt          # Python dependencies
-├── .env                      # Environment configuration
-└── .env.example              # Environment template
+└── backend-ai/requirements.txt  # Python dependencies
 ```
