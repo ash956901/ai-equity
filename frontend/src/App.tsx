@@ -1,9 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  AlertTriangle,
   ArrowUp,
   ArrowUpRight,
-  AtSign,
   BarChart3,
   Bell,
   Bookmark,
@@ -11,30 +9,20 @@ import {
   Building2,
   BookOpenText,
   Bot,
-  Calendar,
-  Camera,
-  Check,
   CheckCheck,
-  CircleCheck,
   CircleUserRound,
   Clock3,
   Compass,
   Command,
-  CreditCard,
   Database,
   FileText,
-  Fingerprint,
   GitCompareArrows,
-  GraduationCap,
   LayoutDashboard,
   Loader2,
-  Mail,
-  MapPin,
   Moon,
   Newspaper,
   Paperclip,
   Pencil,
-  Phone,
   Pin,
   Plus,
   Search,
@@ -44,8 +32,6 @@ import {
   Sun,
   TrendingUp,
   Trash2,
-  Upload,
-  User,
   Wallet,
   WandSparkles,
   X,
@@ -73,11 +59,6 @@ import {
   enrichCompany,
   uploadDocument,
   sendChatQuery,
-  fetchUserProfile,
-  updateUserProfile,
-  uploadProfilePic,
-  submitKyc,
-  verifyKyc,
   type SecFiling,
   type AICompany,
   type AIRatios,
@@ -96,6 +77,20 @@ import { TimelineView } from "./features/timeline/TimelineView";
 import { PortfolioView } from "./features/portfolio/PortfolioView";
 import { FilingsView } from "./features/filings/FilingsView";
 import { NewsView } from "./features/news/NewsView";
+import { ProfileView } from "./features/profile/ProfileView";
+import { ComparisonWorkspaceView } from "./features/compare/ComparisonWorkspaceView";
+
+function normalizeSymbolsInput(value: string): string[] {
+  return Array.from(
+    new Set(
+      value
+        .split(",")
+        .map((item) => item.trim().toUpperCase())
+        .filter(Boolean)
+        .slice(0, 4)
+    )
+  );
+}
 
 type ViewKey =
   | "dashboard"
@@ -708,18 +703,6 @@ function getInitialChatThreads(): ChatThread[] {
   } catch {
     return [createInitialThread()];
   }
-}
-
-function normalizeSymbolsInput(value: string): string[] {
-  return Array.from(
-    new Set(
-      value
-        .split(",")
-        .map((item) => item.trim().toUpperCase())
-        .filter(Boolean)
-        .slice(0, 4)
-    )
-  );
 }
 
 function toFileSlug(value: string): string {
@@ -2818,237 +2801,6 @@ function ChatView(props: {
   );
 }
 
-function ComparisonWorkspaceView(props: {
-  dataMode: DataMode;
-  pushToast: (message: string, tone?: ToastTone) => void;
-  searchSelection: SearchSelection | null;
-  goToView: (view: ViewKey) => void;
-  setSearchSelection: (selection: SearchSelection) => void;
-}) {
-  const [lastSelectionStamp, setLastSelectionStamp] = useState<number>(0);
-  const [inputText, setInputText] = useState("RELIANCE, TCS");
-  const [selectedSymbols, setSelectedSymbols] = useState<string[]>(["RELIANCE", "TCS"]);
-
-  useEffect(() => {
-    if (!props.searchSelection?.compareSymbols?.length) return;
-    if (props.searchSelection.stamp === lastSelectionStamp) return;
-
-    const normalized = props.searchSelection.compareSymbols
-      .map((item) => item.trim().toUpperCase())
-      .filter(Boolean)
-      .slice(0, 4);
-
-    if (normalized.length >= 2) {
-      setSelectedSymbols(normalized);
-      setInputText(normalized.join(", "));
-    }
-
-    setLastSelectionStamp(props.searchSelection.stamp);
-  }, [lastSelectionStamp, props.searchSelection]);
-
-  const [selectedCompanies, setSelectedCompanies] = useState<DiscoveryCompany[]>([]);
-
-  useEffect(() => {
-    if (!selectedSymbols.length) return;
-    const companies = selectedSymbols.map((symbol) => ({
-      symbol,
-      name: symbol,
-      sector: "Loading...",
-      marketCapBn: 0,
-      insight: "",
-      themeScores: {},
-    } as DiscoveryCompany));
-    setSelectedCompanies(companies);
-
-    Promise.all(selectedSymbols.map((s) => searchCompaniesDB(s, 1))).then((results) => {
-      const enriched = results.map((r, i) => {
-        const c = r[0];
-        if (!c) return companies[i];
-        return {
-          symbol: c.ticker_nse ?? selectedSymbols[i],
-          name: c.name,
-          sector: c.sector ?? "Unknown",
-          marketCapBn: c.market_cap_inr ? c.market_cap_inr / 1e9 : 0,
-          insight: c.industry ?? c.description ?? "",
-          themeScores: {},
-        } as DiscoveryCompany;
-      });
-      setSelectedCompanies(enriched);
-    }).catch(() => {});
-  }, [selectedSymbols]);
-
-  const allThemes = useMemo(() => {
-    const set = new Set<string>();
-    for (const company of selectedCompanies) {
-      Object.keys(company.themeScores).forEach((theme) => set.add(theme));
-    }
-    return Array.from(set).sort((a, b) => a.localeCompare(b));
-  }, [selectedCompanies]);
-
-  const comparisonRows = useMemo(() => {
-    const rows = allThemes.map((theme) => {
-      const values = selectedCompanies.map((company) => company.themeScores[theme] ?? 0);
-      const max = Math.max(...values, 0);
-      return { theme, values, max };
-    });
-    return rows;
-  }, [allThemes, selectedCompanies]);
-
-  const strongestSymbol = useMemo(() => {
-    if (!selectedCompanies.length) return null;
-
-    let best: { symbol: string; score: number } | null = null;
-    for (const company of selectedCompanies) {
-      const score = Math.max(...Object.values(company.themeScores), 0);
-      if (!best || score > best.score) {
-        best = { symbol: company.symbol, score };
-      }
-    }
-    return best;
-  }, [selectedCompanies]);
-
-  const applySymbols = () => {
-    const deduped = normalizeSymbolsInput(inputText);
-    if (deduped.length < 2) {
-      return;
-    }
-
-    setSelectedSymbols(deduped);
-    setInputText(deduped.join(", "));
-  };
-
-  const openComparisonReport = () => {
-    const typedSymbols = normalizeSymbolsInput(inputText);
-    const candidateSymbols = typedSymbols.length >= 2 ? typedSymbols : selectedSymbols;
-
-    if (candidateSymbols.length < 2) {
-      props.pushToast("Select at least two valid companies first", "warning");
-      return;
-    }
-
-    const symbols = candidateSymbols;
-    setSelectedSymbols(symbols);
-    setInputText(symbols.join(", "));
-
-    props.setSearchSelection({
-      stamp: Date.now(),
-      reportScope: "comparison",
-      reportCompareSymbols: symbols,
-      compareSymbols: symbols,
-      companySymbol: symbols[0],
-    });
-    props.goToView("company");
-  };
-
-  return (
-    <section className="page-wrap">
-      <PageHeader
-        title="Comparison Workspace"
-        subtitle="Compare companies side-by-side across themes, sector context, and qualitative signals."
-        dataMode={props.dataMode}
-        right={
-          <form
-            className="search-pill"
-            onSubmit={(event) => {
-              event.preventDefault();
-              applySymbols();
-            }}
-          >
-            <Search size={14} />
-            <input
-              placeholder="RELIANCE, TCS, INFY"
-              value={inputText}
-              onChange={(event) => setInputText(event.target.value)}
-            />
-          </form>
-        }
-      />
-
-      <div className="comparison-toolbar">
-        <button type="button" className="primary-btn" onClick={applySymbols}>
-          Apply Comparison
-        </button>
-        <button type="button" className="primary-btn" onClick={openComparisonReport}>
-          Generate Comparison Report
-        </button>
-        <button
-          type="button"
-          className="secondary-btn mini-btn"
-          onClick={() => {
-            if (!selectedSymbols.length) return;
-            props.setSearchSelection({
-              stamp: Date.now(),
-              companySymbol: selectedSymbols[0],
-            });
-            props.goToView("company");
-          }}
-        >
-          Open First Company
-        </button>
-      </div>
-
-      <div className="notice">
-        {strongestSymbol
-          ? `Strongest theme momentum: ${strongestSymbol.symbol} (${strongestSymbol.score}/100 top signal).`
-          : "Add at least two valid symbols from discovery dataset to compare."}
-      </div>
-
-      {selectedCompanies.length >= 2 ? (
-        <div className="comparison-table-card">
-          <div className="comparison-table-head">
-            <span>Theme</span>
-            {selectedCompanies.map((company) => (
-              <span key={`head-${company.symbol}`}>{company.symbol}</span>
-            ))}
-          </div>
-
-          {comparisonRows.map((row) => (
-            <div key={row.theme} className="comparison-row">
-              <span className="comparison-theme">{row.theme}</span>
-              {row.values.map((value, index) => (
-                <span
-                  key={`${row.theme}-${selectedCompanies[index].symbol}`}
-                  className={`comparison-value ${value === row.max ? "leading" : ""}`}
-                >
-                  {value}
-                </span>
-              ))}
-            </div>
-          ))}
-        </div>
-      ) : (
-        <div className="list-item single-line">
-          <p>Please enter at least two valid symbols (example: RELIANCE, TCS).</p>
-        </div>
-      )}
-
-      <div className="comparison-cards-grid">
-        {selectedCompanies.map((company) => (
-          <article key={`card-${company.symbol}`} className="discovery-card">
-            <div className="discovery-card-head">
-              <div>
-                <p className="discovery-symbol">{company.symbol}</p>
-                <h3>{company.name}</h3>
-              </div>
-              <span className="chip">{company.sector}</span>
-            </div>
-            <p className="discovery-insight">{company.insight}</p>
-            <div className="chip-row discovery-chips">
-              {Object.entries(company.themeScores)
-                .sort((a, b) => b[1] - a[1])
-                .slice(0, 4)
-                .map(([theme, score]) => (
-                  <span key={`${company.symbol}-${theme}`} className="chip discovery-theme-chip">
-                    {theme} · {score}
-                  </span>
-                ))}
-            </div>
-          </article>
-        ))}
-      </div>
-    </section>
-  );
-}
 
 function CompanyWorkspaceView(props: {
   dataMode: DataMode;
@@ -4184,346 +3936,6 @@ function CompanyWorkspaceView(props: {
           </p>
         )}
       </article>
-    </section>
-  );
-}
-
-function ProfileView(props: {
-  dataMode: DataMode;
-  theme: Theme;
-  onToggleTheme: () => void;
-  onToggleDataMode: () => void;
-  pushToast: (message: string, tone?: ToastTone) => void;
-}) {
-  const [profile, setProfile] = useState<{
-    full_name: string;
-    username: string;
-    email: string;
-    phone_number: string;
-    date_of_birth: string;
-    address: string;
-    pan_card_number: string;
-    aadhaar_number: string;
-    expertise_level: string;
-    risk_tolerance: string;
-    investment_horizon: string;
-    profile_pic_url: string;
-    kyc_status: string;
-  }>({
-    full_name: "",
-    username: "",
-    email: "",
-    phone_number: "",
-    date_of_birth: "",
-    address: "",
-    pan_card_number: "",
-    aadhaar_number: "",
-    expertise_level: "beginner",
-    risk_tolerance: "moderate",
-    investment_horizon: "medium",
-    profile_pic_url: "",
-    kyc_status: "not_started",
-  });
-  const [saving, setSaving] = useState(false);
-  const [kycSubmitting, setKycSubmitting] = useState(false);
-  const [kycStep, setKycStep] = useState(0);
-  const avatarInputRef = useRef<HTMLInputElement | null>(null);
-
-  const userId = useMemo(() => {
-    let id = localStorage.getItem("equityai-user-id");
-    if (!id) {
-      id = crypto.randomUUID();
-      localStorage.setItem("equityai-user-id", id);
-    }
-    return id;
-  }, []);
-
-  useEffect(() => {
-    if (props.dataMode !== "live") return;
-    (async () => {
-      try {
-        const p = await fetchUserProfile(userId);
-        setProfile({
-          full_name: p.full_name || "",
-          username: p.username || "",
-          email: p.email || "",
-          phone_number: p.phone_number || "",
-          date_of_birth: p.date_of_birth || "",
-          address: p.address || "",
-          pan_card_number: p.pan_card_number || "",
-          aadhaar_number: p.aadhaar_number || "",
-          expertise_level: p.expertise_level || "beginner",
-          risk_tolerance: p.risk_tolerance || "moderate",
-          investment_horizon: p.investment_horizon || "medium",
-          profile_pic_url: p.profile_pic_url || "",
-          kyc_status: p.kyc_status || "not_started",
-        });
-        if (p.kyc_status === "verified") setKycStep(4);
-        else if (p.kyc_status === "pending") setKycStep(2);
-        else setKycStep(0);
-      } catch {
-        /* profile may not exist yet */
-      }
-    })();
-  }, [props.dataMode, userId]);
-
-  const handleField = useCallback(
-    (field: string, value: string) => {
-      setProfile((prev) => ({ ...prev, [field]: value }));
-    },
-    []
-  );
-
-  const handleSave = useCallback(async () => {
-    setSaving(true);
-    try {
-      if (props.dataMode === "live") {
-        await updateUserProfile(userId, {
-          full_name: profile.full_name || undefined,
-          username: profile.username || undefined,
-          email: profile.email || undefined,
-          phone_number: profile.phone_number || undefined,
-          date_of_birth: profile.date_of_birth || undefined,
-          address: profile.address || undefined,
-          expertise_level: profile.expertise_level,
-          risk_tolerance: profile.risk_tolerance,
-          investment_horizon: profile.investment_horizon,
-        });
-      }
-      props.pushToast("Profile saved successfully", "success");
-    } catch {
-      props.pushToast("Failed to save profile", "warning");
-    } finally {
-      setSaving(false);
-    }
-  }, [profile, props, userId]);
-
-  const handleAvatarUpload = useCallback(
-    async (event: React.ChangeEvent<HTMLInputElement>) => {
-      const file = event.target.files?.[0];
-      if (!file) return;
-      try {
-        if (props.dataMode === "live") {
-          const result = await uploadProfilePic(userId, file);
-          setProfile((prev) => ({ ...prev, profile_pic_url: result.profile_pic_url }));
-        } else {
-          setProfile((prev) => ({ ...prev, profile_pic_url: URL.createObjectURL(file) }));
-        }
-        props.pushToast("Profile picture updated", "success");
-      } catch {
-        props.pushToast("Failed to upload picture", "warning");
-      }
-      if (event.target) event.target.value = "";
-    },
-    [props, userId]
-  );
-
-  const handleKycSubmit = useCallback(async () => {
-    if (!profile.pan_card_number || !/^[A-Z]{5}[0-9]{4}[A-Z]$/.test(profile.pan_card_number.toUpperCase())) {
-      props.pushToast("Please enter a valid PAN (e.g. ABCDE1234F)", "warning");
-      return;
-    }
-    setKycSubmitting(true);
-    setKycStep(1);
-
-    try {
-      if (props.dataMode === "live") {
-        await submitKyc(userId, profile.pan_card_number.toUpperCase(), profile.aadhaar_number || undefined);
-        setKycStep(2);
-        setProfile((prev) => ({ ...prev, kyc_status: "pending" }));
-
-        await new Promise((r) => setTimeout(r, 1500));
-        setKycStep(3);
-
-        await new Promise((r) => setTimeout(r, 1000));
-        await verifyKyc(userId);
-        setKycStep(4);
-        setProfile((prev) => ({ ...prev, kyc_status: "verified" }));
-        props.pushToast("KYC verified successfully!", "success");
-      } else {
-        await new Promise((r) => setTimeout(r, 800));
-        setKycStep(2);
-        setProfile((prev) => ({ ...prev, kyc_status: "pending" }));
-        await new Promise((r) => setTimeout(r, 1200));
-        setKycStep(3);
-        await new Promise((r) => setTimeout(r, 800));
-        setKycStep(4);
-        setProfile((prev) => ({ ...prev, kyc_status: "verified" }));
-        props.pushToast("KYC verified successfully!", "success");
-      }
-    } catch {
-      props.pushToast("KYC verification failed", "warning");
-      setKycStep(0);
-    } finally {
-      setKycSubmitting(false);
-    }
-  }, [profile.aadhaar_number, profile.pan_card_number, props, userId]);
-
-  const kycSteps = ["Details Submitted", "Document Verification", "Identity Confirmed", "KYC Approved"];
-  const kycBadge = profile.kyc_status === "verified" ? "verified" : profile.kyc_status === "pending" ? "pending" : "not-started";
-
-  const avatarUrl = profile.profile_pic_url
-    ? (profile.profile_pic_url.startsWith("http") || profile.profile_pic_url.startsWith("blob:"))
-      ? profile.profile_pic_url
-      : `${(import.meta.env.VITE_BACKEND_URL as string | undefined) ?? "http://localhost:8001"}${profile.profile_pic_url}`
-    : null;
-
-  return (
-    <section className="page-wrap">
-      <PageHeader
-        title="My Profile"
-        subtitle="Manage your account, preferences, and KYC verification."
-        dataMode={props.dataMode}
-      />
-
-      {/* ── Profile Header ── */}
-      <div className="profile-header">
-        <div className="profile-avatar-wrap" onClick={() => avatarInputRef.current?.click()}>
-          <input type="file" ref={avatarInputRef} className="sr-only" accept=".jpg,.jpeg,.png,.webp" onChange={handleAvatarUpload} />
-          {avatarUrl ? (
-            <img src={avatarUrl} alt="Avatar" className="profile-avatar-img" />
-          ) : (
-            <div className="profile-avatar-placeholder">
-              <CircleUserRound size={48} />
-            </div>
-          )}
-          <div className="profile-avatar-overlay">
-            <Camera size={18} />
-          </div>
-        </div>
-        <div className="profile-header-info">
-          <h2>{profile.full_name || profile.username || "Set up your profile"}</h2>
-          <p className="profile-email">{profile.email || userId}</p>
-          <div className="profile-badges">
-            <span className={`kyc-badge ${kycBadge}`}>
-              {profile.kyc_status === "verified" ? <><CircleCheck size={13} /> KYC Verified</> : profile.kyc_status === "pending" ? <><Loader2 size={13} className="spin" /> KYC Pending</> : <><AlertTriangle size={13} /> KYC Not Started</>}
-            </span>
-            <span className="expertise-badge">
-              <GraduationCap size={13} /> {profile.expertise_level}
-            </span>
-          </div>
-        </div>
-      </div>
-
-      {/* ── Personal Information ── */}
-      <div className="profile-section">
-        <h3><User size={16} /> Personal Information</h3>
-        <div className="profile-form">
-          <label className="form-field">
-            <span><User size={14} /> Full Name</span>
-            <input value={profile.full_name} onChange={(e) => handleField("full_name", e.target.value)} placeholder="Your full name" />
-          </label>
-          <label className="form-field">
-            <span><AtSign size={14} /> Username</span>
-            <input value={profile.username} onChange={(e) => handleField("username", e.target.value)} placeholder="your_username" />
-          </label>
-          <label className="form-field">
-            <span><Mail size={14} /> Email</span>
-            <input type="email" value={profile.email} onChange={(e) => handleField("email", e.target.value)} placeholder="you@example.com" />
-          </label>
-          <label className="form-field">
-            <span><Phone size={14} /> Phone Number</span>
-            <input value={profile.phone_number} onChange={(e) => handleField("phone_number", e.target.value)} placeholder="+91 98765 43210" />
-          </label>
-          <label className="form-field">
-            <span><Calendar size={14} /> Date of Birth</span>
-            <input type="date" value={profile.date_of_birth} onChange={(e) => handleField("date_of_birth", e.target.value)} />
-          </label>
-          <label className="form-field full-width">
-            <span><MapPin size={14} /> Address</span>
-            <input value={profile.address} onChange={(e) => handleField("address", e.target.value)} placeholder="Your address" />
-          </label>
-        </div>
-      </div>
-
-      {/* ── Investment Preferences ── */}
-      <div className="profile-section">
-        <h3><TrendingUp size={16} /> Investment Preferences</h3>
-        <div className="profile-form">
-          <label className="form-field">
-            <span><GraduationCap size={14} /> Expertise Level</span>
-            <select value={profile.expertise_level} onChange={(e) => handleField("expertise_level", e.target.value)}>
-              <option value="beginner">Beginner</option>
-              <option value="intermediate">Intermediate</option>
-              <option value="advanced">Advanced</option>
-            </select>
-          </label>
-          <label className="form-field">
-            <span><ShieldAlert size={14} /> Risk Tolerance</span>
-            <select value={profile.risk_tolerance} onChange={(e) => handleField("risk_tolerance", e.target.value)}>
-              <option value="conservative">Conservative</option>
-              <option value="moderate">Moderate</option>
-              <option value="aggressive">Aggressive</option>
-            </select>
-          </label>
-          <label className="form-field">
-            <span><Clock3 size={14} /> Investment Horizon</span>
-            <select value={profile.investment_horizon} onChange={(e) => handleField("investment_horizon", e.target.value)}>
-              <option value="short">Short Term (0-1 yr)</option>
-              <option value="medium">Medium Term (1-5 yr)</option>
-              <option value="long">Long Term (5+ yr)</option>
-            </select>
-          </label>
-        </div>
-        <div className="chip-row" style={{ marginTop: "1rem" }}>
-          <button type="button" className="primary-btn" onClick={handleSave} disabled={saving}>
-            {saving ? <><Loader2 size={14} className="spin" /> Saving...</> : <><Check size={14} /> Save Profile</>}
-          </button>
-        </div>
-      </div>
-
-      {/* ── KYC Verification ── */}
-      <div className="profile-section">
-        <h3><CreditCard size={16} /> KYC Verification</h3>
-        <div className="profile-form">
-          <label className="form-field">
-            <span><CreditCard size={14} /> PAN Card Number</span>
-            <input value={profile.pan_card_number} onChange={(e) => handleField("pan_card_number", e.target.value.toUpperCase())} placeholder="ABCDE1234F" maxLength={10} />
-          </label>
-          <label className="form-field">
-            <span><Fingerprint size={14} /> Aadhaar Number</span>
-            <input value={profile.aadhaar_number} onChange={(e) => handleField("aadhaar_number", e.target.value)} placeholder="1234 5678 9012" maxLength={12} />
-          </label>
-        </div>
-
-        <div className="kyc-stepper">
-          {kycSteps.map((label, idx) => (
-            <div key={label} className={`kyc-step ${idx < kycStep ? "done" : ""} ${idx === kycStep && kycSubmitting ? "active" : ""}`}>
-              <div className="kyc-step-circle">
-                {idx < kycStep ? <Check size={14} /> : <span>{idx + 1}</span>}
-              </div>
-              <p>{label}</p>
-              {idx < kycSteps.length - 1 && <div className={`kyc-step-line ${idx < kycStep ? "done" : ""}`} />}
-            </div>
-          ))}
-        </div>
-
-        <div className="chip-row" style={{ marginTop: "1rem" }}>
-          {profile.kyc_status !== "verified" && (
-            <button type="button" className="primary-btn" onClick={handleKycSubmit} disabled={kycSubmitting}>
-              {kycSubmitting ? <><Loader2 size={14} className="spin" /> Verifying...</> : <><Upload size={14} /> Submit KYC</>}
-            </button>
-          )}
-          {profile.kyc_status === "verified" && (
-            <span className="kyc-badge verified" style={{ fontSize: "0.875rem", padding: "0.5rem 1rem" }}>
-              <CircleCheck size={16} /> KYC Verified
-            </span>
-          )}
-        </div>
-      </div>
-
-      {/* ── Account Settings ── */}
-      <div className="profile-section">
-        <h3><Settings size={16} /> Account Settings</h3>
-        <div className="chip-row">
-          <button type="button" className="secondary-btn" onClick={props.onToggleTheme}>
-            {props.theme === "dark" ? <><Sun size={14} /> Light Mode</> : <><Moon size={14} /> Dark Mode</>}
-          </button>
-          <button type="button" className="secondary-btn" onClick={props.onToggleDataMode}>
-            {props.dataMode === "demo" ? <><Database size={14} /> Switch to Live</> : <><Database size={14} /> Switch to Demo</>}
-          </button>
-        </div>
-      </div>
     </section>
   );
 }
