@@ -26,6 +26,8 @@ Migration policy:
 
 - `features/dashboard/DashboardView.tsx` extracted from `App.tsx`
 - `features/settings/SettingsView.tsx` extracted from `App.tsx`
+- `features/discovery/DiscoveryView.tsx` extracted from `App.tsx`
+- `features/timeline/TimelineView.tsx` extracted from `App.tsx`
 - chat shared primitives extracted:
   - `features/chat/components/ThinkingDropdown.tsx`
   - `features/chat/components/ThinkingIndicator.tsx`
