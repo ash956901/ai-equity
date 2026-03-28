@@ -1,8 +1,6 @@
-"""
-Upstox API Module for Indian financial market data
-Supports NSE, BSE, MCX, NFO, CDS exchanges
-"""
-from .client import UpstoxClient
-from .models import *
+"""Compatibility wrapper for legacy Upstox external package."""
+
+from src.integrations.market_data.providers.Upstox_api.client import UpstoxClient
+from src.integrations.market_data.providers.Upstox_api.models import *  # noqa: F401,F403
 
 __all__ = ["UpstoxClient"]

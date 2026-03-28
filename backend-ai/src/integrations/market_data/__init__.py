@@ -1,8 +1,11 @@
 """Market data integration namespace.
 
-Phase 4 migration target for provider routers/clients. Existing
-`src.external_apis` modules remain as compatibility sources while app-level
-imports move to this namespace.
+Phase 4 migration target for provider routers/clients.
+
+Provider implementations now live under:
+- `src.integrations.market_data.providers.*`
+
+`src.external_apis.*` is retained as a compatibility wrapper namespace.
 """
 
 from src.integrations.market_data.routes import (

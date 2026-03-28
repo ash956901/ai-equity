@@ -94,6 +94,34 @@ Goals:
 - `backend-ai/src/integrations/market_data/*` (gradual move)
 - `backend-ai/src/external_apis` retained temporarily as compatibility imports
 
+### Phase 4 status (implemented)
+
+- app router wiring now imports external provider routers from integration namespace:
+  - `src/app/routers.py` -> `from src.integrations.market_data import ALL_EXTERNAL_ROUTERS`
+- added integration-layer router/module facades:
+  - `src/integrations/market_data/routes.py`
+  - `src/integrations/market_data/{fmp,fred,news_api,newsdata_io,upstox,kite}.py`
+  - `src/integrations/market_data/main.py`
+- quote provider imports now go through integration namespace:
+  - `src/services/market_data/quotes_service.py`
+- `src/external_apis` remains active as compatibility package and standalone legacy entrypoint.
+
+### Phase 4.1 status (P1 progress)
+
+- integration-layer router exports now import provider routers through
+  `src/integrations/market_data/{fmp,fred,news_api,newsdata_io,upstox,kite}.py`
+  instead of directly importing from `src.external_apis.*` in `routes.py`
+- provider implementations were moved under
+  `src/integrations/market_data/providers/*` and now define ownership there
+- legacy `src/external_apis/*` modules were converted into thin compatibility
+  wrappers that re-export from integration provider modules
+- chat upload flow moved from route-heavy handler to service layer:
+  - added `src/domains/chat/upload_service.py`
+  - `src/domains/chat/upload_routes.py` now uses DI session via `Depends(get_db)`
+    and delegates processing to service methods
+- added upload-service unit tests for core behaviors:
+  - `tests/domains/chat/test_upload_service.py`
+
 ## Phase 5 - Frontend Split by Feature
 
 ### Current

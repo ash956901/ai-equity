@@ -1,6 +1,6 @@
-"""Compatibility facade for NewsAPI integration package."""
+"""Integration facade for NewsAPI provider."""
 
-from src.external_apis.NewsAPI.client import NewsAPIClient
-from src.external_apis.NewsAPI.routes import router
+from src.integrations.market_data.providers.NewsAPI.client import NewsAPIClient
+from src.integrations.market_data.providers.NewsAPI.routes import router
 
 __all__ = ["NewsAPIClient", "router"]

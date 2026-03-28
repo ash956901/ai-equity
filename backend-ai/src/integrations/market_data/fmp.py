@@ -1,6 +1,6 @@
-"""Compatibility facade for FMP integration package."""
+"""Integration facade for FMP provider."""
 
-from src.external_apis.FMP_api.client import FMPClient
-from src.external_apis.FMP_api.routes import router
+from src.integrations.market_data.providers.FMP_api.client import FMPClient
+from src.integrations.market_data.providers.FMP_api.routes import router
 
 __all__ = ["FMPClient", "router"]

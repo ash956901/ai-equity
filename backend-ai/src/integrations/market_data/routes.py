@@ -1,15 +1,14 @@
-"""Router exports for external market-data providers.
+"""Router exports for market-data provider integrations.
 
-This module is the integration-layer import target for app router wiring.
-It currently proxies legacy `src.external_apis` routers to preserve behavior.
+App-level wiring should import routers from this module only.
 """
 
-from src.external_apis.FMP_api.routes import router as fmp_router
-from src.external_apis.FRED_api.routes import router as fred_router
-from src.external_apis.Kite_api.routes import router as kite_router
-from src.external_apis.NewsAPI.routes import router as news_router
-from src.external_apis.NewsDataIO.routes import router as newsdata_router
-from src.external_apis.Upstox_api.routes import router as upstox_router
+from src.integrations.market_data.fmp import router as fmp_router
+from src.integrations.market_data.fred import router as fred_router
+from src.integrations.market_data.kite import router as kite_router
+from src.integrations.market_data.news_api import router as news_router
+from src.integrations.market_data.newsdata_io import router as newsdata_router
+from src.integrations.market_data.upstox import router as upstox_router
 
 ALL_EXTERNAL_ROUTERS = [
     fmp_router,

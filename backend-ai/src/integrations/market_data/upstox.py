@@ -1,6 +1,6 @@
-"""Compatibility facade for Upstox integration package."""
+"""Integration facade for Upstox provider."""
 
-from src.external_apis.Upstox_api.client import UpstoxClient
-from src.external_apis.Upstox_api.routes import router
+from src.integrations.market_data.providers.Upstox_api.client import UpstoxClient
+from src.integrations.market_data.providers.Upstox_api.routes import router
 
 __all__ = ["UpstoxClient", "router"]

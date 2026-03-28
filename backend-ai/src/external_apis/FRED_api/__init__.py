@@ -1,8 +1,6 @@
-"""
-FRED API Integration for Federal Reserve Economic Data
-Provides access to 700,000+ macroeconomic time series
-"""
-from .client import FREDClient
-from .routes import router
+"""Compatibility wrapper for legacy FRED external API package."""
+
+from src.integrations.market_data.providers.FRED_api.client import FREDClient
+from src.integrations.market_data.providers.FRED_api.routes import router
 
 __all__ = ["FREDClient", "router"]

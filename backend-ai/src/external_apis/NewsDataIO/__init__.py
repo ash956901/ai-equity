@@ -1,11 +1,7 @@
-"""
-NewsData.io API Integration
-Real-time and historical news from 92,000+ sources across 206 countries.
-Includes dedicated Market, Crypto, Archive, and Sources endpoints.
-"""
+"""Compatibility wrapper for legacy NewsData.io external package."""
 
-from .client import NewsDataIOClient
-from .routes import router
+from src.integrations.market_data.providers.NewsDataIO.client import NewsDataIOClient
+from src.integrations.market_data.providers.NewsDataIO.routes import router
 
 __version__ = "1.0.0"
 

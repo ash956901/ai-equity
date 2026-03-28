@@ -1,11 +1,7 @@
-"""
-NewsAPI Integration
-Provides real-time news articles for equity research, market sentiment analysis,
-and AI-driven financial insights.
-"""
+"""Compatibility wrapper for legacy NewsAPI external package."""
 
-from .client import NewsAPIClient
-from .routes import router
+from src.integrations.market_data.providers.NewsAPI.client import NewsAPIClient
+from src.integrations.market_data.providers.NewsAPI.routes import router
 
 __version__ = "1.0.0"
 
