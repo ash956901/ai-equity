@@ -102,8 +102,6 @@ export default function App() {
   const [searchSelection, setSearchSelection] =
     useState<SearchSelection | null>(null);
   const [toasts, setToasts] = useState<ToastItem[]>([]);
-  // Palette and Global Search state are now managed by usePaletteSearch hook
-  // The input refs are still needed for focusing the inputs
   const paletteInputRef = useRef<HTMLInputElement | null>(null);
   const globalSearchInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -192,8 +190,7 @@ export default function App() {
     );
   }, [dashboardPreferences]);
 
-  // openGlobalSearch and closeGlobalSearch are provided by the usePaletteSearch hook
-
+ 
   const toggleTheme = useCallback(() => {
     const root = document.documentElement;
     const startViewTransition = (document as unknown as ViewTransitionCapable)
@@ -246,7 +243,6 @@ export default function App() {
     });
   }, [pushToast]);
 
-  // Navigation helper – UI state (palette / global search) is handled by the palette/search hook
   const goToView = useCallback(
     (view: ViewKey) => {
       setActiveView(view);
@@ -342,7 +338,6 @@ export default function App() {
     pushToast("Dashboard layout reset", "success");
   }, [pushToast]);
 
-  // Palette and Global Search state & logic are now provided by usePaletteSearch
   const {
     globalSearchOpen,
     globalSearchQuery,
