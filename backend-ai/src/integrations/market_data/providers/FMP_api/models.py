@@ -544,13 +544,18 @@ class MarketIndex(BaseModel):
 # SEC Filings
 class SECFiling(BaseModel):
     symbol: str
-    cik: str
-    title: str
-    acceptedDate: str
-    filingDate: str
-    url: str
-    type: str
-    finalLink: str
+    cik: Optional[str] = None
+    name: Optional[str] = None
+    sicCode: Optional[str] = None
+    industryTitle: Optional[str] = None
+    businessAddress: Optional[str] = None
+    phoneNumber: Optional[str] = None
+    title: Optional[str] = None
+    acceptedDate: Optional[str] = None
+    filingDate: Optional[str] = None
+    url: Optional[str] = None
+    type: Optional[str] = None
+    finalLink: Optional[str] = None
 
 
 # IPO Calendar

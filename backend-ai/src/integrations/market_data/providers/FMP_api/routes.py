@@ -389,11 +389,11 @@ async def get_institutional_holders(
 @router.get("/sec/filings/{symbol}", response_model=List[SECFiling])
 async def get_sec_filings(
     symbol: str = Path(..., description="Stock ticker symbol"),
-    filing_type: Optional[str] = Query(None, description="Filing type (e.g., 10-K, 10-Q, 8-K)"),
+    filing_type: Optional[str] = Query(None, description="Optional filing type filter applied after fetch"),
     limit: int = Query(20, description="Number of filings to retrieve")
 ):
     """
-    Get SEC filings including 10-K, 10-Q, 8-K, and other regulatory documents.
+    Get SEC filing company search data from FMP stable SEC endpoint.
     """
     try:
         data = await fmp_client.get_sec_filings(symbol.upper(), filing_type, limit)

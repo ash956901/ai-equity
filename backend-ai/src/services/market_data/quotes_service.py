@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import logging
+import os
 from datetime import datetime
 from typing import Any, Optional
 from uuid import UUID
+
+import httpx
 
 from src.db.models import Company
 from src.services.cache_service import CacheTTL
@@ -97,28 +100,69 @@ class QuotesService:
             except Exception as e:
                 logger.debug("Kite quote failed for %s: %s", kite_ticker, e)
 
-        fmp_ticker = company.ticker_nse or company.ticker_bse
-        if fmp_ticker:
-            try:
-                from src.integrations.market_data.fmp import FMPClient
+        alpha_quote = await self._fetch_quote_from_alpha_vantage(company)
+        if alpha_quote:
+            return alpha_quote
 
-                client = FMPClient()
-                suffix = ".NS" if company.ticker_nse else ".BO"
-                fmp_symbol = f"{fmp_ticker}{suffix}"
-                data = await client.get_quote(fmp_symbol)
-                if data and isinstance(data, list) and data[0]:
-                    item = data[0]
-                    return {
-                        "source": "FMP",
-                        "last_price": item.get("price"),
-                        "change": item.get("change"),
-                        "change_pct": item.get("changesPercentage"),
-                        "volume": item.get("volume"),
-                        "market_cap": item.get("marketCap"),
-                        "fetched_at": datetime.utcnow().isoformat(),
-                    }
+        return None
+
+    async def _fetch_quote_from_alpha_vantage(
+        self, company: Company
+    ) -> Optional[dict[str, Any]]:
+        api_key = os.getenv("ALPHA_VANTAGE_API_KEY", "").strip()
+        if not api_key:
+            return None
+
+        symbols: list[str] = []
+        if company.ticker_nse:
+            symbols.extend([f"{company.ticker_nse}.NSE", company.ticker_nse])
+        if company.ticker_bse:
+            symbols.extend([f"{company.ticker_bse}.BSE", company.ticker_bse])
+
+        seen: set[str] = set()
+        unique_symbols = [s for s in symbols if not (s in seen or seen.add(s))]
+
+        for symbol in unique_symbols:
+            try:
+                async with httpx.AsyncClient(timeout=30.0) as client:
+                    response = await client.get(
+                        "https://www.alphavantage.co/query",
+                        params={
+                            "function": "GLOBAL_QUOTE",
+                            "symbol": symbol,
+                            "apikey": api_key,
+                        },
+                    )
+                    response.raise_for_status()
+
+                payload = response.json()
+                quote = payload.get("Global Quote", {}) if isinstance(payload, dict) else {}
+                price_raw = quote.get("05. price")
+                if not price_raw:
+                    continue
+
+                last_price = float(price_raw)
+                change = float(quote["09. change"]) if quote.get("09. change") else None
+                change_pct_raw = quote.get("10. change percent")
+                change_pct = (
+                    float(change_pct_raw.replace("%", "")) if change_pct_raw else None
+                )
+                volume = int(quote["06. volume"]) if quote.get("06. volume") else None
+
+                return {
+                    "source": "AlphaVantage",
+                    "symbol": quote.get("01. symbol") or symbol,
+                    "last_price": last_price,
+                    "change": change,
+                    "change_pct": change_pct,
+                    "volume": volume,
+                    "previous_close": (
+                        float(quote["08. previous close"]) if quote.get("08. previous close") else None
+                    ),
+                    "fetched_at": datetime.utcnow().isoformat(),
+                }
             except Exception as e:
-                logger.debug("FMP quote failed for %s: %s", fmp_ticker, e)
+                logger.debug("Alpha Vantage quote failed for %s: %s", symbol, e)
 
         return None
 

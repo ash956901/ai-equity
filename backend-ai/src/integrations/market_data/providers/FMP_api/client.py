@@ -15,6 +15,7 @@ class FMPClient:
     
     BASE_URL = "https://financialmodelingprep.com/api/v3"
     BASE_URL_V4 = "https://financialmodelingprep.com/api/v4"
+    BASE_URL_STABLE = "https://financialmodelingprep.com/stable"
     
     def __init__(self, api_key: Optional[str] = None):
         """
@@ -59,6 +60,29 @@ class FMPClient:
         except Exception as e:
             logger.error(f"An error occurred: {e}")
             raise
+
+    async def _make_stable_request(
+        self, endpoint: str, params: Optional[Dict[str, Any]] = None
+    ) -> Any:
+        """Make HTTP request to FMP stable API."""
+        url = f"{self.BASE_URL_STABLE}/{endpoint}"
+
+        if params is None:
+            params = {}
+
+        params["apikey"] = self.api_key
+
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                response = await client.get(url, params=params)
+                response.raise_for_status()
+                return response.json()
+        except httpx.HTTPError as e:
+            logger.error(f"HTTP error occurred: {e}")
+            raise
+        except Exception as e:
+            logger.error(f"An error occurred: {e}")
+            raise
     
     # Company Information
     async def get_company_profile(self, symbol: str) -> List[Dict[str, Any]]:
@@ -67,12 +91,14 @@ class FMPClient:
     
     async def get_quote(self, symbol: str) -> List[Dict[str, Any]]:
         """Get real-time stock quote"""
-        return await self._make_request(f"quote/{symbol}")
+        data = await self._make_stable_request("quote", {"symbol": symbol})
+        return data if isinstance(data, list) else []
     
     async def get_quotes(self, symbols: List[str]) -> List[Dict[str, Any]]:
         """Get quotes for multiple symbols"""
         symbol_str = ",".join(symbols)
-        return await self._make_request(f"quote/{symbol_str}")
+        data = await self._make_stable_request("quote", {"symbol": symbol_str})
+        return data if isinstance(data, list) else []
     
     # Historical Data
     async def get_historical_price(self, symbol: str, from_date: Optional[str] = None,
@@ -208,13 +234,27 @@ class FMPClient:
         return await self._make_request(f"institutional-holder/{symbol}")
     
     # SEC Filings
-    async def get_sec_filings(self, symbol: str, type: Optional[str] = None, 
-                             limit: int = 20) -> List[Dict[str, Any]]:
-        """Get SEC filings"""
-        params = {"limit": limit}
+    async def get_sec_filings(
+        self, symbol: str, type: Optional[str] = None, limit: int = 20
+    ) -> List[Dict[str, Any]]:
+        """Get SEC filing company search data from FMP stable API."""
+        data = await self._make_stable_request(
+            "sec-filings-company-search/symbol", {"symbol": symbol}
+        )
+
+        if not isinstance(data, list):
+            return []
+
         if type:
-            params["type"] = type
-        return await self._make_request(f"sec_filings/{symbol}", params)
+            normalized_type = type.lower()
+            data = [
+                item
+                for item in data
+                if str(item.get("type") or item.get("filingType") or "").lower()
+                == normalized_type
+            ]
+
+        return data[:limit]
     
     # Market Data
     async def get_market_hours(self) -> Dict[str, Any]:

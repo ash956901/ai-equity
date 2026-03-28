@@ -1,0 +1,40 @@
+"""News API routes for RSS aggregation and AI enrichment."""
+
+from datetime import datetime
+from typing import List, Optional
+
+from fastapi import APIRouter, Query
+from pydantic import BaseModel, Field
+
+from src.domains.news.service import NewsService
+
+router = APIRouter(tags=["news"])
+news_service = NewsService()
+
+
+class EnrichedNewsItem(BaseModel):
+    """Single news item enriched with sentiment and categories."""
+
+    title: str = Field(..., description="Headline text")
+    summary: str = Field("", description="Cleaned short summary")
+    url: Optional[str] = Field(None, description="Original article URL")
+    source: str = Field(..., description="Source publisher")
+    source_feed: str = Field(..., description="RSS feed URL")
+    published_at: datetime = Field(..., description="Article publish timestamp in UTC")
+    sentiment: str = Field(..., description="FinBERT sentiment label")
+    sentiment_confidence: float = Field(..., description="FinBERT confidence score")
+    categories: List[str] = Field(..., description="Zero-shot multi-label categories")
+
+
+@router.get("/get-news", response_model=List[EnrichedNewsItem])
+async def get_news(
+    limit: int = Query(
+        default=50,
+        ge=1,
+        le=50,
+        description="Maximum number of items returned (max 50).",
+    ),
+) -> List[EnrichedNewsItem]:
+    """Fetch, deduplicate, and enrich market news from RSS sources."""
+    news = await news_service.get_news(limit=limit)
+    return [EnrichedNewsItem(**item) for item in news]
