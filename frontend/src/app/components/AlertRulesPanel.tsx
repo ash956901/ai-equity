@@ -1,18 +1,5 @@
 import { Trash2, X } from "lucide-react";
-
-type AlertRuleType = "filing_event" | "risk_beta_above" | "theme_score_above";
-
-interface AlertRule {
-  id: string;
-  name: string;
-  type: AlertRuleType;
-  symbol: string;
-  threshold?: number;
-  enabled: boolean;
-  createdAt: string;
-  lastCheckedAt?: string;
-  lastTriggeredAt?: string;
-}
+import type { AlertRule, AlertRuleType } from "../types";
 
 interface AlertRulesPanelProps {
   open: boolean;

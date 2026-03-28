@@ -1,16 +1,5 @@
 import { Trash2, X } from "lucide-react";
-
-type FavoriteType = "company" | "filing" | "headline";
-
-interface FavoriteItem {
-  id: string;
-  type: FavoriteType;
-  symbol?: string;
-  title: string;
-  subtitle?: string;
-  url?: string;
-  createdAt: string;
-}
+import type { FavoriteItem, FavoriteType } from "../types";
 
 interface FavoritesPanelProps {
   open: boolean;

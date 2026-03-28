@@ -1,12 +1,6 @@
 import type { Dispatch, RefObject, SetStateAction } from "react";
 import { Search } from "lucide-react";
-
-interface CommandItem {
-  id: string;
-  label: string;
-  hint?: string;
-  action: () => void;
-}
+import type { CommandItem } from "../types";
 
 interface CommandPaletteProps {
   open: boolean;

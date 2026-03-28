@@ -1,12 +1,5 @@
 import { X } from "lucide-react";
-
-type ToastTone = "info" | "success" | "warning";
-
-interface ToastItem {
-  id: string;
-  message: string;
-  tone: ToastTone;
-}
+import type { ToastItem } from "../types";
 
 interface ToastStackProps {
   toasts: ToastItem[];

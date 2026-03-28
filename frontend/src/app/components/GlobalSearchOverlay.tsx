@@ -1,15 +1,6 @@
 import type { Dispatch, RefObject, SetStateAction } from "react";
 import { Search } from "lucide-react";
-
-type GlobalSearchResultType = "company" | "theme" | "event" | "query";
-
-interface GlobalSearchResult {
-  id: string;
-  type: GlobalSearchResultType;
-  title: string;
-  subtitle: string;
-  onSelect: () => void;
-}
+import type { GlobalSearchResult } from "../types";
 
 interface GlobalSearchOverlayProps {
   open: boolean;

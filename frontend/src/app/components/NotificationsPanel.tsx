@@ -1,16 +1,5 @@
 import { CheckCheck, X } from "lucide-react";
-
-type NotificationCategory = "filing" | "risk" | "theme" | "system";
-
-interface NotificationItem {
-  id: string;
-  title: string;
-  message: string;
-  category: NotificationCategory;
-  severity: "high" | "medium" | "low";
-  timestamp: string;
-  read: boolean;
-}
+import type { NotificationCategory, NotificationItem } from "../types";
 
 interface NotificationsPanelProps {
   open: boolean;
