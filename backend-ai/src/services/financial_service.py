@@ -24,13 +24,27 @@ class FinancialService:
         self._ratios = RatiosService(self.context)
 
     def get_latest_financials(
-        self, company_id: UUID, periods: int = 4
+        self,
+        company_id: UUID,
+        periods: int = 4,
+        prefer_free_sources: bool = False,
     ) -> Dict[str, Any]:
         """Get latest financial statements with real-time fallback."""
-        return self._financials.get_financials(company_id, periods)
+        return self._financials.get_financials(
+            company_id,
+            periods,
+            prefer_free_sources=prefer_free_sources,
+        )
 
     def calculate_ratios(
-        self, company_id: UUID, period: Optional[date] = None
+        self,
+        company_id: UUID,
+        period: Optional[date] = None,
+        prefer_free_sources: bool = False,
     ) -> Dict[str, Any]:
         """Get or compute financial ratios with scrape fallback."""
-        return self._ratios.get_ratios(company_id, period)
+        return self._ratios.get_ratios(
+            company_id,
+            period,
+            prefer_free_sources=prefer_free_sources,
+        )

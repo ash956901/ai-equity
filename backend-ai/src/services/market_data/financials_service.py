@@ -29,7 +29,12 @@ class FinancialStatementsService:
     def __init__(self, context: MarketDataContext):
         self.context = context
 
-    def get_financials(self, company_id: UUID, periods: int = 4) -> dict[str, Any]:
+    def get_financials(
+        self,
+        company_id: UUID,
+        periods: int = 4,
+        prefer_free_sources: bool = False,
+    ) -> dict[str, Any]:
         company = (
             self.context.db.query(Company).filter(Company.id == company_id).first()
         )
@@ -46,30 +51,68 @@ class FinancialStatementsService:
             self.context.cache.set("financials", cache_key, db_data, CacheTTL.FINANCIALS)
             return db_data
 
-        fmp_data = self._fetch_financials_from_fmp(company)
-        if fmp_data and fmp_data.get("periods"):
-            self._persist_fmp_financials(company, fmp_data)
-            self.context.cache.set("financials", cache_key, fmp_data, CacheTTL.FINANCIALS)
-            return fmp_data
+        if prefer_free_sources:
+            yfinance_data = self._fetch_financials_from_yfinance(company)
+            if yfinance_data and yfinance_data.get("periods"):
+                self._persist_fmp_financials(company, yfinance_data)
+                self.context.cache.set(
+                    "financials", cache_key, yfinance_data, CacheTTL.FINANCIALS
+                )
+                return yfinance_data
 
-        scraped = self._fetch_financials_fallback(company)
-        if scraped:
-            persist_scraped_financials(self.context.db, company, scraped)
-            db_data = self._get_financials_from_db(company, periods)
-            if db_data and db_data.get("periods"):
-                self.context.cache.set("financials", cache_key, db_data, CacheTTL.FINANCIALS)
-                return db_data
+            scraped = self._fetch_financials_fallback(company)
+            if scraped:
+                persist_scraped_financials(self.context.db, company, scraped)
+                db_data = self._get_financials_from_db(company, periods)
+                if db_data and db_data.get("periods"):
+                    self.context.cache.set(
+                        "financials", cache_key, db_data, CacheTTL.FINANCIALS
+                    )
+                    return db_data
 
-            result = {
-                "company_id": str(company_id),
-                "company_name": company.name,
-                "source": scraped.get("source", "web"),
-                "raw_data": scraped,
-            }
-            self.context.cache.set(
-                "financials", cache_key, result, CacheTTL.SCRAPED_DATA
-            )
-            return result
+                result = {
+                    "company_id": str(company_id),
+                    "company_name": company.name,
+                    "source": scraped.get("source", "web"),
+                    "raw_data": scraped,
+                }
+                self.context.cache.set(
+                    "financials", cache_key, result, CacheTTL.SCRAPED_DATA
+                )
+                return result
+
+            fmp_data = self._fetch_financials_from_fmp(company)
+            if fmp_data and fmp_data.get("periods"):
+                self._persist_fmp_financials(company, fmp_data)
+                self.context.cache.set(
+                    "financials", cache_key, fmp_data, CacheTTL.FINANCIALS
+                )
+                return fmp_data
+        else:
+            fmp_data = self._fetch_financials_from_fmp(company)
+            if fmp_data and fmp_data.get("periods"):
+                self._persist_fmp_financials(company, fmp_data)
+                self.context.cache.set("financials", cache_key, fmp_data, CacheTTL.FINANCIALS)
+                return fmp_data
+
+            scraped = self._fetch_financials_fallback(company)
+            if scraped:
+                persist_scraped_financials(self.context.db, company, scraped)
+                db_data = self._get_financials_from_db(company, periods)
+                if db_data and db_data.get("periods"):
+                    self.context.cache.set("financials", cache_key, db_data, CacheTTL.FINANCIALS)
+                    return db_data
+
+                result = {
+                    "company_id": str(company_id),
+                    "company_name": company.name,
+                    "source": scraped.get("source", "web"),
+                    "raw_data": scraped,
+                }
+                self.context.cache.set(
+                    "financials", cache_key, result, CacheTTL.SCRAPED_DATA
+                )
+                return result
 
         return {
             "company_id": str(company_id),
@@ -121,6 +164,104 @@ class FinancialStatementsService:
             ticker_nse=company.ticker_nse,
             ticker_bse=company.ticker_bse,
         )
+
+    def _fetch_financials_from_yfinance(self, company: Company) -> dict[str, Any] | None:
+        try:
+            import yfinance as yf
+        except Exception:
+            return None
+
+        symbols: list[str] = []
+        if company.ticker_nse:
+            symbols.extend([f"{company.ticker_nse}.NS", company.ticker_nse])
+        if company.ticker_bse:
+            symbols.extend([f"{company.ticker_bse}.BO", company.ticker_bse])
+        if not symbols:
+            return None
+
+        seen: set[str] = set()
+        unique_symbols = [s for s in symbols if not (s in seen or seen.add(s))]
+
+        for symbol in unique_symbols:
+            try:
+                ticker = yf.Ticker(symbol)
+                periods_data: list[dict[str, Any]] = []
+
+                annual = getattr(ticker, "financials", None)
+                if annual is not None and not annual.empty:
+                    for col in annual.columns[:5]:
+                        period_end = col.date().isoformat()
+                        items: list[dict[str, Any]] = []
+                        revenue = annual.at["Total Revenue", col] if "Total Revenue" in annual.index else None
+                        net_income = annual.at["Net Income", col] if "Net Income" in annual.index else None
+                        if revenue is not None:
+                            items.append(
+                                {
+                                    "line_item": "revenue",
+                                    "value": round(float(revenue), 2),
+                                    "unit": "native",
+                                    "statement_type": "income_statement",
+                                }
+                            )
+                        if net_income is not None:
+                            items.append(
+                                {
+                                    "line_item": "net_profit",
+                                    "value": round(float(net_income), 2),
+                                    "unit": "native",
+                                    "statement_type": "income_statement",
+                                }
+                            )
+                        if items:
+                            periods_data.append({"period_end": period_end, "items": items})
+
+                quarterly = getattr(ticker, "quarterly_financials", None)
+                if quarterly is not None and not quarterly.empty:
+                    for col in quarterly.columns[:8]:
+                        period_end = col.date().isoformat()
+                        items = []
+                        revenue = quarterly.at["Total Revenue", col] if "Total Revenue" in quarterly.index else None
+                        net_income = quarterly.at["Net Income", col] if "Net Income" in quarterly.index else None
+                        if revenue is not None:
+                            items.append(
+                                {
+                                    "line_item": "revenue",
+                                    "value": round(float(revenue), 2),
+                                    "unit": "native",
+                                    "statement_type": "income_statement",
+                                }
+                            )
+                        if net_income is not None:
+                            items.append(
+                                {
+                                    "line_item": "net_profit",
+                                    "value": round(float(net_income), 2),
+                                    "unit": "native",
+                                    "statement_type": "income_statement",
+                                }
+                            )
+                        if items:
+                            periods_data.append({"period_end": period_end, "items": items})
+
+                if not periods_data:
+                    continue
+
+                periods_data = sorted(
+                    periods_data,
+                    key=lambda x: x.get("period_end", ""),
+                    reverse=True,
+                )
+                return {
+                    "company_id": str(company.id),
+                    "company_name": company.name,
+                    "source": "yfinance",
+                    "latest_period": periods_data[0]["period_end"],
+                    "periods": periods_data,
+                }
+            except Exception as e:
+                logger.debug("yfinance financials fetch failed for %s: %s", symbol, e)
+                continue
+        return None
 
     def _fetch_financials_from_fmp(self, company: Company) -> dict[str, Any] | None:
         symbol = get_fmp_symbol(company)

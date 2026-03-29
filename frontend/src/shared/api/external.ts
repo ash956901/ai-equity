@@ -1,11 +1,13 @@
 import {
+  type AICompany,
+  type TimelineEvent,
   type CompanySearchResult,
   type NewsDataResponse,
   type SecFiling,
   type SentimentFeedResponse,
   type UpstoxHolding,
 } from "../types/api";
-import { getJson } from "./core";
+import { aiGet, getJson } from "./core";
 
 interface UpstoxHoldingsResponse {
   data?: UpstoxHolding[];
@@ -45,13 +47,52 @@ export async function fetchSecFilings(
   limit = 12,
   filingType?: string
 ): Promise<SecFiling[]> {
-  const normalized = encodeURIComponent(symbol.toUpperCase());
-  const params = new URLSearchParams();
-  params.set("limit", String(limit));
-  if (filingType) {
-    params.set("filing_type", filingType);
+  const normalized = symbol.trim().toUpperCase();
+  if (!normalized) {
+    return [];
   }
-  return getJson<SecFiling[]>(`/fmp/sec/filings/${normalized}?${params.toString()}`);
+
+  const companyParams = new URLSearchParams();
+  companyParams.set("q", normalized);
+  companyParams.set("limit", "10");
+
+  const companies = await aiGet<AICompany[]>(`/companies/search?${companyParams.toString()}`);
+  const company =
+    companies.find((item) => item.ticker_nse?.toUpperCase() === normalized) ||
+    companies.find((item) => item.ticker_bse?.toUpperCase() === normalized) ||
+    companies[0];
+
+  if (!company?.id) {
+    return [];
+  }
+
+  const params = new URLSearchParams();
+  params.set("company_id", company.id);
+  params.set("limit", String(Math.max(limit * 3, 30)));
+
+  const timeline = await aiGet<TimelineEvent[]>(`/timeline/?${params.toString()}`);
+  const filings = timeline
+    .filter((event) => event.event_type === "filing")
+    .map((event) => {
+      const metadata = (event.metadata ?? {}) as {
+        filing_type?: string;
+        source_url?: string;
+      };
+      const filingDate = event.timestamp ? event.timestamp.slice(0, 10) : undefined;
+      return {
+        symbol: normalized,
+        title: event.title,
+        filingDate,
+        acceptedDate: filingDate,
+        type: metadata.filing_type,
+        url: metadata.source_url,
+        finalLink: metadata.source_url,
+      } as SecFiling;
+    })
+    .filter((filing) => !filingType || filing.type === filingType)
+    .slice(0, limit);
+
+  return filings;
 }
 
 export async function searchCompanies(
@@ -59,7 +100,13 @@ export async function searchCompanies(
   limit = 6
 ): Promise<CompanySearchResult[]> {
   const params = new URLSearchParams();
-  params.set("query", query);
+  params.set("q", query);
   params.set("limit", String(limit));
-  return getJson<CompanySearchResult[]>(`/fmp/search/company?${params.toString()}`);
+  const companies = await aiGet<AICompany[]>(`/companies/search?${params.toString()}`);
+  return companies.map((company) => ({
+    symbol: company.ticker_nse || company.ticker_bse,
+    name: company.name,
+    exchangeShortName: company.ticker_nse ? "NSE" : company.ticker_bse ? "BSE" : undefined,
+    stockExchange: company.ticker_nse ? "National Stock Exchange" : company.ticker_bse ? "Bombay Stock Exchange" : undefined,
+  }));
 }

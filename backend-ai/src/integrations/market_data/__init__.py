@@ -1,29 +1,6 @@
-"""Market data integration namespace.
+"""Market data integration namespace for internal provider clients."""
 
-Phase 4 migration target for provider routers/clients.
+from src.integrations.market_data.kite import KiteClient
+from src.integrations.market_data.upstox import UpstoxClient
 
-Provider implementations now live under:
-- `src.integrations.market_data.providers.*`
-
-`src.external_apis.*` is retained as a compatibility wrapper namespace.
-"""
-
-from src.integrations.market_data.routes import (
-    ALL_EXTERNAL_ROUTERS,
-    fmp_router,
-    fred_router,
-    kite_router,
-    news_router,
-    newsdata_router,
-    upstox_router,
-)
-
-__all__ = [
-    "fmp_router",
-    "fred_router",
-    "upstox_router",
-    "news_router",
-    "newsdata_router",
-    "kite_router",
-    "ALL_EXTERNAL_ROUTERS",
-]
+__all__ = ["UpstoxClient", "KiteClient"]

@@ -5,8 +5,7 @@ and AI-driven financial insights.
 """
 
 from .client import NewsAPIClient
-from .routes import router
 
 __version__ = "1.0.0"
 
-__all__ = ["NewsAPIClient", "router"]
+__all__ = ["NewsAPIClient"]

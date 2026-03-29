@@ -5,8 +5,7 @@ Includes dedicated Market, Crypto, Archive, and Sources endpoints.
 """
 
 from .client import NewsDataIOClient
-from .routes import router
 
 __version__ = "1.0.0"
 
-__all__ = ["NewsDataIOClient", "router"]
+__all__ = ["NewsDataIOClient"]
