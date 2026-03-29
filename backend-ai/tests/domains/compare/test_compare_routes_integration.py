@@ -181,3 +181,54 @@ def test_compare_api_split_verdict(monkeypatch):
     assert "Verdict is split" in body["final_verdict"]
     assert response.headers["X-Request-ID"] == "req-fixed-123"
     assert request_ids[-1] == "req-fixed-123"
+
+
+def test_compare_api_works_without_query(monkeypatch):
+    company_a = str(uuid4())
+    company_b = str(uuid4())
+    user_id = str(uuid4())
+    request_ids = []
+
+    fixtures = {
+        company_a: {
+            "company_name": "Alpha Industries",
+            "ticker_nse": "ALPHA",
+            "growth_score": 20.0,
+            "quarterly_consistency": 0.8,
+            "profit_margin": 18.0,
+            "roe": 20.0,
+            "roce": 18.0,
+            "debt_to_equity": 1.1,
+            "earnings_volatility": 0.2,
+            "pe_ratio": 18.0,
+            "margin_trend": "stable",
+        },
+        company_b: {
+            "company_name": "Beta Manufacturing",
+            "ticker_nse": "BETA",
+            "growth_score": 9.0,
+            "quarterly_consistency": 0.4,
+            "profit_margin": 10.0,
+            "roe": 12.0,
+            "roce": 11.0,
+            "debt_to_equity": 0.3,
+            "earnings_volatility": 0.2,
+            "pe_ratio": 20.0,
+            "margin_trend": "stable",
+        },
+    }
+    client = _make_client(monkeypatch, fixtures, request_ids)
+
+    response = client.post(
+        "/compare/",
+        json={
+            "user_id": user_id,
+            "company_names": ["Alpha Industries", "Beta Manufacturing"],
+            "expertise_level": "intermediate",
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["comparison"]["growth"] == "A"
+    assert body["companyA_stock_data"]["company_name"] == "Alpha Industries"
