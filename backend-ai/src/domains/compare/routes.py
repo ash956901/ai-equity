@@ -18,8 +18,8 @@ class CompareRequest(BaseModel):
 
     user_id: UUID = Field(..., description="User UUID")
     company_names: list[str] = Field(..., min_length=2, max_length=2)
-    query: str = Field(
-        default="Compare these companies on growth, profitability, valuation, and risk.",
+    query: str | None = Field(
+        default=None,
         max_length=1000,
     )
     expertise_level: str = Field(default="intermediate")

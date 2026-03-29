@@ -35,6 +35,7 @@ class CompareService:
 
     SNAPSHOT_TTL_HOURS = 12
     MAX_INT_32 = 2_147_483_647
+    DEFAULT_COMPARE_QUERY = "Compare these companies on growth, profitability, valuation, and risk."
 
     def __init__(self, db: Session):
         self.db = db
@@ -44,7 +45,7 @@ class CompareService:
         self,
         user_id: str,
         company_names: List[str],
-        query: str,
+        query: str | None,
         expertise_level: str,
     ) -> Dict[str, Any]:
         """Run a deterministic two-company compare decision pipeline."""
@@ -55,6 +56,7 @@ class CompareService:
 
         request_id = get_request_id() or str(uuid.uuid4())
         start_time = time.perf_counter()
+        effective_query = (query or "").strip() or self.DEFAULT_COMPARE_QUERY
 
         # Clear request-scoped flow state before collecting new request logs.
         flow_logs: List[Dict[str, Any]] = []
@@ -97,7 +99,7 @@ class CompareService:
             user_id=user_id,
             company_a_id=company_ids[0],
             company_b_id=company_ids[1],
-            query=query,
+            query=effective_query,
             expertise_level=expertise_level,
             flow_logs=flow_logs,
             result=result,
