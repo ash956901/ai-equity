@@ -28,6 +28,7 @@ class RatiosService:
         self,
         company_id: UUID,
         period: Optional[date] = None,
+        prefer_free_sources: bool = False,
     ) -> dict[str, Any]:
         company = (
             self.context.db.query(Company).filter(Company.id == company_id).first()
@@ -89,40 +90,31 @@ class RatiosService:
             self.context.cache.set("ratios", cache_key, result, CacheTTL.RATIOS)
             return result
 
-        fmp_ratios = self._fetch_ratios_from_fmp(company)
-        if fmp_ratios and fmp_ratios.get("ratios"):
-            self.context.cache.set("ratios", cache_key, fmp_ratios, CacheTTL.RATIOS)
-            return fmp_ratios
+        if prefer_free_sources:
+            yfinance_ratios = self._fetch_ratios_from_yfinance(company)
+            if yfinance_ratios and yfinance_ratios.get("ratios"):
+                self.context.cache.set("ratios", cache_key, yfinance_ratios, CacheTTL.RATIOS)
+                return yfinance_ratios
 
-        scraped = self.context.scraper.get_company_overview(
-            ticker_nse=company.ticker_nse,
-            ticker_bse=company.ticker_bse,
-            isin=company.isin,
-        )
-        if scraped:
-            ratios: dict[str, Any] = {}
-            for key in (
-                "pe_ratio",
-                "pb_ratio",
-                "roe",
-                "roce",
-                "debt_to_equity",
-                "dividend_yield",
-            ):
-                if scraped.get(key) is not None:
-                    ratios[key] = scraped[key]
+            scraped = self._fetch_ratios_from_scraper(company, company_id)
+            if scraped:
+                self.context.cache.set("ratios", cache_key, scraped, CacheTTL.SCRAPED_DATA)
+                return scraped
 
-            if ratios:
-                result = {
-                    "company_id": str(company_id),
-                    "company_name": company.name,
-                    "source": scraped.get("source", "web"),
-                    "ratios": ratios,
-                }
-                self.context.cache.set(
-                    "ratios", cache_key, result, CacheTTL.SCRAPED_DATA
-                )
-                return result
+            fmp_ratios = self._fetch_ratios_from_fmp(company)
+            if fmp_ratios and fmp_ratios.get("ratios"):
+                self.context.cache.set("ratios", cache_key, fmp_ratios, CacheTTL.RATIOS)
+                return fmp_ratios
+        else:
+            fmp_ratios = self._fetch_ratios_from_fmp(company)
+            if fmp_ratios and fmp_ratios.get("ratios"):
+                self.context.cache.set("ratios", cache_key, fmp_ratios, CacheTTL.RATIOS)
+                return fmp_ratios
+
+            scraped = self._fetch_ratios_from_scraper(company, company_id)
+            if scraped:
+                self.context.cache.set("ratios", cache_key, scraped, CacheTTL.SCRAPED_DATA)
+                return scraped
 
         return {
             "company_id": str(company_id),
@@ -130,6 +122,85 @@ class RatiosService:
             "ratios": {},
             "message": "No ratio data available",
         }
+
+    def _fetch_ratios_from_scraper(
+        self,
+        company: Company,
+        company_id: UUID,
+    ) -> dict[str, Any] | None:
+        scraped = self.context.scraper.get_company_overview(
+            ticker_nse=company.ticker_nse,
+            ticker_bse=company.ticker_bse,
+            isin=company.isin,
+        )
+        if not scraped:
+            return None
+
+        ratios: dict[str, Any] = {}
+        for key in (
+            "pe_ratio",
+            "pb_ratio",
+            "roe",
+            "roce",
+            "debt_to_equity",
+            "dividend_yield",
+        ):
+            if scraped.get(key) is not None:
+                ratios[key] = scraped[key]
+
+        if not ratios:
+            return None
+
+        return {
+            "company_id": str(company_id),
+            "company_name": company.name,
+            "source": scraped.get("source", "web"),
+            "ratios": ratios,
+        }
+
+    def _fetch_ratios_from_yfinance(self, company: Company) -> dict[str, Any] | None:
+        try:
+            import yfinance as yf
+        except Exception:
+            return None
+
+        symbols: list[str] = []
+        if company.ticker_nse:
+            symbols.extend([f"{company.ticker_nse}.NS", company.ticker_nse])
+        if company.ticker_bse:
+            symbols.extend([f"{company.ticker_bse}.BO", company.ticker_bse])
+        if not symbols:
+            return None
+
+        seen: set[str] = set()
+        unique_symbols = [s for s in symbols if not (s in seen or seen.add(s))]
+
+        for symbol in unique_symbols:
+            try:
+                info = yf.Ticker(symbol).info
+                ratios: dict[str, Any] = {
+                    "pe_ratio": info.get("trailingPE"),
+                    "pb_ratio": info.get("priceToBook"),
+                    "roe": info.get("returnOnEquity"),
+                    "net_margin": info.get("profitMargins"),
+                    "debt_to_equity": info.get("debtToEquity"),
+                    "revenue_growth_yoy": info.get("revenueGrowth"),
+                    "pat_growth_yoy": info.get("earningsQuarterlyGrowth"),
+                }
+                ratios = {k: v for k, v in ratios.items() if v is not None}
+                if not ratios:
+                    continue
+
+                return {
+                    "company_id": str(company.id),
+                    "company_name": company.name,
+                    "source": "yfinance",
+                    "ratios": ratios,
+                }
+            except Exception as e:
+                logger.debug("yfinance ratios fetch failed for %s: %s", symbol, e)
+                continue
+        return None
 
     def _fetch_ratios_from_fmp(self, company: Company) -> dict[str, Any] | None:
         symbol = get_fmp_symbol(company)

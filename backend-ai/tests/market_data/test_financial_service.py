@@ -18,11 +18,12 @@ class _DummyFinancialStatementsService:
     def __init__(self, context):
         self.context = context
 
-    def get_financials(self, company_id, periods):
+    def get_financials(self, company_id, periods, prefer_free_sources=False):
         return {
             "company_id": str(company_id),
             "periods": [{"period_end": "2025-12-31", "items": []}],
             "periods_requested": periods,
+            "prefer_free_sources": prefer_free_sources,
         }
 
 
@@ -30,11 +31,12 @@ class _DummyRatiosService:
     def __init__(self, context):
         self.context = context
 
-    def get_ratios(self, company_id, period):
+    def get_ratios(self, company_id, period, prefer_free_sources=False):
         return {
             "company_id": str(company_id),
             "period_end": period.isoformat() if period else None,
             "ratios": {"roe": 0.12},
+            "prefer_free_sources": prefer_free_sources,
         }
 
 
