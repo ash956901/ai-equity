@@ -23,6 +23,7 @@ import {
 } from "recharts";
 
 import {
+  compareCompanies,
   fetchSecFilings,
   fetchCompanyDetail,
   fetchCompanyRatios,
@@ -115,6 +116,20 @@ interface GeneratedReport {
   compareSymbols?: string[];
   sections: GeneratedReportSection[];
   body: string;
+}
+
+interface CompareResultSnapshot {
+  companyA_summary: string;
+  companyB_summary: string;
+  comparison: {
+    growth: "A" | "B" | "Tie";
+    profitability: "A" | "B" | "Tie";
+    risk: "A" | "B" | "Tie";
+    valuation: "A" | "B" | "Tie";
+  };
+  insights: string[];
+  final_verdict: string;
+  detailed_comparison: Record<string, string>;
 }
 
 interface PdfTemplate {
@@ -329,6 +344,8 @@ export function CompanyWorkspaceView(props: CompanyWorkspaceViewProps) {
   const [reportScope, setReportScope] = useState<"company" | "comparison">("company");
   const [comparisonSymbols, setComparisonSymbols] = useState<string[]>([]);
   const [comparisonSymbolsInput, setComparisonSymbolsInput] = useState("");
+  const [comparisonResult, setComparisonResult] = useState<CompareResultSnapshot | null>(null);
+  const [comparisonResultLoading, setComparisonResultLoading] = useState(false);
 
   useEffect(() => {
     if (!searchSelection) return;
@@ -368,6 +385,7 @@ export function CompanyWorkspaceView(props: CompanyWorkspaceViewProps) {
           setReportScope("comparison");
           setComparisonSymbols(normalized);
           setComparisonSymbolsInput(normalized.join(", "));
+          setComparisonResult(null);
           setReportTitle(`${symbolsText} Comparative Brief`);
           setReportSections(["summary", "risks", "financials", "themes"]);
           setReportAudience("analyst");
@@ -380,6 +398,7 @@ export function CompanyWorkspaceView(props: CompanyWorkspaceViewProps) {
       setReportScope("company");
       setComparisonSymbols([]);
       setComparisonSymbolsInput("");
+      setComparisonResult(null);
     }
 
     setLastSelectionStamp(searchSelection.stamp);
@@ -516,6 +535,85 @@ export function CompanyWorkspaceView(props: CompanyWorkspaceViewProps) {
       return null;
     }
 
+    if (comparisonResult) {
+      const winnerTally: Record<string, number> = Object.fromEntries(
+        comparisonCompanies.map((company) => [company.symbol, 0])
+      );
+
+      const pickWinnerSymbol = (winner: "A" | "B" | "Tie") => {
+        if (winner === "A") return comparisonCompanies[0]?.symbol;
+        if (winner === "B") return comparisonCompanies[1]?.symbol;
+        return null;
+      };
+
+      const winners = [
+        comparisonResult.comparison.growth,
+        comparisonResult.comparison.profitability,
+        comparisonResult.comparison.risk,
+        comparisonResult.comparison.valuation,
+      ];
+
+      winners.forEach((winner) => {
+        const symbol = pickWinnerSymbol(winner);
+        if (symbol) {
+          winnerTally[symbol] = (winnerTally[symbol] ?? 0) + 1;
+        }
+      });
+
+      const strengths = comparisonCompanies.map((company) => {
+        const wins = winnerTally[company.symbol] ?? 0;
+        return {
+          symbol: company.symbol,
+          topTheme: "Category wins",
+          score: wins * 25,
+        };
+      });
+
+      const strongest = strengths.reduce((best, current) =>
+        !best || current.score > best.score ? current : best
+      );
+      const weakest = strengths.reduce((worst, current) =>
+        !worst || current.score < worst.score ? current : worst
+      );
+
+      const riskWinner = pickWinnerSymbol(comparisonResult.comparison.risk);
+      const riskScores = comparisonCompanies.map((company) => ({
+        symbol: company.symbol,
+        score: company.symbol === riskWinner ? 18 : 42,
+      }));
+
+      const highestRisk = riskScores.reduce((best, current) =>
+        !best || current.score > best.score ? current : best
+      );
+      const lowestRisk = riskScores.reduce((best, current) =>
+        !best || current.score < best.score ? current : best
+      );
+
+      const divergence = [
+        {
+          theme: "Growth",
+          spread: comparisonResult.comparison.growth === "Tie" ? 0 : 1,
+        },
+        {
+          theme: "Profitability",
+          spread: comparisonResult.comparison.profitability === "Tie" ? 0 : 1,
+        },
+        {
+          theme: "Valuation",
+          spread: comparisonResult.comparison.valuation === "Tie" ? 0 : 1,
+        },
+      ];
+
+      return {
+        strengths,
+        strongest,
+        weakest,
+        highestRisk,
+        lowestRisk,
+        divergence,
+      };
+    }
+
     const strengths = comparisonCompanies.map((company) => {
       const [theme, score] = Object.entries(company.themeScores).sort((a, b) => b[1] - a[1])[0] ?? ["None", 0];
       return { symbol: company.symbol, topTheme: theme, score };
@@ -572,7 +670,7 @@ export function CompanyWorkspaceView(props: CompanyWorkspaceViewProps) {
       lowestRisk,
       divergence,
     };
-  }, [comparisonCompanies, comparisonTimeline, reportScope]);
+  }, [comparisonCompanies, comparisonResult, comparisonTimeline, reportScope]);
 
   const [companyFilings, setCompanyFilings] = useState<(SecFiling & { narrative: string })[]>([]);
 
@@ -705,36 +803,41 @@ export function CompanyWorkspaceView(props: CompanyWorkspaceViewProps) {
 
     if (reportScope === "comparison" && comparisonSummary && comparisonMetrics) {
       if (reportSections.includes("summary")) {
+        const summaryIntro = comparisonResult
+          ? comparisonResult.final_verdict
+          : `${comparisonSummary.symbolsLabel} comparison indicates strongest momentum in ` +
+            `${comparisonMetrics.strongest.symbol} (${comparisonMetrics.strongest.topTheme} ${comparisonMetrics.strongest.score}/100), ` +
+            `while ${comparisonMetrics.weakest.symbol} trails on composite theme intensity (${comparisonMetrics.weakest.score}/100).`;
+
         sections.push({
           id: "summary",
           heading: "Executive Summary",
-          content:
-            `${comparisonSummary.symbolsLabel} comparison indicates strongest momentum in ` +
-            `${comparisonMetrics.strongest.symbol} (${comparisonMetrics.strongest.topTheme} ${comparisonMetrics.strongest.score}/100), ` +
-            `while ${comparisonMetrics.weakest.symbol} trails on composite theme intensity (${comparisonMetrics.weakest.score}/100).`,
+          content: summaryIntro,
         });
       }
 
       if (reportSections.includes("risks")) {
-        const riskSpread = (comparisonMetrics.highestRisk.score - comparisonMetrics.lowestRisk.score).toFixed(
-          1
-        );
+        const riskSpread = (comparisonMetrics.highestRisk.score - comparisonMetrics.lowestRisk.score).toFixed(1);
+        const riskNarrative = comparisonResult?.detailed_comparison?.risk;
         sections.push({
           id: "risks",
           heading: "Risk Spread",
-          content:
-            `Highest modeled risk: ${comparisonMetrics.highestRisk.symbol} (${comparisonMetrics.highestRisk.score}).\n` +
-            `Lowest modeled risk: ${comparisonMetrics.lowestRisk.symbol} (${comparisonMetrics.lowestRisk.score}).\n` +
-            `Spread: ${riskSpread}. Monitor names with weaker average theme quality and clustered high-impact events.`,
+          content: riskNarrative
+            ? `${riskNarrative}\nSpread marker: ${riskSpread}.`
+            : `Highest modeled risk: ${comparisonMetrics.highestRisk.symbol} (${comparisonMetrics.highestRisk.score}).\n` +
+              `Lowest modeled risk: ${comparisonMetrics.lowestRisk.symbol} (${comparisonMetrics.lowestRisk.score}).\n` +
+              `Spread: ${riskSpread}. Monitor names with weaker average theme quality and clustered high-impact events.`,
         });
       }
 
       if (reportSections.includes("financials")) {
-        const winnersText = [...comparisonCompanies]
-          .sort((a, b) => b.marketCapBn - a.marketCapBn)
-          .slice(0, 2)
-          .map((company) => `${company.symbol} ($${company.marketCapBn.toFixed(1)}B)`)
-          .join(", ");
+        const winnersText = comparisonResult
+          ? `Company A summary: ${comparisonResult.companyA_summary}\nCompany B summary: ${comparisonResult.companyB_summary}`
+          : [...comparisonCompanies]
+              .sort((a, b) => b.marketCapBn - a.marketCapBn)
+              .slice(0, 2)
+              .map((company) => `${company.symbol} ($${company.marketCapBn.toFixed(1)}B)`)
+              .join(", ");
 
         sections.push({
           id: "financials",
@@ -747,11 +850,13 @@ export function CompanyWorkspaceView(props: CompanyWorkspaceViewProps) {
       }
 
       if (reportSections.includes("themes")) {
-        const divergenceText = comparisonMetrics.divergence.length
-          ? comparisonMetrics.divergence
-              .map((item) => `${item.theme} (spread ${item.spread})`)
-              .join(", ")
-          : "No meaningful divergence detected";
+        const divergenceText = comparisonResult?.insights?.length
+          ? comparisonResult.insights.join("\n")
+          : comparisonMetrics.divergence.length
+            ? comparisonMetrics.divergence
+                .map((item) => `${item.theme} (spread ${item.spread})`)
+                .join(", ")
+            : "No meaningful divergence detected";
 
         sections.push({
           id: "themes",
@@ -845,6 +950,7 @@ export function CompanyWorkspaceView(props: CompanyWorkspaceViewProps) {
   }, [
     comparisonCompanies,
     comparisonMetrics,
+    comparisonResult,
     comparisonSummary,
     companyData.marketCapBn,
     companyData.name,
@@ -887,6 +993,50 @@ export function CompanyWorkspaceView(props: CompanyWorkspaceViewProps) {
     }
     setReportGeneratedAt(new Date().toISOString());
   };
+
+  useEffect(() => {
+    if (reportScope !== "comparison" || comparisonSymbols.length < 2 || dataMode !== "live") {
+      return;
+    }
+
+    const userId =
+      localStorage.getItem("equityai-user-id") ?? "11111111-1111-1111-1111-111111111111";
+
+    let isCancelled = false;
+
+    (async () => {
+      setComparisonResultLoading(true);
+      try {
+        const result = await compareCompanies({
+          user_id: userId,
+          company_names: comparisonSymbols.slice(0, 2),
+          expertise_level: "intermediate",
+        });
+        if (!isCancelled) {
+          setComparisonResult({
+            companyA_summary: result.companyA_summary,
+            companyB_summary: result.companyB_summary,
+            comparison: result.comparison,
+            insights: result.insights,
+            final_verdict: result.final_verdict,
+            detailed_comparison: result.detailed_comparison,
+          });
+        }
+      } catch {
+        if (!isCancelled) {
+          setComparisonResult(null);
+        }
+      } finally {
+        if (!isCancelled) {
+          setComparisonResultLoading(false);
+        }
+      }
+    })();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [comparisonSymbols, dataMode, reportScope]);
 
   const exportReportAsText = () => {
     if (!generatedReport) return;
@@ -1336,7 +1486,10 @@ export function CompanyWorkspaceView(props: CompanyWorkspaceViewProps) {
               <span className="chip">Laggard: {comparisonMetrics.weakest.symbol}</span>
               <span className="chip warning">Risk High: {comparisonMetrics.highestRisk.symbol}</span>
               <span className="chip positive">Risk Low: {comparisonMetrics.lowestRisk.symbol}</span>
+              <span className="chip">Source: {comparisonResult ? "Backend compare" : "Local heuristic"}</span>
             </div>
+            {comparisonResultLoading ? <p>Loading backend comparison data...</p> : null}
+            {comparisonResult ? <p>{comparisonResult.final_verdict}</p> : null}
           </div>
         ) : null}
 

@@ -1,5 +1,13 @@
-import { type UserProfile, type UserProfileUpdate } from "../types/api";
+import {
+  type ProfileConfigResponse,
+  type UserProfile,
+  type UserProfileUpdate,
+} from "../types/api";
 import { AI_BACKEND_URL, aiGet, aiPost, ApiError } from "./core";
+
+export async function fetchProfileConfig(): Promise<ProfileConfigResponse> {
+  return aiGet<ProfileConfigResponse>("/users/profile/config");
+}
 
 export async function fetchUserProfile(userId: string): Promise<UserProfile> {
   return aiGet<UserProfile>(`/users/${userId}`);

@@ -150,7 +150,7 @@ export function DashboardView(props: DashboardViewProps) {
           <article className={`kpi-card ${cardDensityClass}`}>
             <p>Live Headlines</p>
             <h2>{loading ? "--" : headlineCount}</h2>
-            <small>From NewsData market feed</small>
+            <small>From backend enriched news feed</small>
           </article>
         ) : null}
 

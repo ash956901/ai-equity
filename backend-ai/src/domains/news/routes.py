@@ -34,7 +34,12 @@ async def get_news(
         le=50,
         description="Maximum number of items returned (max 50).",
     ),
+    query: Optional[str] = Query(
+        default=None,
+        min_length=1,
+        description="Optional company/ticker query to bias RSS search feeds.",
+    ),
 ) -> List[EnrichedNewsItem]:
     """Fetch, deduplicate, and enrich market news from RSS sources."""
-    news = await news_service.get_news(limit=limit)
+    news = await news_service.get_news(limit=limit, query=query)
     return [EnrichedNewsItem(**item) for item in news]

@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import logging
+import re
 import threading
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
@@ -17,6 +18,8 @@ from xml.etree import ElementTree
 import httpx
 from bs4 import BeautifulSoup
 
+from src.config import get_settings
+
 logger = logging.getLogger(__name__)
 
 
@@ -27,6 +30,8 @@ class NewsService:
     _log_lock = threading.Lock()
     _sentiment_pipeline = None
     _zero_shot_pipeline = None
+    _loaded_sentiment_model: Optional[str] = None
+    _loaded_zero_shot_model: Optional[str] = None
 
     MAX_NEWS_PER_REQUEST = 50
     MAX_FEED_RETRIES = 3
@@ -79,22 +84,40 @@ class NewsService:
         "dividends and buybacks",
         "corporate guidance",
     ]
+    GENERIC_QUERY_TOKENS = {
+        "LIMITED",
+        "LTD",
+        "INC",
+        "INCORPORATED",
+        "CORP",
+        "CORPORATION",
+        "COMPANY",
+        "HOLDINGS",
+        "GROUP",
+        "PRIVATE",
+        "PUBLIC",
+    }
 
-    async def get_news(self, limit: int = MAX_NEWS_PER_REQUEST) -> List[Dict[str, Any]]:
+    async def get_news(self, limit: int = MAX_NEWS_PER_REQUEST, query: Optional[str] = None) -> List[Dict[str, Any]]:
         """Return deduplicated market news with sentiment and categories."""
         safe_limit = min(max(limit, 1), self.MAX_NEWS_PER_REQUEST)
-        raw_articles, source_logs = await self._fetch_all_sources()
+        cleaned_query = self._clean_query(query)
+        raw_articles, source_logs = await self._fetch_all_sources(query=cleaned_query)
         deduplicated = self._deduplicate_and_clean(raw_articles)
         deduplicated.sort(
             key=lambda article: article.get("published_at") or datetime.min.replace(tzinfo=timezone.utc),
             reverse=True,
         )
 
+        if cleaned_query:
+            deduplicated = self._prioritize_query_matches(deduplicated, cleaned_query)
+
         selected = deduplicated[:safe_limit]
         await self._enrich_articles(selected)
 
         self._write_request_log(
             requested_limit=safe_limit,
+            query=cleaned_query,
             source_logs=source_logs,
             raw_count=len(raw_articles),
             deduplicated_count=len(deduplicated),
@@ -102,11 +125,14 @@ class NewsService:
         )
         return selected
 
-    async def _fetch_all_sources(self) -> tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+    async def _fetch_all_sources(self, query: Optional[str] = None) -> tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
         """Fetch all RSS feeds concurrently."""
+        dynamic_queries = self._build_query_queries(query)
+        google_queries = dynamic_queries + self.GOOGLE_FINANCE_QUERIES
+        deduped_google_queries = list(dict.fromkeys(google_queries))
         google_feeds = [
             f"https://news.google.com/rss/search?q={quote_plus(query)}&hl=en-IN&gl=IN&ceid=IN:en"
-            for query in self.GOOGLE_FINANCE_QUERIES
+            for query in deduped_google_queries
         ]
         all_feeds = (
             [("Google News", url) for url in google_feeds]
@@ -221,6 +247,7 @@ class NewsService:
     def _write_request_log(
         self,
         requested_limit: int,
+        query: Optional[str],
         source_logs: List[Dict[str, Any]],
         raw_count: int,
         deduplicated_count: int,
@@ -235,6 +262,7 @@ class NewsService:
                     now = datetime.now(tz=timezone.utc).isoformat()
                     log_file.write(f"news request timestamp (utc): {now}\n")
                     log_file.write(f"requested limit: {requested_limit}\n")
+                    log_file.write(f"query: {query or 'none'}\n")
                     log_file.write(f"raw fetched articles: {raw_count}\n")
                     log_file.write(f"after deduplication: {deduplicated_count}\n")
                     log_file.write(f"returned articles: {len(selected_articles)}\n\n")
@@ -288,6 +316,119 @@ class NewsService:
                         )
         except Exception as exc:
             logger.error("Failed to write news request log: %s", exc)
+
+    @staticmethod
+    def _clean_query(value: Optional[str]) -> Optional[str]:
+        """Normalize query by collapsing whitespace."""
+        if not value:
+            return None
+        cleaned = " ".join(value.split()).strip()
+        return cleaned or None
+
+    @classmethod
+    def _build_query_queries(cls, query: Optional[str]) -> List[str]:
+        """Expand user query into market-friendly Google News searches."""
+        if not query:
+            return []
+
+        return [
+            f'"{query}" stock',
+            f'"{query}" shares',
+            f'"{query}" earnings',
+            query,
+        ]
+
+    @classmethod
+    def _prioritize_query_matches(cls, articles: List[Dict[str, Any]], query: str) -> List[Dict[str, Any]]:
+        """Rank query-relevant stories ahead of generic market news."""
+        normalized_query = cls._normalize_match_text(query)
+        if not normalized_query:
+            return articles
+
+        query_tokens = [
+            token
+            for token in normalized_query.split()
+            if len(token) >= 3 and token not in cls.GENERIC_QUERY_TOKENS
+        ]
+        normalized_core_query = " ".join(query_tokens) if query_tokens else normalized_query
+        compact_terms = {
+            normalized_query.replace(" ", ""),
+            normalized_core_query.replace(" ", ""),
+        }
+        compact_terms = {term for term in compact_terms if term}
+        feed_markers = [quote_plus(item).lower() for item in cls._build_query_queries(query)]
+
+        scored_rows: List[tuple[int, datetime, Dict[str, Any]]] = []
+        for article in articles:
+            score = cls._query_match_score(
+                article=article,
+                normalized_query=normalized_query,
+                normalized_core_query=normalized_core_query,
+                query_tokens=query_tokens,
+                compact_terms=compact_terms,
+                feed_markers=feed_markers,
+            )
+            published_at = article.get("published_at")
+            if not isinstance(published_at, datetime):
+                published_at = datetime.min.replace(tzinfo=timezone.utc)
+            scored_rows.append((score, published_at, article))
+
+        if not any(score > 0 for score, _, _ in scored_rows):
+            return articles
+
+        scored_rows.sort(key=lambda row: (row[0], row[1]), reverse=True)
+        return [article for _, _, article in scored_rows]
+
+    @classmethod
+    def _query_match_score(
+        cls,
+        article: Dict[str, Any],
+        normalized_query: str,
+        normalized_core_query: str,
+        query_tokens: List[str],
+        compact_terms: set[str],
+        feed_markers: List[str],
+    ) -> int:
+        """Compute lightweight relevance score for a query/article pair."""
+        text = f"{article.get('title') or ''} {article.get('summary') or ''}"
+        normalized_text = cls._normalize_match_text(text)
+        if not normalized_text:
+            return 0
+
+        padded_text = f" {normalized_text} "
+        compact_text = normalized_text.replace(" ", "")
+        score = 0
+
+        if normalized_query and normalized_query in normalized_text:
+            score += 6
+        if normalized_core_query and normalized_core_query != normalized_query and normalized_core_query in normalized_text:
+            score += 5
+
+        for term in compact_terms:
+            if len(term) >= 4 and term in compact_text:
+                score += 7
+                break
+
+        matched_tokens = 0
+        for token in query_tokens:
+            if f" {token} " in padded_text:
+                matched_tokens += 1
+
+        if matched_tokens:
+            score += matched_tokens * 2
+            if matched_tokens == len(query_tokens):
+                score += 2
+
+        source_feed = str(article.get("source_feed") or "").lower()
+        if source_feed and any(marker in source_feed for marker in feed_markers):
+            score += 1
+
+        return score
+
+    @staticmethod
+    def _normalize_match_text(value: str) -> str:
+        """Normalize text for stable ticker/company matching."""
+        return " ".join(re.sub(r"[^A-Z0-9 ]+", " ", value.upper()).split())
 
     def _parse_feed(self, source_name: str, feed_url: str, xml_text: str) -> List[Dict[str, Any]]:
         """Parse RSS/Atom XML into normalized article records."""
@@ -405,11 +546,29 @@ class NewsService:
     @classmethod
     def _get_or_create_pipelines(cls):
         """Lazily initialize Hugging Face pipelines once per process."""
-        if cls._sentiment_pipeline is not None and cls._zero_shot_pipeline is not None:
+        settings = get_settings()
+        sentiment_model = settings.news_sentiment_model
+        zero_shot_model = settings.news_zero_shot_model
+
+        if (
+            cls._sentiment_pipeline is not None
+            and cls._zero_shot_pipeline is not None
+            and cls._loaded_sentiment_model == sentiment_model
+            and cls._loaded_zero_shot_model == zero_shot_model
+        ):
             return cls._sentiment_pipeline, cls._zero_shot_pipeline
 
         with cls._model_lock:
-            if cls._sentiment_pipeline is not None and cls._zero_shot_pipeline is not None:
+            settings = get_settings()
+            sentiment_model = settings.news_sentiment_model
+            zero_shot_model = settings.news_zero_shot_model
+
+            if (
+                cls._sentiment_pipeline is not None
+                and cls._zero_shot_pipeline is not None
+                and cls._loaded_sentiment_model == sentiment_model
+                and cls._loaded_zero_shot_model == zero_shot_model
+            ):
                 return cls._sentiment_pipeline, cls._zero_shot_pipeline
 
             try:
@@ -417,16 +576,25 @@ class NewsService:
 
                 cls._sentiment_pipeline = pipeline(
                     task="text-classification",
-                    model="ProsusAI/finbert",
+                    model=sentiment_model,
                 )
                 cls._zero_shot_pipeline = pipeline(
                     task="zero-shot-classification",
-                    model="facebook/bart-large-mnli",
+                    model=zero_shot_model,
+                )
+                cls._loaded_sentiment_model = sentiment_model
+                cls._loaded_zero_shot_model = zero_shot_model
+                logger.info(
+                    "Initialized news NLP pipelines: sentiment='%s', zero_shot='%s'",
+                    sentiment_model,
+                    zero_shot_model,
                 )
             except Exception as exc:
                 logger.error("Failed to initialize NLP pipelines: %s", exc)
                 cls._sentiment_pipeline = None
                 cls._zero_shot_pipeline = None
+                cls._loaded_sentiment_model = None
+                cls._loaded_zero_shot_model = None
 
         return cls._sentiment_pipeline, cls._zero_shot_pipeline
 

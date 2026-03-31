@@ -29,6 +29,18 @@ export interface NewsDataResponse {
   results?: NewsDataArticle[];
 }
 
+export interface EnrichedNewsItem {
+  title: string;
+  summary: string;
+  url?: string | null;
+  source: string;
+  source_feed: string;
+  published_at: string;
+  sentiment: string;
+  sentiment_confidence: number;
+  categories: string[];
+}
+
 export interface UpstoxHolding {
   trading_symbol?: string;
   quantity?: number;
@@ -194,14 +206,27 @@ export interface AIHoldingDetail {
 
 export interface CompareRequest {
   user_id: string;
-  company_ids: string[];
+  company_names: string[];
   query?: string;
   expertise_level?: string;
 }
 
+export type CompareWinner = "A" | "B" | "Tie";
+
 export interface CompareResponse {
-  response: string;
-  tokens_used: number;
+  companyA_summary: string;
+  companyB_summary: string;
+  comparison: {
+    growth: CompareWinner;
+    profitability: CompareWinner;
+    risk: CompareWinner;
+    valuation: CompareWinner;
+  };
+  insights: string[];
+  final_verdict: string;
+  companyA_stock_data: Record<string, unknown>;
+  companyB_stock_data: Record<string, unknown>;
+  detailed_comparison: Record<string, string>;
 }
 
 export interface AlertRule {
@@ -276,4 +301,17 @@ export interface UserProfileUpdate {
   expertise_level?: string;
   risk_tolerance?: string;
   investment_horizon?: string;
+}
+
+export interface ProfileOption {
+  value: string;
+  label: string;
+}
+
+export interface ProfileConfigResponse {
+  expertise_levels: ProfileOption[];
+  risk_tolerance_levels: ProfileOption[];
+  investment_horizons: ProfileOption[];
+  kyc_statuses: ProfileOption[];
+  defaults: Record<string, string>;
 }

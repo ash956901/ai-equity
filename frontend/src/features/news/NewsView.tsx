@@ -59,7 +59,7 @@ export function NewsView(props: NewsViewProps) {
     }
 
     try {
-      const data = await fetchMarketHeadlines();
+      const data = await fetchMarketHeadlines(50, activeSymbol);
       setHeadlines(data);
     } catch (error) {
       if (error instanceof ApiError && error.status === 401) {
@@ -70,7 +70,7 @@ export function NewsView(props: NewsViewProps) {
     } finally {
       setLoadingHeadlines(false);
     }
-  }, [props.dataMode]);
+  }, [activeSymbol, props.dataMode]);
 
   const loadSentiment = useCallback(
     async (symbol: string) => {
@@ -268,7 +268,7 @@ export function NewsView(props: NewsViewProps) {
                   <a href={article.link ?? "#"} target="_blank" rel="noreferrer" className="feed-item">
                     <p>{article.title ?? "Untitled article"}</p>
                     <span>
-                      {article.sentiment ?? "unknown"}
+                      {(article.sentiment ?? "unknown").toLowerCase()}
                       {article.source_name ? ` · ${article.source_name}` : ""}
                     </span>
                   </a>

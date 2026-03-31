@@ -1,5 +1,6 @@
 import {
   type AICompany,
+  type EnrichedNewsItem,
   type TimelineEvent,
   type CompanySearchResult,
   type NewsDataResponse,
@@ -13,10 +14,38 @@ interface UpstoxHoldingsResponse {
   data?: UpstoxHolding[];
 }
 
-export async function fetchMarketHeadlines(): Promise<NewsDataResponse> {
-  return getJson<NewsDataResponse>(
-    "/newsdata/market/headlines?country=in&timeframe=6&size=6"
-  );
+function mapEnrichedToArticle(item: EnrichedNewsItem, index: number) {
+  return {
+    article_id: `${item.source}-${item.published_at}-${index}`,
+    title: item.title,
+    description: item.summary,
+    source_name: item.source,
+    pubDate: item.published_at,
+    link: item.url ?? undefined,
+  };
+}
+
+export async function fetchMarketHeadlines(limit = 20, symbolOrName?: string): Promise<NewsDataResponse> {
+  const normalizedLimit = Math.min(Math.max(limit, 1), 50);
+  const params = new URLSearchParams();
+  params.set("limit", String(normalizedLimit));
+  const query = symbolOrName?.trim();
+  if (query) {
+    params.set("query", query);
+  }
+  let feed = await aiGet<EnrichedNewsItem[]>(`/get-news?${params.toString()}`, 90000);
+
+  if (query && feed.length === 0) {
+    feed = await aiGet<EnrichedNewsItem[]>(`/get-news?limit=${normalizedLimit}`, 90000);
+  }
+
+  const results = feed.slice(0, normalizedLimit).map(mapEnrichedToArticle);
+
+  return {
+    status: "success",
+    totalResults: results.length,
+    results,
+  };
 }
 
 export async function fetchHoldingsCount(): Promise<number> {
@@ -36,10 +65,38 @@ export async function fetchTickerSentiment(
   hoursBack = 24,
   size = 8
 ): Promise<SentimentFeedResponse> {
-  const normalized = encodeURIComponent(symbol.toUpperCase());
-  return getJson<SentimentFeedResponse>(
-    `/newsdata/sentiment/${normalized}?hours_back=${hoursBack}&size=${size}&language=en`
-  );
+  const normalizedSymbol = symbol.trim().toUpperCase();
+  const query = symbol.trim();
+  const cappedSize = Math.max(1, size);
+  const normalizedHoursBack = Math.max(1, Math.min(hoursBack, 72));
+  const requested = Math.min(Math.max(cappedSize * Math.ceil(normalizedHoursBack / 8), 12), 36);
+  const params = new URLSearchParams();
+  params.set("limit", String(requested));
+  if (query) {
+    params.set("query", query);
+  }
+
+  let feed: EnrichedNewsItem[] = [];
+  try {
+    feed = await aiGet<EnrichedNewsItem[]>(`/get-news?${params.toString()}`, 90000);
+  } catch {
+    feed = await aiGet<EnrichedNewsItem[]>(`/get-news?limit=${requested}`, 90000);
+  }
+
+  if (query && feed.length === 0) {
+    feed = await aiGet<EnrichedNewsItem[]>(`/get-news?limit=${requested}`, 90000);
+  }
+
+  const selected = feed.slice(0, cappedSize);
+
+  return {
+    symbol: normalizedSymbol,
+    total_results: selected.length,
+    articles: selected.map((item, index) => ({
+      ...mapEnrichedToArticle(item, index),
+      sentiment: item.sentiment,
+    })),
+  };
 }
 
 export async function fetchSecFilings(

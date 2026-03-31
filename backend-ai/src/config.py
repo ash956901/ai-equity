@@ -86,6 +86,10 @@ class Settings(BaseSettings):
     news_api_key: Optional[str] = None
     newsdata_api_key: Optional[str] = None
 
+    # News NLP (Hugging Face)
+    news_sentiment_model: str = "ProsusAI/finbert"
+    news_zero_shot_model: str = "typeform/distilbert-base-uncased-mnli"
+
     # Upstox
     upstox_api_key: Optional[str] = None
     upstox_api_secret: Optional[str] = None

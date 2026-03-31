@@ -26,7 +26,9 @@ import {
 } from "lucide-react";
 
 import {
+  fetchProfileConfig,
   fetchUserProfile,
+  type ProfileOption,
   submitKyc,
   updateUserProfile,
   uploadProfilePic,
@@ -58,7 +60,38 @@ interface ProfileState {
   kyc_status: string;
 }
 
+interface ProfileConfigState {
+  expertise_levels: ProfileOption[];
+  risk_tolerance_levels: ProfileOption[];
+  investment_horizons: ProfileOption[];
+  defaults: Record<string, string>;
+}
+
+const DEFAULT_PROFILE_CONFIG: ProfileConfigState = {
+  expertise_levels: [
+    { value: "beginner", label: "Beginner" },
+    { value: "intermediate", label: "Intermediate" },
+    { value: "advanced", label: "Advanced" },
+  ],
+  risk_tolerance_levels: [
+    { value: "conservative", label: "Conservative" },
+    { value: "moderate", label: "Moderate" },
+    { value: "aggressive", label: "Aggressive" },
+  ],
+  investment_horizons: [
+    { value: "short", label: "Short Term (0-1 yr)" },
+    { value: "medium", label: "Medium Term (1-5 yr)" },
+    { value: "long", label: "Long Term (5+ yr)" },
+  ],
+  defaults: {
+    expertise_level: "beginner",
+    risk_tolerance: "moderate",
+    investment_horizon: "medium",
+  },
+};
+
 export function ProfileView(props: ProfileViewProps) {
+  const [profileConfig, setProfileConfig] = useState<ProfileConfigState>(DEFAULT_PROFILE_CONFIG);
   const [profile, setProfile] = useState<ProfileState>({
     full_name: "",
     username: "",
@@ -87,6 +120,23 @@ export function ProfileView(props: ProfileViewProps) {
     }
     return id;
   }, []);
+
+  useEffect(() => {
+    if (props.dataMode !== "live") return;
+    (async () => {
+      try {
+        const config = await fetchProfileConfig();
+        setProfileConfig({
+          expertise_levels: config.expertise_levels,
+          risk_tolerance_levels: config.risk_tolerance_levels,
+          investment_horizons: config.investment_horizons,
+          defaults: config.defaults,
+        });
+      } catch {
+        // Keep static fallback config if endpoint is unavailable.
+      }
+    })();
+  }, [props.dataMode]);
 
   useEffect(() => {
     if (props.dataMode !== "live") return;
@@ -359,9 +409,11 @@ export function ProfileView(props: ProfileViewProps) {
               value={profile.expertise_level}
               onChange={(e) => handleField("expertise_level", e.target.value)}
             >
-              <option value="beginner">Beginner</option>
-              <option value="intermediate">Intermediate</option>
-              <option value="advanced">Advanced</option>
+              {profileConfig.expertise_levels.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
             </select>
           </label>
           <label className="form-field">
@@ -372,9 +424,11 @@ export function ProfileView(props: ProfileViewProps) {
               value={profile.risk_tolerance}
               onChange={(e) => handleField("risk_tolerance", e.target.value)}
             >
-              <option value="conservative">Conservative</option>
-              <option value="moderate">Moderate</option>
-              <option value="aggressive">Aggressive</option>
+              {profileConfig.risk_tolerance_levels.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
             </select>
           </label>
           <label className="form-field">
@@ -385,9 +439,11 @@ export function ProfileView(props: ProfileViewProps) {
               value={profile.investment_horizon}
               onChange={(e) => handleField("investment_horizon", e.target.value)}
             >
-              <option value="short">Short Term (0-1 yr)</option>
-              <option value="medium">Medium Term (1-5 yr)</option>
-              <option value="long">Long Term (5+ yr)</option>
+              {profileConfig.investment_horizons.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
             </select>
           </label>
         </div>

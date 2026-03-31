@@ -1,7 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { Search } from "lucide-react";
 
-import { searchCompaniesDB } from "../../lib/api";
+import {
+  compareCompanies,
+  searchCompaniesDB,
+  type CompareResponse,
+} from "../../lib/api";
 import { PageHeader } from "../../shared/ui/PageHeader";
 
 type DataMode = "live" | "demo";
@@ -53,6 +57,9 @@ export function ComparisonWorkspaceView(props: ComparisonWorkspaceViewProps) {
   const [lastSelectionStamp, setLastSelectionStamp] = useState<number>(0);
   const [inputText, setInputText] = useState("RELIANCE, TCS");
   const [selectedSymbols, setSelectedSymbols] = useState<string[]>(["RELIANCE", "TCS"]);
+  const [compareLoading, setCompareLoading] = useState(false);
+  const [compareError, setCompareError] = useState<string | null>(null);
+  const [compareResult, setCompareResult] = useState<CompareResponse | null>(null);
 
   useEffect(() => {
     if (!props.searchSelection?.compareSymbols?.length) return;
@@ -145,6 +152,57 @@ export function ComparisonWorkspaceView(props: ComparisonWorkspaceViewProps) {
 
     setSelectedSymbols(deduped);
     setInputText(deduped.join(", "));
+    setCompareResult(null);
+    setCompareError(null);
+  };
+
+  const runComparison = async () => {
+    if (props.dataMode === "demo") {
+      props.pushToast("Switch to Live API mode to run backend comparison.", "info");
+      return;
+    }
+
+    const typedSymbols = normalizeSymbolsInput(inputText);
+    const symbols = typedSymbols.length >= 2 ? typedSymbols : selectedSymbols;
+
+    if (symbols.length < 2) {
+      props.pushToast("Select at least two valid companies first", "warning");
+      return;
+    }
+
+    const comparedSymbols = symbols.slice(0, 2);
+    if (symbols.length > 2) {
+      props.pushToast("Backend compare supports 2 companies. Using first two symbols.", "info");
+    }
+
+    const comparedNames = comparedSymbols.map((symbol) => {
+      const matched = selectedCompanies.find((company) => company.symbol.toUpperCase() === symbol);
+      return matched?.name ?? symbol;
+    });
+
+    setSelectedSymbols(comparedSymbols);
+    setInputText(comparedSymbols.join(", "));
+    setCompareLoading(true);
+    setCompareError(null);
+
+    const userId =
+      localStorage.getItem("equityai-user-id") ?? "11111111-1111-1111-1111-111111111111";
+
+    try {
+      const result = await compareCompanies({
+        user_id: userId,
+        company_names: comparedNames,
+        expertise_level: "intermediate",
+      });
+      setCompareResult(result);
+      props.pushToast("Comparison completed", "success");
+    } catch {
+      setCompareResult(null);
+      setCompareError("Could not fetch comparison result right now.");
+      props.pushToast("Comparison failed", "warning");
+    } finally {
+      setCompareLoading(false);
+    }
   };
 
   const openComparisonReport = () => {
@@ -198,6 +256,9 @@ export function ComparisonWorkspaceView(props: ComparisonWorkspaceViewProps) {
         <button type="button" className="primary-btn" onClick={applySymbols}>
           Apply Comparison
         </button>
+        <button type="button" className="primary-btn" onClick={() => void runComparison()}>
+          {compareLoading ? "Comparing..." : "Run Backend Compare"}
+        </button>
         <button type="button" className="primary-btn" onClick={openComparisonReport}>
           Generate Comparison Report
         </button>
@@ -222,6 +283,45 @@ export function ComparisonWorkspaceView(props: ComparisonWorkspaceViewProps) {
           ? `Strongest theme momentum: ${strongestSymbol.symbol} (${strongestSymbol.score}/100 top signal).`
           : "Add at least two valid symbols from discovery dataset to compare."}
       </div>
+
+      {compareError ? <div className="notice warning">{compareError}</div> : null}
+
+      {compareResult ? (
+        <article className="list-card compare-result-card">
+          <div className="table-head">
+            <h3>Backend Comparison Verdict</h3>
+            <span>{compareResult.comparison.growth === "Tie" ? "Split" : "Decided"}</span>
+          </div>
+
+          <p className="compare-verdict-text">{compareResult.final_verdict}</p>
+
+          <div className="chip-row">
+            <span className="chip">Growth: {compareResult.comparison.growth}</span>
+            <span className="chip">Profitability: {compareResult.comparison.profitability}</span>
+            <span className="chip">Risk: {compareResult.comparison.risk}</span>
+            <span className="chip">Valuation: {compareResult.comparison.valuation}</span>
+          </div>
+
+          <div className="split-grid compare-summary-grid">
+            <div className="list-item single-line compare-summary-box">
+              <p>{compareResult.companyA_summary}</p>
+            </div>
+            <div className="list-item single-line compare-summary-box">
+              <p>{compareResult.companyB_summary}</p>
+            </div>
+          </div>
+
+          {compareResult.insights.length ? (
+            <div className="compare-insights-list">
+              {compareResult.insights.map((insight, index) => (
+                <div key={`compare-insight-${index}`} className="list-item single-line">
+                  <p>{insight}</p>
+                </div>
+              ))}
+            </div>
+          ) : null}
+        </article>
+      ) : null}
 
       {selectedCompanies.length >= 2 ? (
         <div className="comparison-table-card">
