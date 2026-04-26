@@ -1,13 +1,14 @@
 """Business logic for company domain endpoints."""
 
-from datetime import date
+from datetime import date, datetime, timedelta
 from typing import Any, Optional
 from uuid import UUID
 
 from fastapi import BackgroundTasks, HTTPException
 from sqlalchemy.orm import Session
 
-from src.db.models import Company
+from src.db.models import Company, CompanyComparisonSnapshot
+from src.services.gemini_enrichment_service import GeminiEnrichmentService
 from src.services.market_data.context import MarketDataContext
 from src.services.market_data.enrichment_service import (
     CompanyEnrichmentService,
@@ -22,6 +23,12 @@ from src.utils.data_sources import company_sources, financial_sources, quote_sou
 class CompaniesService:
     """Encapsulates company listing, details, enrichment, and analytics data."""
 
+    COMPANY_CACHE_TTL_HOURS = 1
+    PROFILE_CACHE_SOURCE = "company_profile_v1"
+    QUOTE_CACHE_SOURCE = "company_quote_v1"
+    FINANCIALS_CACHE_SOURCE_PREFIX = "company_fin_v1"
+    RATIOS_CACHE_SOURCE_PREFIX = "company_rat_v1"
+
     def __init__(self, db: Session):
         self.db = db
         self._market_data_context = MarketDataContext(db)
@@ -29,6 +36,7 @@ class CompaniesService:
         self._enrichment = CompanyEnrichmentService(self._market_data_context)
         self._search = CompanySearchService(self._market_data_context)
         self._financial = FinancialService(db)
+        self._gemini = GeminiEnrichmentService()
 
     def get_universe_stats(self) -> dict[str, Any]:
         """Return stock-universe sync statistics."""
@@ -78,7 +86,11 @@ class CompaniesService:
     def search_companies(self, query: str, limit: int) -> list[dict[str, Any]]:
         return self._search.find_company(query, limit)
 
-    def get_company(self, company_id: UUID, background_tasks: BackgroundTasks) -> dict[str, Any]:
+    async def get_company(self, company_id: UUID, background_tasks: BackgroundTasks) -> dict[str, Any]:
+        cached_profile = self._get_cache_snapshot(company_id, self.PROFILE_CACHE_SOURCE)
+        if cached_profile:
+            return cached_profile
+
         company = self.db.query(Company).filter(Company.id == company_id).first()
         if not company:
             raise HTTPException(status_code=404, detail="Company not found")
@@ -89,7 +101,23 @@ class CompaniesService:
             task_obj: Any = enrich_single_company
             background_tasks.add_task(lambda cid=str(company_id): task_obj.delay(cid))
 
-        return {
+        known_fields = {
+            "sector": company.sector,
+            "industry": company.industry,
+            "sub_industry": company.sub_industry,
+            "description": company.description,
+            "market_cap_inr": company.market_cap_inr,
+            "website_domain": company.website_domain,
+            "ir_page_url": company.ir_page_url,
+        }
+        gemini_extra = await self._gemini.get_company_extra_info(
+            company_name=company.name,
+            ticker_nse=company.ticker_nse,
+            ticker_bse=company.ticker_bse,
+            known_fields=known_fields,
+        )
+
+        payload = {
             "id": str(company.id),
             "name": company.name,
             "legal_name": company.legal_name,
@@ -104,29 +132,50 @@ class CompaniesService:
             "ir_page_url": company.ir_page_url,
             "description": company.description,
             "listing_status": company.listing_status,
+            "gemini_extra": gemini_extra,
             "data_sources": company_sources(company.ticker_nse, company.ticker_bse),
         }
+        self._save_cache_snapshot(company_id, self.PROFILE_CACHE_SOURCE, payload)
+        return payload
 
     async def get_quote(self, company_id: UUID) -> dict[str, Any]:
+        cached_quote = self._get_cache_snapshot(company_id, self.QUOTE_CACHE_SOURCE)
+        if cached_quote:
+            return cached_quote
+
         result = await self._quotes.get_quote(company_id)
         company = self.db.query(Company).filter(Company.id == company_id).first()
         ticker = company.ticker_nse if company else None
         result["data_sources"] = quote_sources(result.get("source", ""), ticker)
+        self._save_cache_snapshot(company_id, self.QUOTE_CACHE_SOURCE, result)
         return result
 
     def get_financials(self, company_id: UUID, periods: int) -> dict[str, Any]:
+        cache_source = f"{self.FINANCIALS_CACHE_SOURCE_PREFIX}_{periods}"
+        cached_financials = self._get_cache_snapshot(company_id, cache_source)
+        if cached_financials:
+            return cached_financials
+
         result = self._financial.get_latest_financials(company_id, periods)
         company = self.db.query(Company).filter(Company.id == company_id).first()
         ticker = company.ticker_nse if company else None
         result["data_sources"] = financial_sources(ticker, result.get("source"))
+        self._save_cache_snapshot(company_id, cache_source, result)
         return result
 
     def get_ratios(self, company_id: UUID, period: Optional[str]) -> dict[str, Any]:
+        period_key = period or "latest"
+        cache_source = f"{self.RATIOS_CACHE_SOURCE_PREFIX}_{period_key}"
+        cached_ratios = self._get_cache_snapshot(company_id, cache_source)
+        if cached_ratios:
+            return cached_ratios
+
         parsed_period = date.fromisoformat(period) if period else None
         result = self._financial.calculate_ratios(company_id, parsed_period)
         company = self.db.query(Company).filter(Company.id == company_id).first()
         ticker = company.ticker_nse if company else None
         result["data_sources"] = financial_sources(ticker, result.get("source"))
+        self._save_cache_snapshot(company_id, cache_source, result)
         return result
 
     def enrich_company(self, company_id: UUID) -> dict[str, Any]:
@@ -138,3 +187,52 @@ class CompaniesService:
         task_obj: Any = refresh_task
         task_obj.delay(str(company_id))
         return {"company_id": str(company_id), "status": "refresh_queued"}
+
+    def _get_cache_snapshot(self, company_id: UUID, source: str) -> Optional[dict[str, Any]]:
+        """Read non-expired cache payload from Postgres snapshots table."""
+        now = datetime.utcnow()
+        try:
+            self.db.query(CompanyComparisonSnapshot).filter(
+                CompanyComparisonSnapshot.company_id == company_id,
+                CompanyComparisonSnapshot.source == source,
+                CompanyComparisonSnapshot.expires_at <= now,
+            ).delete(synchronize_session=False)
+            self.db.commit()
+        except Exception:
+            self.db.rollback()
+
+        row = (
+            self.db.query(CompanyComparisonSnapshot)
+            .filter(
+                CompanyComparisonSnapshot.company_id == company_id,
+                CompanyComparisonSnapshot.source == source,
+                CompanyComparisonSnapshot.expires_at > now,
+            )
+            .order_by(CompanyComparisonSnapshot.fetched_at.desc())
+            .first()
+        )
+        if not row:
+            return None
+        return row.payload if isinstance(row.payload, dict) else None
+
+    def _save_cache_snapshot(self, company_id: UUID, source: str, payload: dict[str, Any]) -> None:
+        """Persist cache payload with 1-hour TTL for repeat company requests."""
+        now = datetime.utcnow()
+        expires_at = now + timedelta(hours=self.COMPANY_CACHE_TTL_HOURS)
+        try:
+            self.db.query(CompanyComparisonSnapshot).filter(
+                CompanyComparisonSnapshot.company_id == company_id,
+                CompanyComparisonSnapshot.source == source,
+            ).delete(synchronize_session=False)
+
+            snapshot = CompanyComparisonSnapshot(
+                company_id=company_id,
+                payload=payload,
+                source=source,
+                fetched_at=now,
+                expires_at=expires_at,
+            )
+            self.db.add(snapshot)
+            self.db.commit()
+        except Exception:
+            self.db.rollback()

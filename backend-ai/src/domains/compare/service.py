@@ -15,6 +15,7 @@ import httpx
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
+from src.config import get_settings
 from src.db.models import (
     Company,
     CompanyComparisonSnapshot,
@@ -23,6 +24,7 @@ from src.db.models import (
     FinancialStatementRaw,
     User,
 )
+from src.services.gemini_enrichment_service import GeminiEnrichmentService
 from src.services.market_data.helpers import persist_scraped_financials
 from src.utils.request_context import get_request_id
 from src.services.financial_service import FinancialService
@@ -33,13 +35,15 @@ logger = logging.getLogger(__name__)
 class CompareService:
     """Compares two companies using deterministic decision logic."""
 
-    SNAPSHOT_TTL_HOURS = 12
+    SNAPSHOT_TTL_HOURS = 1
     MAX_INT_32 = 2_147_483_647
     DEFAULT_COMPARE_QUERY = "Compare these companies on growth, profitability, valuation, and risk."
+    COMPARE_SNAPSHOT_SOURCE = "compare_company_v1"
 
     def __init__(self, db: Session):
         self.db = db
         self._financial = FinancialService(db)
+        self._gemini = GeminiEnrichmentService()
 
     def compare(
         self,
@@ -91,6 +95,12 @@ class CompareService:
                 comparison,
             ),
         }
+        result["local_summary"] = self._generate_local_summary(
+            company_a,
+            company_b,
+            comparison,
+            result["detailed_comparison"],
+        )
         result = self._sanitize_for_json(result)
 
         duration_ms = int((time.perf_counter() - start_time) * 1000)
@@ -463,10 +473,22 @@ class CompareService:
     ) -> Dict[str, Any]:
         now = datetime.utcnow()
         company_uuid = uuid.UUID(company_id)
+
+        try:
+            self.db.query(CompanyComparisonSnapshot).filter(
+                CompanyComparisonSnapshot.company_id == company_uuid,
+                CompanyComparisonSnapshot.source == self.COMPARE_SNAPSHOT_SOURCE,
+                CompanyComparisonSnapshot.expires_at <= now,
+            ).delete(synchronize_session=False)
+            self.db.commit()
+        except Exception:
+            self.db.rollback()
+
         cached = (
             self.db.query(CompanyComparisonSnapshot)
             .filter(
                 CompanyComparisonSnapshot.company_id == company_uuid,
+                CompanyComparisonSnapshot.source == self.COMPARE_SNAPSHOT_SOURCE,
                 CompanyComparisonSnapshot.expires_at > now,
             )
             .order_by(CompanyComparisonSnapshot.fetched_at.desc())
@@ -493,13 +515,14 @@ class CompareService:
         )
 
         self.db.query(CompanyComparisonSnapshot).filter(
-            CompanyComparisonSnapshot.company_id == company_uuid
+            CompanyComparisonSnapshot.company_id == company_uuid,
+            CompanyComparisonSnapshot.source == self.COMPARE_SNAPSHOT_SOURCE,
         ).delete(synchronize_session=False)
 
         snapshot = CompanyComparisonSnapshot(
             company_id=company_uuid,
             payload=payload,
-            source=payload.get("source", "aggregated"),
+            source=self.COMPARE_SNAPSHOT_SOURCE,
             fetched_at=now,
             expires_at=now + timedelta(hours=self.SNAPSHOT_TTL_HOURS),
         )
@@ -575,6 +598,30 @@ class CompareService:
             }
         )
 
+        known_fields = {
+            "sector": company.sector,
+            "industry": company.industry,
+            "description": company.description,
+            "market_cap_inr": company.market_cap_inr,
+            "ticker_nse": company.ticker_nse,
+            "ticker_bse": company.ticker_bse,
+        }
+        gemini_extra = self._gemini.get_company_extra_info_sync(
+            company_name=company.name,
+            ticker_nse=company.ticker_nse,
+            ticker_bse=company.ticker_bse,
+            known_fields=known_fields,
+        )
+        if gemini_extra:
+            flow_logs.append(
+                {
+                    "stage": "gemini",
+                    "company_id": str(company.id),
+                    "status": "enriched",
+                    "timestamp": datetime.utcnow().isoformat(),
+                }
+            )
+
         return {
             "company_id": str(company.id),
             "company_name": company.name,
@@ -598,6 +645,7 @@ class CompareService:
             "quarterly_consistency": quarterly_consistency,
             "earnings_volatility": earnings_volatility,
             "margin_trend": margin_trend,
+            "gemini_extra": gemini_extra,
             "source": source,
         }
 
@@ -1037,6 +1085,44 @@ class CompareService:
             f"Verdict is split: {growth_pick} is better for growth-oriented investors, "
             f"while {safety_pick} is better for stability-focused investors."
         )
+
+    def _generate_local_summary(
+        self,
+        company_a: Dict[str, Any],
+        company_b: Dict[str, Any],
+        comparison: Dict[str, str],
+        detailed_comparison: Dict[str, str],
+    ) -> str:
+        """Generate a concise final comparison summary using the local Ollama model."""
+        fallback = (
+            f"{company_a.get('company_name')} vs {company_b.get('company_name')}: "
+            f"growth winner={comparison.get('growth')}, profitability winner={comparison.get('profitability')}, "
+            f"risk winner={comparison.get('risk')}, valuation winner={comparison.get('valuation')}."
+        )
+
+        try:
+            from langchain_ollama import ChatOllama
+
+            settings = get_settings()
+            llm = ChatOllama(
+                model=settings.ollama_model,
+                base_url=settings.ollama_base_url,
+                temperature=0.2,
+            )
+            prompt = (
+                "You are an equity analyst. Write a short, factual comparison summary in under 90 words. "
+                "Use only provided data, avoid speculation, and mention the best fit investor type.\n\n"
+                f"Company A: {company_a.get('company_name')} ({company_a.get('ticker_nse')})\n"
+                f"Company B: {company_b.get('company_name')} ({company_b.get('ticker_nse')})\n"
+                f"Category winners: {comparison}\n"
+                f"Detailed metrics: {detailed_comparison.get('full_report', '')}"
+            )
+            response = llm.invoke(prompt)
+            text = getattr(response, "content", "") if response is not None else ""
+            summary = str(text).strip()
+            return summary or fallback
+        except Exception:
+            return fallback
 
     def _persist_flow_log(
         self,
