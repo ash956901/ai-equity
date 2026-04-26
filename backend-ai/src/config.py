@@ -58,6 +58,11 @@ class Settings(BaseSettings):
     groq_api_key: Optional[str] = None
     groq_base_url: str = "https://api.groq.com/openai/v1"
 
+    # Gemini API (for supplemental company enrichment)
+    gemini_api_key: Optional[str] = None
+    gemini_model: str = "gemini-2.5-flash"
+    gemini_base_url: str = "https://generativelanguage.googleapis.com/v1beta/models"
+
     # Embeddings (Ollama local / OpenAI)
     embedding_provider: str = "ollama"  # ollama | openai
     embedding_model: str = "nomic-embed-text"  # For Ollama

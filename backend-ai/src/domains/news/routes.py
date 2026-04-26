@@ -3,13 +3,14 @@
 from datetime import datetime
 from typing import List, Optional
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field
+from sqlalchemy.orm import Session
 
+from src.db.database import get_db
 from src.domains.news.service import NewsService
 
 router = APIRouter(tags=["news"])
-news_service = NewsService()
 
 
 class EnrichedNewsItem(BaseModel):
@@ -39,7 +40,9 @@ async def get_news(
         min_length=1,
         description="Optional company/ticker query to bias RSS search feeds.",
     ),
+    db: Session = Depends(get_db),
 ) -> List[EnrichedNewsItem]:
     """Fetch, deduplicate, and enrich market news from RSS sources."""
+    news_service = NewsService(db)
     news = await news_service.get_news(limit=limit, query=query)
     return [EnrichedNewsItem(**item) for item in news]

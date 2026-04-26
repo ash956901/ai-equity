@@ -52,14 +52,14 @@ def universe_stats(db: Session = Depends(get_db)) -> Dict[str, Any]:
 
 
 @router.get("/{company_id}")
-def get_company(
+async def get_company(
     company_id: UUID,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
 ) -> Dict[str, Any]:
     """Get company details. Triggers background enrichment if data is sparse."""
     service = CompaniesService(db)
-    return service.get_company(company_id, background_tasks)
+    return await service.get_company(company_id, background_tasks)
 
 
 @router.get("/{company_id}/quote")

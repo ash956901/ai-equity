@@ -7,7 +7,7 @@ import hashlib
 import logging
 import re
 import threading
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
 from html import unescape
 from pathlib import Path
@@ -17,8 +17,10 @@ from xml.etree import ElementTree
 
 import httpx
 from bs4 import BeautifulSoup
+from sqlalchemy.orm import Session
 
 from src.config import get_settings
+from src.db.models import NewsArticle
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +36,7 @@ class NewsService:
     _loaded_zero_shot_model: Optional[str] = None
 
     MAX_NEWS_PER_REQUEST = 50
+    NEWS_CACHE_TTL_HOURS = 6
     MAX_FEED_RETRIES = 3
     MAX_FEED_CONCURRENCY = 3
     NEWS_REQUEST_LOG_FILE = Path(__file__).resolve().parents[3] / "logs" / "news_request.log"
@@ -98,10 +101,22 @@ class NewsService:
         "PUBLIC",
     }
 
+    def __init__(self, db: Optional[Session] = None):
+        self.db = db
+
     async def get_news(self, limit: int = MAX_NEWS_PER_REQUEST, query: Optional[str] = None) -> List[Dict[str, Any]]:
         """Return deduplicated market news with sentiment and categories."""
         safe_limit = min(max(limit, 1), self.MAX_NEWS_PER_REQUEST)
         cleaned_query = self._clean_query(query)
+        cache_key = self._cache_key(cleaned_query)
+
+        if self.db is not None:
+            cached = self._get_cached_articles(cache_key=cache_key, limit=safe_limit)
+            if cached:
+                return cached
+
+            self._delete_expired_cache(cache_key=cache_key)
+
         raw_articles, source_logs = await self._fetch_all_sources(query=cleaned_query)
         deduplicated = self._deduplicate_and_clean(raw_articles)
         deduplicated.sort(
@@ -123,7 +138,169 @@ class NewsService:
             deduplicated_count=len(deduplicated),
             selected_articles=selected,
         )
+
+        if self.db is not None and selected:
+            self._upsert_cached_articles(cache_key=cache_key, articles=selected)
+
         return selected
+
+    @staticmethod
+    def _cache_key(query: Optional[str]) -> str:
+        """Build a stable cache key scoped to the query text."""
+        normalized_query = (query or "__market__").lower()
+        digest = hashlib.sha1(normalized_query.encode("utf-8")).hexdigest()[:24]
+        return f"news_cache_{digest}"
+
+    @staticmethod
+    def _extract_source_feed(keywords: Optional[List[str]]) -> str:
+        """Decode serialized source feed metadata from keywords."""
+        if not keywords:
+            return ""
+        for item in keywords:
+            if item.startswith("source_feed:"):
+                return item.removeprefix("source_feed:")
+        return ""
+
+    @staticmethod
+    def _extract_categories(keywords: Optional[List[str]]) -> List[str]:
+        """Decode serialized categories from keywords metadata."""
+        if not keywords:
+            return []
+
+        categories: List[str] = []
+        for item in keywords:
+            if item.startswith("category:"):
+                category = item.removeprefix("category:")
+                if category:
+                    categories.append(category)
+        return categories
+
+    @staticmethod
+    def _build_keywords_payload(article: Dict[str, Any]) -> List[str]:
+        """Encode non-schema fields into keywords for cache round-tripping."""
+        keywords: List[str] = []
+        source_feed = str(article.get("source_feed") or "").strip()
+        if source_feed:
+            keywords.append(f"source_feed:{source_feed}")
+
+        for category in article.get("categories") or []:
+            if category:
+                keywords.append(f"category:{category}")
+
+        return keywords
+
+    def _get_cached_articles(self, cache_key: str, limit: int) -> List[Dict[str, Any]]:
+        """Return cached rows if they were fetched within the TTL window."""
+        assert self.db is not None
+        cache_cutoff = datetime.utcnow() - timedelta(hours=self.NEWS_CACHE_TTL_HOURS)
+
+        rows = (
+            self.db.query(NewsArticle)
+            .filter(
+                NewsArticle.affected_dimension == cache_key,
+                NewsArticle.fetched_at >= cache_cutoff,
+            )
+            .order_by(NewsArticle.published_at.desc())
+            .limit(limit)
+            .all()
+        )
+
+        if not rows:
+            return []
+
+        return [
+            {
+                "title": row.headline,
+                "summary": row.body or "",
+                "url": row.source_url,
+                "source": row.source or "Unknown",
+                "source_feed": self._extract_source_feed(row.keywords),
+                "published_at": self._ensure_utc_datetime(row.published_at),
+                "sentiment": (row.sentiment_label or "neutral").lower(),
+                "sentiment_confidence": float(row.sentiment_score) if row.sentiment_score is not None else 0.0,
+                "categories": self._extract_categories(row.keywords),
+            }
+            for row in rows
+        ]
+
+    def _delete_expired_cache(self, cache_key: str) -> None:
+        """Delete stale cached rows for this query before refetching."""
+        assert self.db is not None
+        cache_cutoff = datetime.utcnow() - timedelta(hours=self.NEWS_CACHE_TTL_HOURS)
+
+        try:
+            (
+                self.db.query(NewsArticle)
+                .filter(
+                    NewsArticle.affected_dimension == cache_key,
+                    NewsArticle.fetched_at < cache_cutoff,
+                )
+                .delete(synchronize_session=False)
+            )
+            self.db.commit()
+        except Exception as exc:
+            self.db.rollback()
+            logger.warning("Failed to clean expired news cache '%s': %s", cache_key, exc)
+
+    def _upsert_cached_articles(self, cache_key: str, articles: List[Dict[str, Any]]) -> None:
+        """Persist fetched articles so repeated requests can be served from DB."""
+        assert self.db is not None
+        fetched_at = datetime.utcnow()
+
+        try:
+            # Replace cache rows lacking URL to avoid indefinite duplication.
+            (
+                self.db.query(NewsArticle)
+                .filter(
+                    NewsArticle.affected_dimension == cache_key,
+                    NewsArticle.source_url.is_(None),
+                )
+                .delete(synchronize_session=False)
+            )
+
+            for article in articles:
+                source_url = article.get("url")
+                db_row: Optional[NewsArticle] = None
+
+                if source_url:
+                    db_row = (
+                        self.db.query(NewsArticle)
+                        .filter(NewsArticle.source_url == source_url)
+                        .first()
+                    )
+
+                if db_row is None:
+                    db_row = NewsArticle()
+                    self.db.add(db_row)
+
+                db_row.company_id = None
+                db_row.headline = str(article.get("title") or "")
+                db_row.body = str(article.get("summary") or "")
+                db_row.source = str(article.get("source") or "Unknown")
+                db_row.source_url = str(source_url) if source_url else None
+                db_row.published_at = self._ensure_utc_datetime(article.get("published_at"))
+                db_row.fetched_at = fetched_at
+                db_row.sentiment_score = float(article.get("sentiment_confidence") or 0.0)
+                db_row.sentiment_label = str(article.get("sentiment") or "neutral").lower()
+                db_row.impact_level = "low"
+                db_row.relevance_confidence = None
+                db_row.affected_dimension = cache_key
+                db_row.tickers = None
+                db_row.keywords = self._build_keywords_payload(article)
+
+            self.db.commit()
+        except Exception as exc:
+            self.db.rollback()
+            logger.warning("Failed to persist news cache '%s': %s", cache_key, exc)
+
+    @staticmethod
+    def _ensure_utc_datetime(value: Any) -> datetime:
+        """Normalize incoming datetime values to timezone-aware UTC."""
+        if isinstance(value, datetime):
+            if value.tzinfo is None:
+                return value.replace(tzinfo=timezone.utc)
+            return value.astimezone(timezone.utc)
+        return datetime.now(tz=timezone.utc)
 
     async def _fetch_all_sources(self, query: Optional[str] = None) -> tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
         """Fetch all RSS feeds concurrently."""
@@ -538,7 +715,7 @@ class NewsService:
                     candidate_labels=self.ZERO_SHOT_CANDIDATE_LABELS,
                     multi_label=True,
                 )
-                article["categories"] = self._extract_categories(zero_shot_result)
+                article["categories"] = self._extract_top_categories(zero_shot_result)
             except Exception as exc:
                 logger.error("Zero-shot inference failed for article '%s': %s", article.get("title"), exc)
                 article["categories"] = []
@@ -607,7 +784,7 @@ class NewsService:
         return merged[:1200]
 
     @staticmethod
-    def _extract_categories(zero_shot_result: Dict[str, Any]) -> List[str]:
+    def _extract_top_categories(zero_shot_result: Dict[str, Any]) -> List[str]:
         """Pick categories whose zero-shot confidence is above 60%."""
         labels = zero_shot_result.get("labels") or []
         scores = zero_shot_result.get("scores") or []

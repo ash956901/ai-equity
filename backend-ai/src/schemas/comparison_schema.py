@@ -35,6 +35,7 @@ class CompareDecisionResponse(BaseModel):
     comparison: ComparisonCategoryWinners
     insights: List[str]
     final_verdict: str
+    local_summary: str
     companyA_stock_data: dict
     companyB_stock_data: dict
     detailed_comparison: dict[str, str]
