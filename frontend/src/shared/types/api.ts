@@ -124,6 +124,7 @@ export interface AICompany {
   ir_page_url?: string;
   description?: string;
   listing_status?: string;
+  gemini_extra?: Record<string, string[]>;
   data_sources?: DataSourceInfo[];
 }
 

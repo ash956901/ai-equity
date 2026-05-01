@@ -1179,41 +1179,127 @@ export function CompanyWorkspaceView(props: CompanyWorkspaceViewProps) {
       </div>
 
       {activeTab === "overview" ? (
-        <div className="split-grid">
-          <article className="feature-card">
-            <div className="feature-head">
-              <TrendingUp size={18} />
-              <h3>Live Quote</h3>
-            </div>
-            {companyQuote?.last_price ? (
-              <>
-                <h2>₹{Number(companyQuote.last_price).toLocaleString()}</h2>
-                {companyQuote.change_pct != null && (
-                  <p className={Number(companyQuote.change_pct) >= 0 ? "positive" : "negative"}>
-                    {Number(companyQuote.change_pct) >= 0 ? "+" : ""}{Number(companyQuote.change_pct).toFixed(2)}%
-                  </p>
-                )}
-                <small>Source: {companyQuote.source ?? "API"} · {companyQuote.fetched_at ? new Date(companyQuote.fetched_at).toLocaleTimeString() : ""}</small>
-                <SourceBadges sources={companyQuote.data_sources} />
-              </>
-            ) : (
-              <p>{companyLoading ? "Fetching quote..." : "No live quote data available."}</p>
-            )}
-          </article>
-
-          <article className="feature-card">
-            <div className="feature-head">
-              <Clock3 size={18} />
-              <h3>Recent Events</h3>
-            </div>
-            <p>{companyTimeline.length} recent timeline events for this company.</p>
-            {companyTimeline.slice(0, 3).map((ev) => (
-              <div key={ev.id} className="list-item">
-                <p>{ev.title}</p>
-                <small>{new Date(ev.timestamp).toLocaleDateString()}</small>
+        <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+          <div className="split-grid">
+            <article className="feature-card">
+              <div className="feature-head">
+                <TrendingUp size={18} />
+                <h3>Live Quote</h3>
               </div>
-            ))}
-          </article>
+              {companyQuote?.last_price ? (
+                <>
+                  <h2>₹{Number(companyQuote.last_price).toLocaleString()}</h2>
+                  {companyQuote.change_pct != null && (
+                    <p className={Number(companyQuote.change_pct) >= 0 ? "positive" : "negative"}>
+                      {Number(companyQuote.change_pct) >= 0 ? "+" : ""}{Number(companyQuote.change_pct).toFixed(2)}%
+                    </p>
+                  )}
+                  <small>Source: {companyQuote.source ?? "API"} · {companyQuote.fetched_at ? new Date(companyQuote.fetched_at).toLocaleTimeString() : ""}</small>
+                  <SourceBadges sources={companyQuote.data_sources} />
+                </>
+              ) : (
+                <p>{companyLoading ? "Fetching quote..." : "No live quote data available."}</p>
+              )}
+            </article>
+
+            <article className="feature-card">
+              <div className="feature-head">
+                <Clock3 size={18} />
+                <h3>Recent Events</h3>
+              </div>
+              <p>{companyTimeline.length} recent timeline events for this company.</p>
+              {companyTimeline.slice(0, 3).map((ev) => (
+                <div key={ev.id} className="list-item">
+                  <p>{ev.title}</p>
+                  <small>{new Date(ev.timestamp).toLocaleDateString()}</small>
+                </div>
+              ))}
+            </article>
+          </div>
+
+          {companyDetail?.gemini_extra && typeof companyDetail.gemini_extra === 'object' && !Array.isArray(companyDetail.gemini_extra) && (
+            <div className="split-grid">
+              <article className="feature-card" style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+                <div className="feature-head" style={{ marginBottom: 0 }}>
+                  <FileText size={18} />
+                  <h3>Business Model & Operations</h3>
+                </div>
+                
+                {Array.isArray(companyDetail.gemini_extra.business_model) && companyDetail.gemini_extra.business_model.length > 0 && (
+                  <div>
+                    <h4 style={{ fontSize: "0.75rem", color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "6px" }}>Core Business Model</h4>
+                    <ul style={{ margin: 0, paddingLeft: "18px", fontSize: "0.85rem", lineHeight: 1.5, color: "var(--ink)" }}>
+                      {companyDetail.gemini_extra.business_model.map((item, i) => <li key={i}>{item}</li>)}
+                    </ul>
+                  </div>
+                )}
+                
+                {Array.isArray(companyDetail.gemini_extra.key_products) && companyDetail.gemini_extra.key_products.length > 0 && (
+                  <div>
+                    <h4 style={{ fontSize: "0.75rem", color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "6px" }}>Key Products & Services</h4>
+                    <ul style={{ margin: 0, paddingLeft: "18px", fontSize: "0.85rem", lineHeight: 1.5, color: "var(--ink)" }}>
+                      {companyDetail.gemini_extra.key_products.map((item, i) => <li key={i}>{item}</li>)}
+                    </ul>
+                  </div>
+                )}
+
+                {Array.isArray(companyDetail.gemini_extra.primary_geographies) && companyDetail.gemini_extra.primary_geographies.length > 0 && (
+                  <div>
+                    <h4 style={{ fontSize: "0.75rem", color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "6px" }}>Primary Geographies</h4>
+                    <p style={{ margin: 0, fontSize: "0.85rem", lineHeight: 1.5, color: "var(--ink)" }}>
+                      {companyDetail.gemini_extra.primary_geographies.join(", ")}
+                    </p>
+                  </div>
+                )}
+              </article>
+
+              <article className="feature-card" style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+                <div className="feature-head" style={{ marginBottom: 0 }}>
+                  <BarChart3 size={18} />
+                  <h3>Investment Thesis & Risks</h3>
+                </div>
+                
+                {Array.isArray(companyDetail.gemini_extra.investment_highlights) && companyDetail.gemini_extra.investment_highlights.length > 0 && (
+                  <div>
+                    <h4 style={{ fontSize: "0.75rem", color: "var(--good)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "6px" }}>Investment Highlights</h4>
+                    <ul style={{ margin: 0, paddingLeft: "18px", fontSize: "0.85rem", lineHeight: 1.5, color: "var(--ink)" }}>
+                      {companyDetail.gemini_extra.investment_highlights.map((item, i) => <li key={i}>{item}</li>)}
+                    </ul>
+                  </div>
+                )}
+                
+                {Array.isArray(companyDetail.gemini_extra.major_risks) && companyDetail.gemini_extra.major_risks.length > 0 && (
+                  <div>
+                    <h4 style={{ fontSize: "0.75rem", color: "var(--bad)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "6px" }}>Major Risks</h4>
+                    <ul style={{ margin: 0, paddingLeft: "18px", fontSize: "0.85rem", lineHeight: 1.5, color: "var(--ink)" }}>
+                      {companyDetail.gemini_extra.major_risks.map((item, i) => <li key={i}>{item}</li>)}
+                    </ul>
+                  </div>
+                )}
+
+                {Array.isArray(companyDetail.gemini_extra.key_competitors) && companyDetail.gemini_extra.key_competitors.length > 0 && (
+                  <div>
+                    <h4 style={{ fontSize: "0.75rem", color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "6px" }}>Key Competitors</h4>
+                    <p style={{ margin: 0, fontSize: "0.85rem", lineHeight: 1.5, color: "var(--ink)" }}>
+                      {companyDetail.gemini_extra.key_competitors.join(", ")}
+                    </p>
+                  </div>
+                )}
+              </article>
+            </div>
+          )}
+
+          {companyDetail?.gemini_extra && typeof companyDetail.gemini_extra === 'object' && !Array.isArray(companyDetail.gemini_extra) && Array.isArray(companyDetail.gemini_extra.management_notes) && companyDetail.gemini_extra.management_notes.length > 0 && (
+            <article className="feature-card">
+              <div className="feature-head" style={{ marginBottom: "12px" }}>
+                <FileText size={18} />
+                <h3>Management Commentary & Notes</h3>
+              </div>
+              <ul style={{ margin: 0, paddingLeft: "18px", fontSize: "0.85rem", lineHeight: 1.6, color: "var(--ink)" }}>
+                {companyDetail.gemini_extra.management_notes.map((item, i) => <li key={i} style={{ marginBottom: "6px" }}>{item}</li>)}
+              </ul>
+            </article>
+          )}
         </div>
       ) : null}
 
