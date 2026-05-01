@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { DashboardView } from "./features/dashboard/DashboardView";
 import { SettingsView } from "./features/settings/SettingsView";
 import { DiscoveryView } from "./features/discovery/DiscoveryView";
@@ -11,30 +11,19 @@ import { ComparisonWorkspaceView } from "./features/compare/ComparisonWorkspaceV
 import { ChatView } from "./features/chat/ChatView";
 import { CompanyWorkspaceView } from "./features/company/CompanyWorkspaceView";
 
-import { CommandPalette } from "./app/components/CommandPalette";
-import { GlobalSearchOverlay } from "./app/components/GlobalSearchOverlay";
 import { NotificationsPanel } from "./app/components/NotificationsPanel";
-import { FavoritesPanel } from "./app/components/FavoritesPanel";
-import { AlertRulesPanel } from "./app/components/AlertRulesPanel";
 import { ToastStack } from "./app/components/ToastStack";
 import { SidebarShell } from "./app/components/SidebarShell";
 import {
   DASHBOARD_PREFERENCES_KEY,
-  DATA_MODE_STORAGE_KEY,
   DEMO_BANNER_MSG,
   THEME_STORAGE_KEY,
 } from "./app/constants";
-import { useAlertRules } from "./app/hooks/useAlertRules";
 import { useChatThreads } from "./app/hooks/useChatThreads";
-import { useFavorites } from "./app/hooks/useFavorites";
 import { useNotifications } from "./app/hooks/useNotifications";
-import { usePaletteSearch } from "./app/hooks/usePaletteSearch";
-import { useGlobalShortcuts } from "./app/hooks/useGlobalShortcuts";
 import type {
   CompanySearchSelection,
   DashboardPreferences,
-  DataMode,
-  FavoriteItem,
   FilingsSearchSelection,
   NewsSearchSelection,
   SearchSelection,
@@ -58,12 +47,6 @@ function getInitialTheme(): Theme {
   return window.matchMedia("(prefers-color-scheme: dark)").matches
     ? "dark"
     : "light";
-}
-
-function getInitialDataMode(): DataMode {
-  const saved = window.localStorage.getItem(DATA_MODE_STORAGE_KEY);
-  if (saved === "live" || saved === "demo") return saved;
-  return "live";
 }
 
 function getInitialDashboardPreferences(): DashboardPreferences {
@@ -97,14 +80,12 @@ function getInitialDashboardPreferences(): DashboardPreferences {
 export default function App() {
   const [activeView, setActiveView] = useState<ViewKey>("dashboard");
   const [theme, setTheme] = useState<Theme>(getInitialTheme);
-  const [dataMode, setDataMode] = useState<DataMode>(getInitialDataMode);
+  const dataMode = "live";
   const [dashboardPreferences, setDashboardPreferences] =
     useState<DashboardPreferences>(getInitialDashboardPreferences);
   const [searchSelection, setSearchSelection] =
     useState<SearchSelection | null>(null);
   const [toasts, setToasts] = useState<ToastItem[]>([]);
-  const paletteInputRef = useRef<HTMLInputElement | null>(null);
-  const globalSearchInputRef = useRef<HTMLInputElement | null>(null);
 
   const pushToast = useCallback((message: string, tone: ToastTone = "info") => {
     const id = `toast-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -133,38 +114,6 @@ export default function App() {
   } = useNotifications({ pushToast });
 
   const {
-    favorites,
-    setFavorites,
-    favoritesOpen,
-    setFavoritesOpen,
-    favoriteFilter,
-    setFavoriteFilter,
-    filteredFavorites,
-    addFavorite,
-    removeFavorite,
-    isFavorited,
-  } = useFavorites({ pushToast });
-
-  const {
-    alertRules,
-    alertRulesOpen,
-    setAlertRulesOpen,
-    ruleName,
-    setRuleName,
-    ruleType,
-    setRuleType,
-    ruleSymbol,
-    setRuleSymbol,
-    ruleThreshold,
-    setRuleThreshold,
-    activeRulesCount,
-    createAlertRule,
-    toggleAlertRule,
-    deleteAlertRule,
-    runAlertRulesCheck,
-  } = useAlertRules({ pushToast });
-
-  const {
     chatThreads,
     setChatThreads,
     activeChatThreadId,
@@ -179,10 +128,6 @@ export default function App() {
     root.classList.toggle("theme-light", theme === "light");
     window.localStorage.setItem(THEME_STORAGE_KEY, theme);
   }, [theme]);
-
-  useEffect(() => {
-    window.localStorage.setItem(DATA_MODE_STORAGE_KEY, dataMode);
-  }, [dataMode]);
 
   useEffect(() => {
     window.localStorage.setItem(
@@ -234,15 +179,16 @@ export default function App() {
   }, []);
 
   const toggleDataMode = useCallback(() => {
-    setDataMode((current) => {
-      const next = current === "live" ? "demo" : "live";
-      pushToast(
-        next === "demo" ? "Demo mode enabled" : "Live API mode enabled",
-        "info",
-      );
-      return next;
-    });
-  }, [pushToast]);
+    // Disabled in UI
+  }, []);
+
+  const addFavorite = useCallback(() => {
+    // Disabled in UI
+  }, []);
+
+  const isFavorited = useCallback(() => {
+    return false;
+  }, []);
 
   const goToView = useCallback(
     (view: ViewKey) => {
@@ -280,37 +226,6 @@ export default function App() {
     [createNotification],
   );
 
-  const handleFavoriteSelect = useCallback(
-    (favorite: FavoriteItem) => {
-      if (favorite.type === "company") {
-        setSearchSelection({
-          stamp: Date.now(),
-          discoveryQuery: favorite.symbol ?? favorite.title,
-          filingsSymbol: favorite.symbol,
-          newsSymbol: favorite.symbol,
-        });
-        goToView("discovery");
-      } else if (favorite.type === "filing") {
-        setSearchSelection({
-          stamp: Date.now(),
-          filingsSymbol: favorite.symbol,
-          discoveryQuery: favorite.symbol,
-        });
-        goToView("filings");
-      } else {
-        setSearchSelection({
-          stamp: Date.now(),
-          newsSymbol: favorite.symbol,
-        });
-        goToView("news");
-      }
-
-      setFavoritesOpen(false);
-      pushToast("Opened from favorites", "info");
-    },
-    [goToView, pushToast, setFavoritesOpen],
-  );
-
   const toggleDashboardDensity = useCallback(() => {
     setDashboardPreferences((current) => ({
       ...current,
@@ -338,58 +253,6 @@ export default function App() {
     setDashboardPreferences({ density: "comfortable", hiddenWidgets: [] });
     pushToast("Dashboard layout reset", "success");
   }, [pushToast]);
-
-  const {
-    globalSearchOpen,
-    globalSearchQuery,
-    globalSearchIndex,
-    setGlobalSearchOpen,
-    setGlobalSearchQuery,
-    setGlobalSearchIndex,
-    openGlobalSearch,
-    closeGlobalSearch,
-    globalSearchResults,
-    paletteOpen,
-    paletteQuery,
-    paletteActiveIndex,
-    setPaletteOpen,
-    setPaletteQuery,
-    setPaletteActiveIndex,
-    openPalette,
-    closePalette,
-    filteredCommands,
-  } = usePaletteSearch({
-    searchSelection,
-    goToView,
-    setSearchSelection,
-    theme,
-    dataMode,
-    toggleTheme,
-    toggleDataMode,
-    runAlertRulesCheck,
-    markAllNotificationsRead,
-    setAlertRulesOpen,
-    setNotificationsOpen,
-  });
-
-  // Keyboard shortcuts handling
-  useGlobalShortcuts({
-    paletteOpen,
-    setPaletteOpen,
-    closePalette,
-    filteredCommands,
-    paletteActiveIndex,
-    setPaletteActiveIndex,
-    setGlobalSearchOpen,
-    setGlobalSearchQuery,
-    setGlobalSearchIndex,
-    globalSearchOpen,
-    closeGlobalSearch,
-    globalSearchResults,
-    globalSearchIndex,
-  });
-
-
 
   const page = useMemo(() => {
     switch (activeView) {
@@ -507,7 +370,7 @@ export default function App() {
             dataMode={dataMode}
             onToggleTheme={toggleTheme}
             onToggleDataMode={toggleDataMode}
-            favoritesCount={favorites.length}
+            favoritesCount={0}
             unreadNotifications={unreadCount}
           />
         );
@@ -529,7 +392,6 @@ export default function App() {
     activeChatThreadId,
     dashboardPreferences,
     dataMode,
-    favorites.length,
     goToView,
     isFavorited,
     pushToast,
@@ -552,47 +414,13 @@ export default function App() {
       <SidebarShell
         activeView={activeView}
         unreadCount={unreadCount}
-        activeRulesCount={activeRulesCount}
-        favoritesCount={favorites.length}
         theme={theme}
-        dataMode={dataMode}
         onOpenNotifications={() => setNotificationsOpen(true)}
-        onOpenAlertRules={() => setAlertRulesOpen(true)}
-        onOpenFavorites={() => setFavoritesOpen(true)}
-        onClearFavorites={() => {
-          setFavorites([]);
-          pushToast("Favorites cleared", "info");
-        }}
         onToggleTheme={toggleTheme}
-        onToggleDataMode={toggleDataMode}
-        onOpenPalette={openPalette}
-        onOpenGlobalSearch={openGlobalSearch}
         onGoToView={goToView}
       />
 
       <main className="main-panel">{page}</main>
-
-      <CommandPalette
-        open={paletteOpen}
-        query={paletteQuery}
-        activeIndex={paletteActiveIndex}
-        commands={filteredCommands}
-        inputRef={paletteInputRef}
-        setQuery={setPaletteQuery}
-        setActiveIndex={setPaletteActiveIndex}
-        onClose={closePalette}
-      />
-
-      <GlobalSearchOverlay
-        open={globalSearchOpen}
-        query={globalSearchQuery}
-        activeIndex={globalSearchIndex}
-        results={globalSearchResults}
-        inputRef={globalSearchInputRef}
-        setQuery={setGlobalSearchQuery}
-        setActiveIndex={setGlobalSearchIndex}
-        onClose={closeGlobalSearch}
-      />
 
       <NotificationsPanel
         open={notificationsOpen}
@@ -603,34 +431,6 @@ export default function App() {
         onMarkAllRead={markAllNotificationsRead}
         onMarkRead={markNotificationRead}
         onDismiss={dismissNotification}
-      />
-
-      <FavoritesPanel
-        open={favoritesOpen}
-        filter={favoriteFilter}
-        favorites={filteredFavorites}
-        onClose={() => setFavoritesOpen(false)}
-        onFilterChange={setFavoriteFilter}
-        onOpenFavorite={handleFavoriteSelect}
-        onRemoveFavorite={removeFavorite}
-      />
-
-      <AlertRulesPanel
-        open={alertRulesOpen}
-        rules={alertRules}
-        ruleName={ruleName}
-        ruleType={ruleType}
-        ruleSymbol={ruleSymbol}
-        ruleThreshold={ruleThreshold}
-        onClose={() => setAlertRulesOpen(false)}
-        onRuleNameChange={setRuleName}
-        onRuleTypeChange={setRuleType}
-        onRuleSymbolChange={setRuleSymbol}
-        onRuleThresholdChange={setRuleThreshold}
-        onCreateRule={createAlertRule}
-        onRunCheck={runAlertRulesCheck}
-        onToggleRule={toggleAlertRule}
-        onDeleteRule={deleteAlertRule}
       />
 
       <ToastStack toasts={toasts} onRemove={removeToast} />
