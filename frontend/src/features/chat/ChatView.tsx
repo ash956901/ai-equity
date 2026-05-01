@@ -390,7 +390,7 @@ export function ChatView(props: ChatViewProps) {
   if (!activeThread) return null;
 
   return (
-    <section className="page-wrap">
+    <section className="page-wrap chat-page-wrap">
       <PageHeader
         title="Iris Research Copilot"
         subtitle="Persistent threads with mode-aware responses and reusable prompts."
