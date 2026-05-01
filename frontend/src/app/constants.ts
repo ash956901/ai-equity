@@ -77,6 +77,7 @@ export const navItems: NavItem[] = [
   { key: "news", label: "News", icon: Newspaper, caption: "Sentiment" },
   { key: "profile", label: "Profile", icon: CircleUserRound, caption: "Account" },
   { key: "settings", label: "Settings", icon: Settings, caption: "Preferences" },
+
 ];
 
 export const THEME_STORAGE_KEY = "equityai-theme";

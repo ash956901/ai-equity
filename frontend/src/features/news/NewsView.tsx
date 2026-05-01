@@ -3,10 +3,8 @@ import { ArrowUpRight, Bookmark, BookmarkCheck, Newspaper, Search, TrendingUp } 
 
 import {
   ApiError,
-  fetchMarketHeadlines,
-  fetchTickerSentiment,
-  type NewsDataResponse,
-  type SentimentFeedResponse,
+  fetchNewsRadar,
+  type EnrichedNewsItem,
 } from "../../lib/api";
 import { PageHeader } from "../../shared/ui/PageHeader";
 
@@ -38,76 +36,39 @@ export function NewsView(props: NewsViewProps) {
   const [symbolInput, setSymbolInput] = useState("RELIANCE");
   const [activeSymbol, setActiveSymbol] = useState("RELIANCE");
 
-  const [headlines, setHeadlines] = useState<NewsDataResponse>({});
-  const [sentimentFeed, setSentimentFeed] = useState<SentimentFeedResponse | null>(null);
+  const [articles, setArticles] = useState<EnrichedNewsItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const [loadingHeadlines, setLoadingHeadlines] = useState(true);
-  const [loadingSentiment, setLoadingSentiment] = useState(true);
-
-  const [headlinesError, setHeadlinesError] = useState<string | null>(null);
-  const [sentimentError, setSentimentError] = useState<string | null>(null);
-
-  const loadHeadlines = useCallback(async () => {
-    setLoadingHeadlines(true);
-    setHeadlinesError(null);
+  const loadNews = useCallback(async (symbol: string) => {
+    setLoading(true);
+    setError(null);
 
     if (props.dataMode === "demo") {
-      setHeadlines({});
-      setHeadlinesError(DEMO_BANNER_MSG);
-      setLoadingHeadlines(false);
+      setArticles([]);
+      setError(DEMO_BANNER_MSG);
+      setLoading(false);
       return;
     }
 
     try {
-      const data = await fetchMarketHeadlines(50, activeSymbol);
-      setHeadlines(data);
-    } catch (error) {
-      if (error instanceof ApiError && error.status === 401) {
-        setHeadlinesError("News API is not configured on backend yet (401).");
+      const data = await fetchNewsRadar(50, symbol);
+      setArticles(data);
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 401) {
+        setError("News API is not configured on backend yet (401).");
       } else {
-        setHeadlinesError("Could not load market headlines.");
+        setError(`Could not load news and sentiment for ${symbol}.`);
       }
+      setArticles([]);
     } finally {
-      setLoadingHeadlines(false);
+      setLoading(false);
     }
-  }, [activeSymbol, props.dataMode]);
-
-  const loadSentiment = useCallback(
-    async (symbol: string) => {
-      setLoadingSentiment(true);
-      setSentimentError(null);
-
-      if (props.dataMode === "demo") {
-        setSentimentFeed(null);
-        setSentimentError(DEMO_BANNER_MSG);
-        setLoadingSentiment(false);
-        return;
-      }
-
-      try {
-        const data = await fetchTickerSentiment(symbol, 24, 8);
-        setSentimentFeed(data);
-      } catch (error) {
-        if (error instanceof ApiError && error.status === 401) {
-          setSentimentError("Sentiment feed is unauthorized until backend keys are configured.");
-        } else {
-          setSentimentError(`Could not load sentiment for ${symbol}.`);
-        }
-        setSentimentFeed(null);
-      } finally {
-        setLoadingSentiment(false);
-      }
-    },
-    [props.dataMode]
-  );
+  }, [props.dataMode]);
 
   useEffect(() => {
-    void loadHeadlines();
-  }, [loadHeadlines]);
-
-  useEffect(() => {
-    void loadSentiment(activeSymbol);
-  }, [activeSymbol, loadSentiment]);
+    void loadNews(activeSymbol);
+  }, [activeSymbol, loadNews]);
 
   useEffect(() => {
     if (!props.searchSelection) return;
@@ -123,19 +84,16 @@ export function NewsView(props: NewsViewProps) {
   }, [lastSelectionStamp, props.searchSelection]);
 
   const sentimentCounts = {
-    positive:
-      sentimentFeed?.articles.filter((item) => item.sentiment?.toLowerCase() === "positive").length ?? 0,
-    neutral:
-      sentimentFeed?.articles.filter((item) => item.sentiment?.toLowerCase() === "neutral").length ?? 0,
-    negative:
-      sentimentFeed?.articles.filter((item) => item.sentiment?.toLowerCase() === "negative").length ?? 0,
+    positive: articles.filter((item) => item.sentiment?.toLowerCase() === "positive").length,
+    neutral: articles.filter((item) => item.sentiment?.toLowerCase() === "neutral").length,
+    negative: articles.filter((item) => item.sentiment?.toLowerCase() === "negative").length,
   };
 
   return (
     <section className="page-wrap">
       <PageHeader
         title="News & Sentiment Radar"
-        subtitle="Monitor market narratives and detect sector-level shifts quickly."
+        subtitle="Monitor market narratives, detect sector-level shifts, and track AI sentiment scoring."
         dataMode={props.dataMode}
         right={
           <form
@@ -161,160 +119,109 @@ export function NewsView(props: NewsViewProps) {
       <div className="news-toolbar">
         <div className="chip-row">
           <span className="chip">Ticker: {activeSymbol}</span>
-          <span className="chip">Headlines: {headlines.results?.length ?? 0}</span>
-          <span className="chip">Sentiment: {sentimentFeed?.total_results ?? 0}</span>
+          <span className="chip">Articles: {articles.length}</span>
         </div>
         <div className="chip-row">
-          <button type="button" className="secondary-btn mini-btn" onClick={() => void loadHeadlines()}>
-            Refresh Headlines
-          </button>
-          <button
-            type="button"
-            className="secondary-btn mini-btn"
-            onClick={() => void loadSentiment(activeSymbol)}
-          >
-            Refresh Sentiment
+          <button type="button" className="secondary-btn mini-btn" onClick={() => void loadNews(activeSymbol)}>
+            Refresh Data
           </button>
         </div>
       </div>
 
-      {headlinesError ? <div className="notice warning">{headlinesError}</div> : null}
-      {sentimentError ? <div className="notice warning">{sentimentError}</div> : null}
+      {error ? <div className="notice warning">{error}</div> : null}
 
-      <div className="split-grid">
-        <article className="feature-card news-panel">
+      <div className="split-grid" style={{ gridTemplateColumns: "1fr" }}>
+        <article className="feature-card news-panel" style={{ width: "100%" }}>
           <div className="feature-head">
             <Newspaper size={18} />
-            <h3>Top Headlines</h3>
+            <h3>News & Sentiment Feed ({activeSymbol})</h3>
           </div>
 
-          {loadingHeadlines ? (
-            <p>Loading market headlines...</p>
-          ) : (
-            <div className="feed-list">
-              {(headlines.results ?? []).slice(0, 8).map((article, index) => (
-                <div key={`${article.article_id ?? article.link ?? index}`} className="feed-item-wrap">
-                  <a href={article.link ?? "#"} target="_blank" rel="noreferrer" className="feed-item">
-                    <p>{article.title ?? "Untitled headline"}</p>
-                    <span>
-                      {article.source_name ?? "Unknown source"}
-                      {article.pubDate ? ` · ${article.pubDate}` : ""}
-                    </span>
-                  </a>
-                  <button
-                    type="button"
-                    className="favorite-icon-btn"
-                    onClick={() =>
-                      props.addFavorite({
-                        type: "headline",
-                        symbol: activeSymbol,
-                        title: article.title ?? "Untitled headline",
-                        subtitle: article.source_name ?? "Unknown source",
-                        url: article.link,
-                      })
-                    }
-                    aria-label="Save headline to favorites"
-                  >
-                    {props.isFavorited({
-                      type: "headline",
-                      symbol: activeSymbol,
-                      title: article.title ?? "Untitled headline",
-                    }) ? (
-                      <BookmarkCheck size={14} />
-                    ) : (
-                      <Bookmark size={14} />
-                    )}
-                  </button>
-                  <button
-                    type="button"
-                    className="favorite-icon-btn"
-                    onClick={() => {
-                      props.setSearchSelection({
-                        stamp: Date.now(),
-                        companySymbol: activeSymbol,
-                        newsSymbol: activeSymbol,
-                      });
-                      props.goToView("company");
-                    }}
-                    aria-label="Open company workspace"
-                  >
-                    <ArrowUpRight size={14} />
-                  </button>
-                </div>
-              ))}
-              {!(headlines.results ?? []).length ? <p>No headlines available for now.</p> : null}
-            </div>
-          )}
-        </article>
-
-        <article className="feature-card news-panel">
-          <div className="feature-head">
-            <TrendingUp size={18} />
-            <h3>Sentiment Feed ({activeSymbol})</h3>
-          </div>
-
-          <div className="chip-row sentiment-row">
+          <div className="chip-row sentiment-row" style={{ marginBottom: "16px" }}>
             <span className="chip positive">Positive: {sentimentCounts.positive}</span>
             <span className="chip">Neutral: {sentimentCounts.neutral}</span>
             <span className="chip negative">Negative: {sentimentCounts.negative}</span>
           </div>
 
-          {loadingSentiment ? (
-            <p>Loading sentiment feed...</p>
+          {loading ? (
+            <p>Loading market intelligence...</p>
           ) : (
-            <div className="feed-list">
-              {(sentimentFeed?.articles ?? []).slice(0, 8).map((article, index) => (
-                <div key={`${article.article_id ?? article.link ?? index}`} className="feed-item-wrap">
-                  <a href={article.link ?? "#"} target="_blank" rel="noreferrer" className="feed-item">
-                    <p>{article.title ?? "Untitled article"}</p>
-                    <span>
-                      {(article.sentiment ?? "unknown").toLowerCase()}
-                      {article.source_name ? ` · ${article.source_name}` : ""}
-                    </span>
-                  </a>
-                  <button
-                    type="button"
-                    className="favorite-icon-btn"
-                    onClick={() =>
-                      props.addFavorite({
-                        type: "headline",
-                        symbol: activeSymbol,
-                        title: article.title ?? "Untitled article",
-                        subtitle: `${article.sentiment ?? "unknown"} · ${article.source_name ?? "Unknown source"}`,
-                        url: article.link,
-                      })
-                    }
-                    aria-label="Save sentiment article to favorites"
-                  >
-                    {props.isFavorited({
-                      type: "headline",
-                      symbol: activeSymbol,
-                      title: article.title ?? "Untitled article",
-                    }) ? (
-                      <BookmarkCheck size={14} />
-                    ) : (
-                      <Bookmark size={14} />
-                    )}
-                  </button>
-                  <button
-                    type="button"
-                    className="favorite-icon-btn"
-                    onClick={() => {
-                      props.setSearchSelection({
-                        stamp: Date.now(),
-                        companySymbol: activeSymbol,
-                        newsSymbol: activeSymbol,
-                      });
-                      props.goToView("company");
-                    }}
-                    aria-label="Open company workspace"
-                  >
-                    <ArrowUpRight size={14} />
-                  </button>
-                </div>
-              ))}
-              {!(sentimentFeed?.articles ?? []).length ? (
-                <p>No sentiment articles available for this symbol.</p>
+            <div className="feed-list" style={{ gap: "12px" }}>
+              {articles.map((article, index) => {
+                const sentimentScore = (article.sentiment_confidence * 100).toFixed(0);
+                const sentimentType = article.sentiment?.toLowerCase();
+                const sentimentClass = sentimentType === "positive" ? "positive" : sentimentType === "negative" ? "negative" : "";
+                
+                return (
+                  <div key={`${article.url ?? index}`} className="feed-item-wrap" style={{ gridTemplateColumns: "minmax(0, 1fr) auto" }}>
+                    <a href={article.url ?? "#"} target="_blank" rel="noreferrer" className="feed-item" style={{ display: "flex", flexDirection: "column", gap: "8px", padding: "14px" }}>
+                      <div>
+                        <p style={{ fontSize: "0.95rem", fontWeight: 600, color: "var(--ink)", lineHeight: 1.4 }}>
+                          {article.title ?? "Untitled article"}
+                        </p>
+                        <p style={{ marginTop: "6px", fontSize: "0.82rem", color: "var(--muted)", lineHeight: 1.5 }}>
+                          {article.summary}
+                        </p>
+                      </div>
+                      <div className="chip-row" style={{ marginTop: "6px", gap: "6px" }}>
+                        <span className={`chip ${sentimentClass}`} style={{ fontWeight: 600 }}>
+                          {article.sentiment?.toUpperCase()} ({sentimentScore}%)
+                        </span>
+                        <span className="chip">{article.source}</span>
+                        <span className="chip">{new Date(article.published_at).toLocaleString()}</span>
+                        {article.categories?.map((cat) => (
+                          <span key={cat} className="chip" style={{ background: "color-mix(in srgb, var(--brand) 10%, transparent)", borderColor: "color-mix(in srgb, var(--brand) 25%, transparent)", color: "var(--brand)" }}>
+                            {cat}
+                          </span>
+                        ))}
+                      </div>
+                    </a>
+                    <div style={{ display: "flex", flexDirection: "column", gap: "6px", justifyContent: "flex-start", paddingTop: "4px" }}>
+                      <button
+                        type="button"
+                        className="favorite-icon-btn"
+                        onClick={() =>
+                          props.addFavorite({
+                            type: "headline",
+                            symbol: activeSymbol,
+                            title: article.title ?? "Untitled article",
+                            subtitle: `${article.sentiment ?? "unknown"} · ${article.source ?? "Unknown source"}`,
+                            url: article.url ?? undefined,
+                          })
+                        }
+                        aria-label="Save sentiment article to favorites"
+                      >
+                        {props.isFavorited({
+                          type: "headline",
+                          symbol: activeSymbol,
+                          title: article.title ?? "Untitled article",
+                        }) ? (
+                          <BookmarkCheck size={16} />
+                        ) : (
+                          <Bookmark size={16} />
+                        )}
+                      </button>
+                      <button
+                        type="button"
+                        className="favorite-icon-btn"
+                        onClick={() => {
+                          props.setSearchSelection({
+                            stamp: Date.now(),
+                            companySymbol: activeSymbol,
+                            newsSymbol: activeSymbol,
+                          });
+                          props.goToView("company");
+                        }}
+                        aria-label="Open company workspace"
+                      >
+                        <ArrowUpRight size={16} />
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+              {!articles.length ? (
+                <p>No market intelligence available for this symbol.</p>
               ) : null}
             </div>
           )}

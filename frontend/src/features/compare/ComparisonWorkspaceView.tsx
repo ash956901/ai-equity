@@ -58,6 +58,7 @@ export function ComparisonWorkspaceView(props: ComparisonWorkspaceViewProps) {
   const [inputText, setInputText] = useState("RELIANCE, TCS");
   const [selectedSymbols, setSelectedSymbols] = useState<string[]>(["RELIANCE", "TCS"]);
   const [compareLoading, setCompareLoading] = useState(false);
+  const [showRaw, setShowRaw] = useState(false);
   const [compareError, setCompareError] = useState<string | null>(null);
   const [compareResult, setCompareResult] = useState<CompareResponse | null>(null);
 
@@ -258,8 +259,11 @@ export function ComparisonWorkspaceView(props: ComparisonWorkspaceViewProps) {
         </button>
         <button type="button" className="primary-btn" onClick={() => void runComparison()}>
           {compareLoading ? "Comparing..." : "Run Backend Compare"}
-        </button>
-        <button type="button" className="primary-btn" onClick={openComparisonReport}>
+</button>
+          <button type="button" className="secondary-btn" onClick={() => setShowRaw(!showRaw)}>
+            {showRaw ? "Hide raw response" : "Show raw response"}
+          </button>
+          <button type="button" className="primary-btn" onClick={openComparisonReport}>
           Generate Comparison Report
         </button>
         <button
@@ -286,42 +290,109 @@ export function ComparisonWorkspaceView(props: ComparisonWorkspaceViewProps) {
 
       {compareError ? <div className="notice warning">{compareError}</div> : null}
 
-      {compareResult ? (
-        <article className="list-card compare-result-card">
-          <div className="table-head">
-            <h3>Backend Comparison Verdict</h3>
-            <span>{compareResult.comparison.growth === "Tie" ? "Split" : "Decided"}</span>
-          </div>
+      {compareResult && (
+        <>
+          <article className="terminal-panel">
+            <h3 className="terminal-panel-title">Institutional Comparison Verdict</h3>
 
-          <p className="compare-verdict-text">{compareResult.final_verdict}</p>
-
-          <div className="chip-row">
-            <span className="chip">Growth: {compareResult.comparison.growth}</span>
-            <span className="chip">Profitability: {compareResult.comparison.profitability}</span>
-            <span className="chip">Risk: {compareResult.comparison.risk}</span>
-            <span className="chip">Valuation: {compareResult.comparison.valuation}</span>
-          </div>
-
-          <div className="split-grid compare-summary-grid">
-            <div className="list-item single-line compare-summary-box">
-              <p>{compareResult.companyA_summary}</p>
+            <div className="verdict-banner">
+              <h3>Final Verdict</h3>
+              <p>{compareResult.final_verdict}</p>
             </div>
-            <div className="list-item single-line compare-summary-box">
-              <p>{compareResult.companyB_summary}</p>
-            </div>
-          </div>
 
-          {compareResult.insights.length ? (
-            <div className="compare-insights-list">
-              {compareResult.insights.map((insight, index) => (
-                <div key={`compare-insight-${index}`} className="list-item single-line">
-                  <p>{insight}</p>
+            <div className="comparison-scores">
+              <div className="score-box">
+                <span className="score-box-label">Growth</span>
+                <span className={`score-box-value ${compareResult.comparison.growth}`}>{compareResult.comparison.growth}</span>
+              </div>
+              <div className="score-box">
+                <span className="score-box-label">Profitability</span>
+                <span className={`score-box-value ${compareResult.comparison.profitability}`}>{compareResult.comparison.profitability}</span>
+              </div>
+              <div className="score-box">
+                <span className="score-box-label">Risk</span>
+                <span className={`score-box-value ${compareResult.comparison.risk}`}>{compareResult.comparison.risk}</span>
+              </div>
+              <div className="score-box">
+                <span className="score-box-label">Valuation</span>
+                <span className={`score-box-value ${compareResult.comparison.valuation}`}>{compareResult.comparison.valuation}</span>
+              </div>
+            </div>
+
+            {compareResult.companyA_stock_data && compareResult.companyB_stock_data && (() => {
+              const a = compareResult.companyA_stock_data as any;
+              const b = compareResult.companyB_stock_data as any;
+              const rows = [
+                { label: 'CEO', key: 'ceo' },
+                { label: 'Sector', key: 'sector' },
+                { label: 'Domain', key: 'domain' },
+                { label: 'Market Cap', key: 'market_cap', fmt: (v: any) => v != null ? `₹${(Number(v) / 1e7).toFixed(2)}Cr` : 'N/A' },
+                { label: 'Net Profit', key: 'net_profit', fmt: (v: any) => v != null ? `₹${(Number(v) / 1e7).toFixed(2)}Cr` : 'N/A' },
+                { label: 'Profit Margin', key: 'profit_margin', fmt: (v: any) => v != null ? `${Number(v).toFixed(2)}%` : 'N/A' },
+                { label: 'Margin Trend', key: 'margin_trend' },
+                { label: 'ROE', key: 'roe', fmt: (v: any) => v != null ? `${Number(v).toFixed(2)}%` : 'N/A' },
+                { label: 'ROCE', key: 'roce', fmt: (v: any) => v != null ? `${Number(v).toFixed(2)}%` : 'N/A' },
+                { label: 'P/E Ratio', key: 'pe_ratio', fmt: (v: any) => v != null ? Number(v).toFixed(2) : 'N/A' },
+                { label: 'Debt/Equity', key: 'debt_to_equity', fmt: (v: any) => v != null ? Number(v).toFixed(2) : 'N/A' },
+                { label: 'Rev Growth Score', key: 'revenue_growth_score', fmt: (v: any) => v != null ? Number(v).toFixed(2) : 'N/A' },
+                { label: 'Qtr Consistency', key: 'quarterly_consistency', fmt: (v: any) => v != null ? Number(v).toFixed(2) : 'N/A' },
+                { label: 'Earn Volatility', key: 'earnings_volatility', fmt: (v: any) => v != null ? Number(v).toFixed(2) : 'N/A' },
+                { label: 'Data Source', key: 'data_source' },
+              ];
+              return (
+                <div className="terminal-grid">
+                  <div className="terminal-row header">
+                    <div className="terminal-cell">Metric</div>
+                    <div className="terminal-cell">{a.company_name ?? 'Company A'} ({a.ticker_nse ?? a.ticker_bse})</div>
+                    <div className="terminal-cell">{b.company_name ?? 'Company B'} ({b.ticker_nse ?? b.ticker_bse})</div>
+                  </div>
+                  {rows.map((row) => (
+                    <div key={row.key} className="terminal-row">
+                      <div className="terminal-cell metric-name">{row.label}</div>
+                      <div className="terminal-cell value">{row.fmt ? row.fmt(a[row.key]) : String(a[row.key] ?? 'N/A')}</div>
+                      <div className="terminal-cell value">{row.fmt ? row.fmt(b[row.key]) : String(b[row.key] ?? 'N/A')}</div>
+                    </div>
+                  ))}
                 </div>
-              ))}
+              );
+            })()}
+            <div className="detailed-grid">
+              <div className="detailed-card growth">
+                <h4>Growth</h4>
+                <p>{compareResult.detailed_comparison?.growth || "No growth details available."}</p>
+              </div>
+              <div className="detailed-card profitability">
+                <h4>Profitability</h4>
+                <p>{compareResult.detailed_comparison?.profitability || "No profitability details available."}</p>
+              </div>
+              <div className="detailed-card risk">
+                <h4>Risk</h4>
+                <p>{compareResult.detailed_comparison?.risk || "No risk details available."}</p>
+              </div>
+              <div className="detailed-card valuation">
+                <h4>Valuation</h4>
+                <p>{compareResult.detailed_comparison?.valuation || "No valuation details available."}</p>
+              </div>
             </div>
-          ) : null}
-        </article>
-      ) : null}
+
+            {compareResult.insights.length ? (
+              <div className="compare-insights-list">
+                <h4>Analyst Insights</h4>
+                {compareResult.insights.map((insight, index) => (
+                  <div key={`compare-insight-${index}`} className="insight-item">
+                    <span className="insight-bullet" />
+                    <p>{insight}</p>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+          </article>          {showRaw && (
+            <pre className="bg-gray-100 p-4 rounded overflow-x-auto mt-2">
+              {JSON.stringify(compareResult, null, 2)}
+            </pre>
+          )}
+        </>
+      )}
 
       {selectedCompanies.length >= 2 ? (
         <div className="comparison-table-card">
@@ -373,7 +444,7 @@ export function ComparisonWorkspaceView(props: ComparisonWorkspaceViewProps) {
                   </span>
                 ))}
             </div>
-          </article>
+</article>
         ))}
       </div>
     </section>

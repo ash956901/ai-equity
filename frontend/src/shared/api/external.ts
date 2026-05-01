@@ -8,7 +8,7 @@ import {
   type SentimentFeedResponse,
   type UpstoxHolding,
 } from "../types/api";
-import { aiGet, getJson } from "./core";
+import { aiGet, aiPost, getJson } from "./core";
 
 interface UpstoxHoldingsResponse {
   data?: UpstoxHolding[];
@@ -23,6 +23,21 @@ function mapEnrichedToArticle(item: EnrichedNewsItem, index: number) {
     pubDate: item.published_at,
     link: item.url ?? undefined,
   };
+}
+
+export async function fetchNewsRadar(
+  limit = 20,
+  query?: string,
+  _expertiseLevel = "intermediate"
+): Promise<EnrichedNewsItem[]> {
+  const normalizedLimit = Math.min(Math.max(limit, 1), 50);
+  const params = new URLSearchParams();
+  params.set("limit", String(normalizedLimit));
+  if (query && query.trim() !== "") {
+    params.set("query", query.trim());
+  }
+
+  return aiGet<EnrichedNewsItem[]>(`/get-news?${params.toString()}`, 90000);
 }
 
 export async function fetchMarketHeadlines(limit = 20, symbolOrName?: string): Promise<NewsDataResponse> {

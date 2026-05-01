@@ -10,6 +10,7 @@ import { ProfileView } from "./features/profile/ProfileView";
 import { ComparisonWorkspaceView } from "./features/compare/ComparisonWorkspaceView";
 import { ChatView } from "./features/chat/ChatView";
 import { CompanyWorkspaceView } from "./features/company/CompanyWorkspaceView";
+
 import { CommandPalette } from "./app/components/CommandPalette";
 import { GlobalSearchOverlay } from "./app/components/GlobalSearchOverlay";
 import { NotificationsPanel } from "./app/components/NotificationsPanel";
@@ -510,6 +511,7 @@ export default function App() {
             unreadNotifications={unreadCount}
           />
         );
+
       default:
         return (
           <DashboardView

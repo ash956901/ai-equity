@@ -11,7 +11,8 @@ export type ViewKey =
   | "timeline"
   | "news"
   | "profile"
-  | "settings";
+  | "settings"
+
 
 export type Theme = "light" | "dark";
 export type DataMode = "live" | "demo";

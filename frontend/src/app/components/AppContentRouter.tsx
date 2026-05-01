@@ -10,6 +10,7 @@ import { NewsView } from "../../features/news/NewsView";
 import { PortfolioView } from "../../features/portfolio/PortfolioView";
 import { ProfileView } from "../../features/profile/ProfileView";
 import { SettingsView } from "../../features/settings/SettingsView";
+
 import { TimelineView } from "../../features/timeline/TimelineView";
 import type {
   ChatThread,
@@ -161,17 +162,18 @@ export function AppContentRouter(props: AppContentRouterProps) {
           pushToast={props.pushToast}
         />
       );
-    case "settings":
-      return (
-        <SettingsView
-          theme={props.theme}
-          dataMode={props.dataMode}
-          onToggleTheme={props.onToggleTheme}
-          onToggleDataMode={props.onToggleDataMode}
-          favoritesCount={props.favoritesCount}
-          unreadNotifications={props.unreadCount}
-        />
-      );
+case "settings":
+        return (
+          <SettingsView
+            theme={props.theme}
+            dataMode={props.dataMode}
+            onToggleTheme={props.onToggleTheme}
+            onToggleDataMode={props.onToggleDataMode}
+            favoritesCount={props.favoritesCount}
+            unreadNotifications={props.unreadCount}
+          />
+        );
+
     default:
       return (
         <DashboardView
