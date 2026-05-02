@@ -205,6 +205,8 @@ def crawl_nse_filings(
     since_date: Optional[str] = None,
 ):
     """Crawl NSE filings for companies."""
+    from src.etl.ingestion_service import DocumentIngestionService
+    
     db = SessionLocal()
     run = _log_etl_run(
         db,
@@ -215,7 +217,100 @@ def crawl_nse_filings(
         crawler = NSECrawler()
         cid = UUID(company_id) if company_id else None
         results = crawler.crawl(company_id=cid, since_date=since_date)
-        _finish_etl_run(db, run, records=len(results))
+        
+        # Integrate with ingestion service to download filings
+        ingestion_service = DocumentIngestionService(db)
+        company = db.query(Company).filter(Company.id == cid).first() if cid else None
+        
+        # If we have a specific company, use its ID; otherwise, we'll need to map symbols to companies
+        if company:
+            downloaded = 0
+            for result in results:
+                filing = ingestion_service.ingest_filing(company.id, result)
+                if filing:
+                    downloaded += 1
+            _finish_etl_run(db, run, records=downloaded)
+        else:
+            # For batch processing, we need to find companies by symbol
+            downloaded = 0
+            for result in results:
+                symbol = result.get("symbol")
+                if symbol:
+                    # Try to find company by NSE symbol
+                    company = db.query(Company).filter(
+                        (Company.ticker_nse == symbol) | (Company.tl_nse == symbol)
+                    ).first()
+                    if company is None:
+                        # Try to find by BSE symbol
+                        company = db.query(Company).filter(
+                            (Company.ticker_nse == symbol) | (Company.ticker_bse == symbol)
+                        ).first()
+                    
+                    if company:
+                        filing = ingestion_service.ingest_filing(company.id, result)
+                        if filing:
+                            downloaded += 1
+            _finish_etl_run(db, run, records=downloaded)
+    except Exception as e:
+        _finish_etl_run(db, run, status="failed", error=str(e))
+    finally:
+        db.close()
+
+
+@app.task(bind=True, name="etl.crawl_bse")
+def crawl_bse_filings(
+    self,
+    company_id: Optional[str] = None,
+    since_date: Optional[str] = None,
+):
+    """Crawl BSE filings for companies."""
+    from src.etl.ingestion_service import DocumentIngestionService
+    from src.etl.crawler_bse import BSECrawler
+    
+    db = SessionLocal()
+    run = _log_etl_run(
+        db,
+        "bse_filings",
+        company_id=UUID(company_id) if company_id else None,
+    )
+    try:
+        crawler = BSECrawler()
+        cid = UUID(company_id) if company_id else None
+        results = crawler.crawl(company_id=cid, since_date=since_date)
+        
+        # Integrate with ingestion service to download filings
+        ingestion_service = DocumentIngestionService(db)
+        company = db.query(Company).filter(Company.id == cid).first() if cid else None
+        
+        # If we have a specific company, use its ID; otherwise, we'll need to map symbols to companies
+        if company:
+            downloaded = 0
+            for result in results:
+                filing = ingestion_service.ingest_filing(company.id, result)
+                if filing:
+                    downloaded += 1
+            _finish_etl_run(db, run, records=downloaded)
+        else:
+            # For batch processing, we need to find companies by symbol
+            downloaded = 0
+            for result in results:
+                symbol = result.get("symbol")
+                if symbol:
+                    # Try to find company by BSE symbol
+                    company = db.query(Company).filter(
+                        (Company.ticker_bse == symbol) | (Company.ticker_nse == symbol)
+                    ).first()
+                    if company is None:
+                        # Try to find by NSE symbol as fallback
+                        company = db.query(Company).filter(
+                            Company.ticker_nse == symbol
+                        ).first()
+                    
+                    if company:
+                        filing = ingestion_service.ingest_filing(company.id, result)
+                        if filing:
+                            downloaded += 1
+            _finish_etl_run(db, run, records=downloaded)
     except Exception as e:
         _finish_etl_run(db, run, status="failed", error=str(e))
     finally:

@@ -38,7 +38,7 @@ app.conf.beat_schedule = {
     "enrich-companies-daily": {
         "task": "etl.enrich_companies",
         "schedule": crontab(hour=7, minute=0),
-        "kwargs": {"batch_size": 200},
+        "kwargs": {"batch_size": 100},
     },
     # Refresh financial data for companies that lack it — twice daily
     "refresh-financials-morning": {
@@ -54,7 +54,12 @@ app.conf.beat_schedule = {
     # Crawl NSE filings every 2 hours during market hours (9 AM - 6 PM IST)
     "crawl-nse-filings-periodic": {
         "task": "etl.crawl_nse",
-        "schedule": crontab(hour="9,11,13,15,17", minute=30),
+        "schedule": crontab(hour=9, minute=30),
+    },
+    # Crawl BSE filings twice daily
+    "crawl-bse-filings": {
+        "task": "etl.crawl_bse",
+        "schedule": crontab(hour="9,15", minute=0),
     },
     # Crawl IR pages weekly on Saturday at 2 AM IST
     "crawl-ir-pages-weekly": {
