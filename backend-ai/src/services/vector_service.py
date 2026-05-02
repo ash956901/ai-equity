@@ -60,13 +60,14 @@ class VectorService:
                     )
                 )
 
-            results = client.search(
+            response = client.query_points(
                 collection_name="company_filings",
-                query_vector=query_embedding,
+                query=query_embedding,
                 query_filter=Filter(must=conditions) if conditions else None,
                 limit=limit,
                 with_payload=True,
             )
+            results = response.points
 
             return [
                 {
@@ -99,9 +100,9 @@ class VectorService:
 
             from qdrant_client.models import Filter, FieldCondition, MatchValue
 
-            results = client.search(
+            response = client.query_points(
                 collection_name="user_uploads",
-                query_vector=query_embedding,
+                query=query_embedding,
                 query_filter=Filter(
                     must=[
                         FieldCondition(
@@ -117,6 +118,7 @@ class VectorService:
                 limit=limit,
                 with_payload=True,
             )
+            results = response.points
 
             return [
                 {
@@ -128,6 +130,66 @@ class VectorService:
                 for hit in results
             ]
         except Exception:
+            return []
+
+    def thematic_search(
+        self,
+        query: str,
+        limit: int = 15,
+        min_score: float = 0.5,
+    ) -> List[Dict[str, Any]]:
+        """Global semantic search across all companies for thematic discovery."""
+        client = self._get_client()
+        if not client:
+            return []
+
+        try:
+            query_embedding = self._embed_text(query)
+
+            # Search across all filings without company_id filter
+            response = client.query_points(
+                collection_name="company_filings",
+                query=query_embedding,
+                limit=limit,
+                with_payload=True,
+                score_threshold=min_score,
+            )
+            results = response.points
+
+            # Aggregate by company to find top matching companies
+            company_matches = {}
+            for hit in results:
+                cid = hit.payload.get("company_id")
+                if not cid:
+                    continue
+                    
+                if cid not in company_matches:
+                    company_matches[cid] = {
+                        "company_id": cid,
+                        "company_name": hit.payload.get("company", "Unknown"),
+                        "max_score": hit.score,
+                        "match_count": 1,
+                        "evidence": [hit.payload.get("text", "")]
+                    }
+                else:
+                    company_matches[cid]["match_count"] += 1
+                    if hit.score > company_matches[cid]["max_score"]:
+                        company_matches[cid]["max_score"] = hit.score
+                    # Keep up to 3 evidence snippets per company
+                    if len(company_matches[cid]["evidence"]) < 3:
+                        company_matches[cid]["evidence"].append(hit.payload.get("text", ""))
+
+            # Sort companies by max score
+            sorted_companies = sorted(
+                list(company_matches.values()), 
+                key=lambda x: x["max_score"], 
+                reverse=True
+            )
+            return sorted_companies
+            
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).error(f"Thematic search error: {e}")
             return []
 
     def _embed_text(self, text: str) -> List[float]:

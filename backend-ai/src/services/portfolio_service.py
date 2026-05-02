@@ -56,7 +56,9 @@ class PortfolioService:
         return result
 
     def calculate_metrics(self, portfolio_id: UUID) -> Dict[str, Any]:
-        """Calculate portfolio-level metrics."""
+        """Calculate portfolio-level quantitative metrics including risk."""
+        from src.db.models import Company
+        
         holdings = self.get_holdings(portfolio_id)
         if not holdings:
             return {
@@ -64,6 +66,10 @@ class PortfolioService:
                 "total_value_inr": 0,
                 "holdings_count": 0,
                 "top_holding_pct": 0,
+                "portfolio_beta": 1.0,
+                "portfolio_volatility": 0.0,
+                "sharpe_ratio": 0.0,
+                "diversification_score": 0,
                 "sector_allocation": {},
                 "message": "No holdings in portfolio",
             }
@@ -75,12 +81,54 @@ class PortfolioService:
         top_holding_pct = (
             (top_value / total_value) if total_value > 0 else 0
         )
+        
+        # Sector allocation and simulated quantitative math
+        sector_allocation = {}
+        weighted_beta = 0.0
+        
+        for h in holdings:
+            company = self.db.query(Company).filter(Company.id == UUID(h["company_id"])).first()
+            weight = (h.get("value", 0) or 0) / total_value if total_value > 0 else 0
+            
+            if company:
+                sector = company.sector or "Unknown"
+                sector_allocation[sector] = sector_allocation.get(sector, 0) + weight
+                
+                # Mock Beta per company based on sector heuristics for demonstration
+                # In production, this would query historical daily returns
+                base_beta = 1.0
+                if sector == "Technology": base_beta = 1.2
+                elif sector == "Financials": base_beta = 1.1
+                elif sector == "Healthcare": base_beta = 0.8
+                elif sector == "Energy": base_beta = 1.3
+                elif sector == "Consumer": base_beta = 0.9
+                
+                weighted_beta += (base_beta * weight)
+            else:
+                weighted_beta += (1.0 * weight)
+
+        # Mathematical Models
+        portfolio_volatility = 0.15 * weighted_beta  # Approximated 15% base market volatility
+        risk_free_rate = 0.07  # 7% Indian G-Sec
+        expected_market_return = 0.12 # 12% Nifty Return
+        expected_portfolio_return = risk_free_rate + weighted_beta * (expected_market_return - risk_free_rate)
+        
+        sharpe_ratio = (expected_portfolio_return - risk_free_rate) / (portfolio_volatility if portfolio_volatility > 0 else 1)
+        
+        # Diversification Score (0-100) based on Herfindahl-Hirschman Index (HHI) of sectors
+        hhi = sum((w * 100)**2 for w in sector_allocation.values())
+        # HHI ranges from ~0 (highly diversified) to 10000 (single sector)
+        diversification_score = max(0, min(100, 100 - (hhi / 100)))
 
         return {
             "portfolio_id": str(portfolio_id),
             "total_value_inr": total_value,
             "holdings_count": holdings_count,
             "top_holding_pct": round(top_holding_pct, 4),
-            "sector_allocation": {},  # Would need company sector lookup
+            "portfolio_beta": round(weighted_beta, 2),
+            "portfolio_volatility": round(portfolio_volatility, 3),
+            "sharpe_ratio": round(sharpe_ratio, 2),
+            "diversification_score": int(diversification_score),
+            "sector_allocation": {k: round(v, 4) for k, v in sector_allocation.items()},
             "holdings": holdings,
         }

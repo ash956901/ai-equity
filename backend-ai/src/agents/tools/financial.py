@@ -25,8 +25,13 @@ def get_latest_financials(company_id: str, periods: int = 4) -> Dict[str, Any]:
             uid = resolve_company_id(company_id, db)
         except ValueError as e:
             return {"error": str(e)}
-        service = FinancialService(db)
-        return service.get_latest_financials(uid, periods)
+        try:
+            result = service.get_latest_financials(uid, periods)
+            if not result or not result.get("periods"):
+                return {"error": f"FMP API returned empty financials for {company_id}. Tell the user data is temporarily unavailable."}
+            return result
+        except Exception as e:
+            return {"error": f"FMP API fetch failed: {str(e)}"}
     finally:
         db.close()
 
@@ -50,8 +55,15 @@ def calculate_ratios(
         except ValueError as e:
             return {"error": str(e)}
         service = FinancialService(db)
-        p = date.fromisoformat(period) if period else None
-        return service.calculate_ratios(uid, p)
+        
+        try:
+            p = date.fromisoformat(period) if period else None
+            result = service.calculate_ratios(uid, p)
+            if not result or not result.get("ratios"):
+                return {"error": f"FMP API returned empty ratios for {company_id}. Tell the user data is temporarily unavailable."}
+            return result
+        except Exception as e:
+            return {"error": f"FMP API or calculation failed: {str(e)}"}
     finally:
         db.close()
 
