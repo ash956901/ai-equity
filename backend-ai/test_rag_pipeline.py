@@ -3,6 +3,9 @@ import os
 import asyncio
 from pathlib import Path
 from uuid import uuid4
+import logging
+
+logging.basicConfig(level=logging.INFO)
 
 sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
 
@@ -73,7 +76,7 @@ def setup_and_test_rag():
     
     chat_service = ChatService(db)
     user_id = uuid4()
-    query = "What are the key risk factors and revenue growth for Reliance Industries based on their recent filings?"
+    query = "Find me companies that are talking about telecom regulatory changes and market volatility in their filings."
     
     print(f"\nUser Query: {query}")
     print("Iris is analyzing via DeepAgents... (This may take a minute as it searches Qdrant and queries the LLM)")

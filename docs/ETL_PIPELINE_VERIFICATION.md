@@ -1,74 +1,123 @@
-# ETL Pipeline Verification Guide (Document Processing Stage)
+# ETL Pipeline Verification Guide
 
-This document provides a guide to verify the **Semantic Financial ETL Pipeline**, which transforms unstructured financial documents into structured, vectorized knowledge for the AI-Native Equity Research Platform.
+> **Updated 2026-05-03** — ETL is 100% complete. This doc now points to the master test suite. For the full Backend + AI + ETL testing reference, see **`BACKEND_TESTING_GUIDE.md`**.
 
-## 1. Overview of Completed Stages
+---
 
-The Document Processing Stage encompasses the following implemented flow:
-1. **EXTRACT (Ingestion Service)**: Downloads raw filings and stores metadata in PostgreSQL.
-2. **TRANSFORM (Core Intelligence Layer)**:
-    - **Parser**: Converts PDF, DOCX, PPTX, TXT into raw text.
-    - **Cleaner**: Strips headers/footers, and normalizes currency & whitespace.
-    - **Semantic Chunker**: Identifies major sections (e.g., "Management Discussion", "Risk Factors") and applies overlapping paragraph-based chunking.
-    - **Embedder**: Generates 768-dimensional embeddings using `nomic-embed-text` via Ollama.
-3. **LOAD (Storage Layer)**:
-    - Automatically structures payloads to include metadata tags (`company_id`, `filing_id`, `filing_type`, `section`, `text`, `year`).
-    - Upserts chunks into the `company_filings` Qdrant collection.
+## Overview — What the ETL Pipeline Does
 
-## 2. How to Verify the Pipeline
+```
+Raw Financial Document (PDF / DOCX / PPTX / TXT)
+        ↓
+  DocumentProcessor     → Extract raw text + tables
+        ↓
+  TextCleaner           → Strip headers, normalize currency/whitespace
+        ↓
+  SemanticChunker       → Detect sections (MD&A, Risk Factors, Financials)
+                          Apply overlapping paragraph windows
+        ↓
+  OllamaEmbedder        → 768-dim vectors via nomic-embed-text
+        ↓
+  FilingEnricher (LLM)  → Extract: timeline summary, red flags, JSON metrics
+        ↓
+  ETLLoadTask           → Upsert chunks into Qdrant (company_filings)
+                          Save enrichment data to PostgreSQL
+```
 
-### Option 1: Run the Standalone Pipeline Test
-We have created a dedicated test script `test_etl_pipeline.py` which mocks a document and runs it through the exact components.
+---
+
+## How to Verify (Quickest First)
+
+### Option 1: Master E2E Test (Recommended)
+Tests ETL **plus** every other layer in one shot.
 
 ```bash
 cd backend-ai
 source .venv/bin/activate
-python3 test_etl_pipeline.py
+python test_e2e_full_flow.py
 ```
 
-**Expected Output:**
-You should see output similar to the following, verifying that all stages completed without infinite loops or memory crashes:
-```text
-Testing ETL Pipeline...
-Created test document at uploads/filings/test_doc.txt
-Running Transform Task...
-Generated 4 chunks.
+**Expected: 18/18 ✅ — Layer 1 checks all 6 ETL stages.**
 
-Chunk 1:
-  Text: Reliance Industries Limited
-  Section: introduction_management_discussion_and_analysis
-  Embedding size: 768
-  Metadata tags: ...
-...
-Pipeline components instantiated and chunks generated successfully.
+---
+
+### Option 2: Standalone ETL Script
+
+```bash
+python test_etl_pipeline.py
 ```
 
-### Option 2: Verify End-to-End Celery Integration
-The true ETL pipeline runs asynchronously in the background using Celery. When a new filing is crawled, a task is automatically dispatched.
+Tests the pipeline components (parser → cleaner → chunker → embedder) against a dummy document. No Iris involved.
 
-1. **Start Qdrant, PostgreSQL, and Redis**: Ensure your local database stack is running via Docker.
-2. **Start the Celery Worker**:
-   ```bash
-   cd backend-ai
-   source .venv/bin/activate
-   celery -A src.celery_app worker --loglevel=info
-   ```
-3. **Trigger a Crawl Task**:
-   When a crawl finishes downloading a document (via `crawl_nse_filings`), watch the Celery worker logs. You should see it execute `etl.process_filing`, extract the document from `uploads/filings/`, generate embeddings, and log:
-   `Loaded <N> chunks into Qdrant collection company_filings`.
+---
 
-### Option 3: Verify the Vector DB (Qdrant)
-You can directly check if the data exists and is structured correctly inside Qdrant.
+### Option 3: Real PDF Test
 
-1. Open the Qdrant Web UI (usually accessible at `http://localhost:6333/dashboard`).
-2. Select the `company_filings` collection.
-3. Inspect a vector point payload. You should see:
-   - Vector array of size 768.
-   - Payload containing: `text`, `company_id`, `filing_id`, `filing_type`, `filing_date`, `document_type`, and `section`.
+```bash
+python test_real_pdf_pipeline.py
+```
 
-## 3. Next Steps: Connecting to RAG
+Downloads an actual PDF and runs it through `pdfplumber` (tables) + `PyMuPDF` (text), proving the full document parsing capability.
 
-Now that the ETL Document Pipeline is fully functional and storing high-quality semantic chunks into Qdrant, the next natural step is to query this data using the **Conversational AI Agent (Iris)**.
+---
 
-- **Vector Service**: The `VectorService` in `src/services/vector_service.py` is fully compatible and is already pointing to the `company_filings` collection using the stored `company_id` filters.
-- **RAG Generation**: Feed the retrieved context directly into the Deep Agent / LangChain prompts to generate grounded, evidence-based financial insights.
+### Option 4: Verify Qdrant Directly
+
+```bash
+python -c "
+from src.services.vector_service import VectorService
+svc = VectorService()
+client = svc._get_client()
+count = client.count(collection_name='company_filings')
+print(f'Vectors in Qdrant: {count.count}')
+pts, _ = client.scroll(collection_name='company_filings', limit=1, with_payload=True)
+print('Sample payload:', pts[0].payload if pts else 'EMPTY')
+"
+```
+
+---
+
+### Option 5: Celery Background Worker (Production Mode)
+
+```bash
+# Terminal 1
+celery -A src.celery_app worker --loglevel=info
+
+# Terminal 2 — dispatch a filing task
+python -c "
+from src.etl.tasks import process_filing_task
+process_filing_task.delay(
+    file_path='uploads/filings/reliance_annual_report_e2e.txt',
+    company_id='43703f95-b137-415b-b88b-5018a0883240',
+    filing_id='test-001',
+    filing_type='Annual Report',
+    company='Reliance Industries',
+    year='2023'
+)
+"
+```
+
+---
+
+## Capabilities Confirmed ✅
+
+| Capability | Verified Via |
+|---|---|
+| PDF text extraction (PyMuPDF) | `test_real_pdf_pipeline.py` |
+| PDF table extraction (pdfplumber → Markdown) | `test_real_pdf_pipeline.py` |
+| DOCX / PPTX parsing | `test_etl_pipeline.py` |
+| Semantic chunking with section detection | `test_e2e_full_flow.py` Layer 1c |
+| Embedding (Ollama `nomic-embed-text`, 768-dim) | All test scripts |
+| Qdrant vector upsert | `test_e2e_full_flow.py` Layer 1d |
+| LLM timeline summary generation | `test_e2e_full_flow.py` Layer 1b |
+| LLM red flag extraction | `test_e2e_full_flow.py` Layer 1b |
+| LLM financial metric extraction | `test_e2e_full_flow.py` Layer 1b |
+| PostgreSQL metadata sync | `test_e2e_full_flow.py` Layer 1a |
+
+---
+
+## For Full Backend Testing
+
+See → **`docs/BACKEND_TESTING_GUIDE.md`**
+
+*Last Updated: 2026-05-03 | ETL Status: 100% Complete ✅*

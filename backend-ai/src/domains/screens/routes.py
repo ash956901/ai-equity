@@ -3,7 +3,7 @@
 from typing import Any, Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -47,7 +47,7 @@ def save_screen(request: SaveScreenRequest, db: Session = Depends(get_db)):
 
 @router.post("/run")
 def run_screen(request: RunScreenRequest, db: Session = Depends(get_db)) -> list[dict[str, Any]]:
-    """Execute a screen query against the companies database."""
+    """Execute a traditional SQL screen against the companies database."""
     service = ScreensService(db)
     return service.run_screen(
         sector=request.sector,
@@ -56,3 +56,19 @@ def run_screen(request: RunScreenRequest, db: Session = Depends(get_db)) -> list
         max_market_cap=request.max_market_cap,
         limit=request.limit,
     )
+
+
+@router.get("/thematic")
+def thematic_screen(
+    q: str = Query(..., min_length=2, description="Investment theme to search for (e.g. 'renewable energy', 'AI infrastructure')"),
+    limit: int = Query(default=15, le=50),
+    db: Session = Depends(get_db),
+) -> list[dict[str, Any]]:
+    """Semantic AI-powered thematic stock discovery.
+
+    Searches across all company filings using vector similarity to find
+    companies whose disclosures match the provided investment theme.
+    Returns companies with their relevance score and evidence snippets.
+    """
+    service = ScreensService(db)
+    return service.thematic_search(q, limit)
