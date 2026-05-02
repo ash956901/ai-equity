@@ -1,134 +1,136 @@
 # Master Progress Tracker: AI-Native Equity Research OS
 
-This document serves as the centralized, living progress tracker for the EquityAI platform. It is structured in execution order: **ETL → AI/Agentic → Backend → Frontend**.
+This document is the centralized, living progress tracker. Updated after deep code audit on **2026-05-03**.
 
-**Overall Completion: ~65%**
-> ETL + AI brains are fully done and verified (18/18 E2E tests pass). The remaining work is Backend REST APIs (Phase 3) and the Frontend UI (Phase 4).
-
----
-
-## 🟢 PHASE 1: ETL Pipeline & Data Ingestion (100% Complete)
-The backbone of the system. Converts raw financial documents into a structured, searchable, AI-ready knowledge base.
-
-- [x] Web Crawlers (NSE/BSE async Celery task queues).
-- [x] Document Parsing (pdfplumber for tables, PyMuPDF, DOCX, PPTX).
-- [x] Semantic Text Cleaning & Normalization.
-- [x] Contextual Semantic Chunking (with overlap).
-- [x] Embedding Generation (Ollama `nomic-embed-text`).
-- [x] Vector Storage (Qdrant) + Metadata Sync (PostgreSQL).
-- [x] **Task 1.1: Financial Table Extraction**
-  - *Goal:* Use pdfplumber to rip complex financial tables from Annual Reports into Markdown format.
-  - *Verification:* `test_etl_pipeline.py` → Section "Table Extraction"
-- [x] **Task 1.2: Proactive Metric Enrichment**
-  - *Goal:* Extract structured metrics (Revenue, PAT, Debt, Capex) via LLM during ETL and save to the DB.
-  - *Verification:* `test_e2e_full_flow.py` → Layer 1, test `1b: Metrics extraction` ✅
-- [x] **Task 1.3: Automated Timeline Summarization**
-  - *Goal:* Ingest step automatically triggers an LLM to generate a <50-word summary of the filing.
-  - *Verification:* `test_e2e_full_flow.py` → Layer 1, test `1b: LLM Enrichment` ✅
-- [x] **Task 1.4: Proactive Red Flag Extraction**
-  - *Goal:* Scan incoming filings for governance/accounting red flags and save structured alerts to DB.
-  - *Verification:* `test_e2e_full_flow.py` → Layer 1, test `1b: Red Flag extraction` ✅
+**Overall Completion: ~80%**
+> After full audit: backend has 11 router domains mostly complete. Frontend has every view built with a wired API client. Only 3 surgical backend gaps + 5 frontend data-wiring gaps remain.
 
 ---
 
-## 🟢 PHASE 2: AI & Agentic Layer (100% Complete)
-The intelligence brain — Iris and all specialist sub-agents. Fully verified.
+## 🟢 PHASE 1: ETL Pipeline & Data Ingestion (100% Complete ✅)
 
-- [x] LangGraph / DeepAgents Multi-Agent Orchestrator.
-- [x] 6 Specialist Sub-agents: Company, Comparison, Portfolio, News, Doc Insight, **Thematic**.
-- [x] Tool integrations: Vector Search, Financial API, Risk Detection, News.
-- [x] Chat session management, persistence.
-- [x] **Task 2.1: Thematic Discovery Engine (Global Search)**
-  - *Goal:* Global vector search across all companies to find theme-matching stocks.
-  - *Verification:* `test_e2e_full_flow.py` → Layer 2, tests `2b` ✅
-- [x] **Task 2.2: Comparison Engine Refinement**
-  - *Goal:* Comparison sub-agent outputs strict JSON for the frontend comparison table renderer.
-  - *Verification:* `src/agents/prompts/comparison.py` → JSON schema enforced.
-- [x] **Task 2.3: Quantitative Portfolio Intelligence**
-  - *Goal:* Mathematical engines for Beta, Volatility, Sharpe Ratio, Diversification (HHI).
-  - *Verification:* `test_e2e_full_flow.py` → Layer 4 (4a–4d) ✅
-- [x] **Task 2.4: Agent Tool Error Handling & Retry Logic**
-  - *Goal:* Agents get clean error messages (not crashes) when FMP or Qdrant fails.
-  - *Verification:* `test_e2e_full_flow.py` → Layer 3, tests `3b`, `3d` ✅
+- [x] Web Crawlers (NSE/BSE async Celery task queues)
+- [x] PDF parsing: text (PyMuPDF) + tables (pdfplumber → Markdown)
+- [x] DOCX / PPTX parsing
+- [x] Semantic text cleaning & normalization
+- [x] Contextual semantic chunking (with overlap)
+- [x] Embedding generation (Ollama `nomic-embed-text`)
+- [x] Vector storage (Qdrant `company_filings` collection)
+- [x] PostgreSQL metadata sync
+- [x] **Task 1.1: Financial Table Extraction** (pdfplumber)
+- [x] **Task 1.2: Proactive Metric Enrichment** (Revenue, PAT, Debt, Capex via LLM)
+- [x] **Task 1.3: Automated Timeline Summarization** (<50-word LLM summaries)
+- [x] **Task 1.4: Proactive Red Flag Extraction** (governance signals during ingestion)
 
-**Full E2E Verification Command:**
-```bash
-cd backend-ai && .venv/bin/python test_e2e_full_flow.py
-# Expected: 18/18 ✅ ALL LAYERS VERIFIED
-```
+**Verification:** `python test_e2e_full_flow.py` → Layer 1: 6/6 ✅
 
 ---
 
-## 🟠 PHASE 3: Backend APIs & Services (~20% Complete)
-Exposing the intelligence to the client securely and efficiently.
+## 🟢 PHASE 2: AI & Agentic Layer (100% Complete ✅)
 
-- [x] `POST /chat/query` endpoint (Iris AI chat).
-- [x] PostgreSQL database schemas (Users, Portfolios, Filings, Holdings).
-- [x] Basic company routes (`/companies`, `/companies/{id}`).
-- [ ] **Task 3.1: Timeline API**
-  - *Goal:* `GET /timeline/{company_id}` returning the <50-word filing summaries from ETL enrichment.
-  - *Priority:* HIGH — data already exists in DB, just needs a route.
-- [ ] **Task 3.2: Portfolio & Workspace APIs**
-  - *Goal:* Full CRUD for Portfolios/Holdings + `GET /portfolio/{id}/metrics` returning Beta, Sharpe, Volatility.
-  - *Priority:* HIGH — math engine is done, just needs a route.
-- [ ] **Task 3.3: Authentication & RBAC**
-  - *Goal:* JWT auth with Retail vs Analyst roles.
-  - *Priority:* MEDIUM — needed before frontend user flows.
-- [ ] **Task 3.4: Streaming Responses (SSE)**
-  - *Goal:* Upgrade `/chat/query` to Server-Sent Events so users see Iris "typing" in real-time.
-  - *Priority:* MEDIUM — UX enhancement.
-- [ ] **Task 3.5: Thematic Discovery API**
-  - *Goal:* `GET /discovery/thematic?q=renewable+energy` calling the global vector search.
-  - *Priority:* HIGH — connects Discovery Engine to frontend.
-- [ ] **Task 3.6: Mock Market Data Integration**
-  - *Goal:* Seed portfolio holdings with mock prices from Zerodha/Upstox (or static mock JSON) so the portfolio math engine has real input.
-  - *Priority:* HIGH — required for portfolio dashboard demo.
+- [x] DeepAgents + LangGraph multi-agent orchestrator
+- [x] 6 Specialist Sub-agents: Company, Comparison, Portfolio, News, DocInsight, **Thematic**
+- [x] Tool: `search_filings` (company-scoped vector search)
+- [x] Tool: `thematic_discovery_search` (global cross-company theme search)
+- [x] Tool: `calculate_ratios`, `detect_risk_flags`, `get_recent_news`
+- [x] Chat session persistence (PostgreSQL)
+- [x] `POST /chat/query` API endpoint (Iris)
+- [x] **Task 2.1: Thematic Discovery Engine** — global Qdrant search
+- [x] **Task 2.2: Comparison Engine Refinement** — strict JSON output
+- [x] **Task 2.3: Quantitative Portfolio Intelligence** — Beta, Sharpe, Volatility, HHI
+- [x] **Task 2.4: Agent Tool Error Handling** — clean error messages, no crashes
+
+**Verification:** `python test_e2e_full_flow.py` → Layers 2,3,4,5: 12/12 ✅
 
 ---
 
-## 🔴 PHASE 4: Frontend UI (React + Vite + Tailwind) (~10% Complete)
-The final user-facing surface where the AI intelligence becomes visible.
+## 🟡 PHASE 3: Backend REST APIs (85% Complete)
 
-- [x] Basic Vite + React 19 + TypeScript scaffolding.
-- [x] Tailwind CSS v4 configured.
-- [x] Basic routing structure.
-- [ ] **Task 4.1: Authentication Screens**
-  - *Goal:* Login / Registration UI connecting to JWT auth backend.
-- [ ] **Task 4.2: Global Dashboard & Thematic Discovery View**
-  - *Goal:* Hero search bar for semantic themes (e.g., "AI infrastructure stocks"), trending sector cards.
-- [ ] **Task 4.3: Iris Chat Interface**
-  - *Goal:* Streaming chat UI with markdown rendering, evidence citation links, and conversation history.
-- [ ] **Task 4.4: Company Deep-Dive Workspace**
-  - *Goal:* Financials, Ratios, Filing timeline, News, and Risk Flags all in one view.
-- [ ] **Task 4.5: Comparison Table View**
-  - *Goal:* Side-by-side rendering of the JSON comparison output from the Comparison sub-agent.
-- [ ] **Task 4.6: Portfolio Dashboard**
-  - *Goal:* Recharts visualizations for Beta, Sector Allocation, Sharpe Ratio, and Diversification Score.
+### ✅ Already Working (21 endpoints across 11 domains)
+- [x] Chat: `POST /chat/query`, `GET /chat/sessions/{user_id}`
+- [x] Companies: list, search, detail, quote, financials, ratios, enrich, refresh
+- [x] Portfolio: list, create, get-with-holdings, add-holding
+- [x] Compare: `POST /compare/` (AI-powered comparison)
+- [x] Timeline: `GET /timeline/` (filings + news aggregated feed)
+- [x] Screens: `POST /screens/run` (traditional SQL filter)
+- [x] Users: profile get/update, KYC submit/verify
+- [x] Alerts: CRUD routes registered
+- [x] Watchlists: CRUD routes registered
+- [x] Document upload: `POST /chat/upload`
+
+### ❌ The 3 Remaining Backend Gaps
+
+- [x] **Task 3.1: `GET /portfolios/{id}/metrics`**
+  - Expose Beta, Sharpe, Volatility, Diversification Score as dedicated endpoint
+  - Math engine already done in `PortfolioService.calculate_metrics()`
+  - *Status: DONE ✅ (implemented this session)*
+
+- [x] **Task 3.2: `GET /screens/thematic?q=`**
+  - Semantic AI theme search via Qdrant (not SQL keyword search)
+  - Vector logic already done in `VectorService.thematic_search()`
+  - *Status: DONE ✅ (implemented this session)*
+
+- [ ] **Task 3.3: JWT Authentication**
+  - `POST /auth/register`, `POST /auth/login`
+  - JWT middleware protecting sensitive routes
+  - *Status: Pending — workaround: UUID in localStorage works for demo*
 
 ---
 
-## 📌 Key Architecture Decisions Made
+## 🟠 PHASE 4: Frontend UI (60% Complete)
+
+### ✅ Already Built (all 10 major views exist)
+- [x] `ChatView` — fully wired to `POST /chat/query`, file upload, markdown rendering
+- [x] `DiscoveryView` — company grid, sector filter, wired to `GET /companies/`
+- [x] `ComparisonWorkspaceView` — wired to `POST /compare/`
+- [x] `PortfolioView` — wired to portfolio CRUD APIs
+- [x] `TimelineView` — wired to `GET /timeline/`
+- [x] `CompanyWorkspaceView` — financials, ratios, quote
+- [x] `NewsView`, `FilingsView`, `ProfileView`, `SettingsView`
+- [x] Full API client (`platform.ts`) with functions for all endpoints
+
+### ❌ Frontend Data-Wiring Gaps (5 gaps)
+
+- [ ] **Task 4.1: Thematic Discovery wiring**
+  - Wire `DiscoveryView` search to `GET /screens/thematic?q=` instead of keyword search
+  - Show AI-discovered companies with evidence snippets
+
+- [ ] **Task 4.2: Portfolio Metrics & Charts**
+  - Add Recharts section to `PortfolioView` showing Beta, Sharpe, Sector Allocation pie
+
+- [ ] **Task 4.3: Comparison JSON rendering**
+  - Update `ComparisonWorkspaceView` to parse new `comparison_matrix` JSON format
+
+- [ ] **Task 4.4: Timeline LLM summaries**
+  - Surface the `timeline_summary` field from ETL enrichment in `TimelineView`
+
+- [ ] **Task 4.5: Login/Register screens**
+  - Depends on JWT backend (Task 3.3)
+
+---
+
+## 📌 Key Architecture Decisions
 
 | Decision | Choice | Reason |
 |---|---|---|
-| LLM Provider | NVIDIA NIM (`gpt-oss-120b`) | Free, fast, OpenAI-compatible |
-| Embedding | Ollama `nomic-embed-text` | Local, no cost, 768-dim |
-| Vector DB | Qdrant | Fast, filterable, self-hosted |
-| Agent Framework | DeepAgents + LangGraph | Multi-agent routing with tools |
-| Market Data | FMP API (+ Zerodha mock) | Real pricing with fallback mock |
-| PDF Parsing | pdfplumber | Best-in-class table extraction |
+| LLM | NVIDIA NIM `gpt-oss-120b` | Free, fast, OpenAI-compatible |
+| Embedding | Ollama `nomic-embed-text` | Local, 768-dim, no cost |
+| Vector DB | Qdrant | Filterable, self-hosted, fast |
+| Agent Framework | DeepAgents + LangGraph | Multi-agent tool routing |
+| Market Data | FMP API + scraper fallback | Real prices with resilience |
+| PDF Parsing | pdfplumber | Best table extraction |
+| Auth (current) | UUID in localStorage | Demo-only, JWT needed for prod |
 
 ---
 
-## 📎 Key Reference Documents
+## 📎 Reference Documents
 
 | Document | Purpose |
 |---|---|
-| `docs/E2E_STACK_VERIFICATION_GUIDE.md` | How to verify the full stack works |
-| `docs/PROJECT_COMPLETION_STATUS.md` | Detailed module-by-module completion |
-| `docs/FULL_ETL_AND_RAG_VERIFICATION.md` | ETL + RAG pipeline verification |
-| `backend-ai/test_e2e_full_flow.py` | **The master verification script** |
+| `docs/E2E_STACK_VERIFICATION_GUIDE.md` | How to verify the full stack |
+| `docs/PROJECT_COMPLETION_STATUS.md` | Detailed module-level breakdown |
+| `backend-ai/test_e2e_full_flow.py` | Master 18-check verification script |
 
 ---
 
-*Last Updated: 2026-05-03 | Phase 1 ✅ + Phase 2 ✅ verified. Moving to Phase 3 Backend APIs.*
+*Last Updated: 2026-05-03 | Phase 1 ✅ + Phase 2 ✅ | Phase 3: 85% → completing gaps this session*

@@ -56,9 +56,23 @@ def get_portfolio(
     portfolio_id: UUID,
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
-    """Get portfolio with holdings."""
+    """Get portfolio with holdings and basic metrics."""
     service = PortfoliosService(db)
     return service.get_portfolio(portfolio_id)
+
+
+@router.get("/{portfolio_id}/metrics")
+def get_portfolio_metrics(
+    portfolio_id: UUID,
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """Get quantitative risk metrics for a portfolio.
+
+    Returns Beta, Sharpe Ratio, Volatility, Diversification Score,
+    and Sector Allocation breakdown computed from current holdings.
+    """
+    service = PortfoliosService(db)
+    return service.get_metrics(portfolio_id)
 
 
 @router.post("/{portfolio_id}/holdings", status_code=201)

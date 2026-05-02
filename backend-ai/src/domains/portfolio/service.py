@@ -79,6 +79,19 @@ class PortfoliosService:
             "data_sources": portfolio_sources(portfolio.broker),
         }
 
+    def get_metrics(self, portfolio_id: UUID) -> dict[str, Any]:
+        """Return only the quantitative risk metrics for a portfolio."""
+        portfolio = self.db.query(Portfolio).filter(Portfolio.id == portfolio_id).first()
+        if not portfolio:
+            raise HTTPException(status_code=404, detail="Portfolio not found")
+
+        metrics = self._portfolio_service.calculate_metrics(portfolio_id)
+        return {
+            "portfolio_id": str(portfolio_id),
+            "portfolio_name": portfolio.name,
+            **metrics,
+        }
+
     def add_holding(
         self,
         portfolio_id: UUID,

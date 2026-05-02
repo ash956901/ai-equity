@@ -1,11 +1,15 @@
 """Business logic for screening and saved screens."""
 
+import logging
 from typing import Any, Optional
 from uuid import UUID
 
 from sqlalchemy.orm import Session
 
 from src.db.models import Company, SavedScreen
+from src.services.vector_service import VectorService
+
+logger = logging.getLogger(__name__)
 
 
 class ScreensService:
@@ -74,3 +78,58 @@ class ScreensService:
             }
             for c in companies
         ]
+
+    def thematic_search(self, query: str, limit: int = 15) -> list[dict[str, Any]]:
+        """Semantic AI theme-based discovery across all company filings.
+
+        Uses VectorService.thematic_search to find companies whose filing
+        disclosures semantically match the investment theme, then enriches
+        each result with company metadata from PostgreSQL.
+        """
+        try:
+            vector_svc = VectorService()
+            raw_results = vector_svc.thematic_search(query=query, limit=limit * 3)
+        except Exception as exc:
+            logger.error("Thematic vector search failed: %s", exc)
+            return []
+
+        enriched: list[dict[str, Any]] = []
+        seen_company_ids: set[str] = set()
+
+        for result in raw_results:
+            company_id_str = result.get("company_id")
+            if not company_id_str or company_id_str in seen_company_ids:
+                continue
+            seen_company_ids.add(company_id_str)
+
+            # Enrich with DB metadata
+            try:
+                company = (
+                    self.db.query(Company)
+                    .filter(Company.id == company_id_str)
+                    .first()
+                )
+            except Exception:
+                company = None
+
+            enriched.append(
+                {
+                    "company_id": company_id_str,
+                    "company_name": result.get("company_name") or (company.name if company else "Unknown"),
+                    "ticker_nse": company.ticker_nse if company else None,
+                    "ticker_bse": company.ticker_bse if company else None,
+                    "sector": company.sector if company else None,
+                    "industry": company.industry if company else None,
+                    "market_cap_inr": company.market_cap_inr if company else None,
+                    "relevance_score": round(result.get("max_score", 0), 4),
+                    "match_count": result.get("match_count", 1),
+                    "evidence_snippets": result.get("evidence", []),
+                }
+            )
+
+            if len(enriched) >= limit:
+                break
+
+        # Sort by relevance descending
+        enriched.sort(key=lambda x: x["relevance_score"], reverse=True)
+        return enriched
