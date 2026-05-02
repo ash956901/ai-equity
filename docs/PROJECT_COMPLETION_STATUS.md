@@ -5,19 +5,19 @@
 
 ---
 
-## 📊 Overall Completion: ~80%
+## 📊 Overall Completion: ~90%
 
-> **Revised upward from 65% after deep code audit on 2026-05-03.**
-> The backend has 11 registered router domains, almost all with full service logic. The frontend has every view built and the API client fully wired. The 3 remaining gaps are surgical, not structural.
+> **Revised upward from 80% after frontend wiring session on 2026-05-03.**
+> Backend: 100% complete for demo (all endpoints live). Frontend: all 10 views wired to real APIs. Auth skipped (UUID demo mode). Ready for live showcase.
 
 | Phase | Module | Status | % Done |
 |---|---|---|---|
 | Phase 1 | ETL & Document Intelligence | 🟢 Complete | 100% |
 | Phase 2 | AI & Agentic Layer (Iris) | 🟢 Complete | 100% |
-| Phase 3 | Backend REST APIs | 🟡 Almost Done | 85% |
-| Phase 4 | Frontend UI | 🟡 Almost Done | 60% |
+| Phase 3 | Backend REST APIs | 🟢 Complete (demo) | 100% |
+| Phase 4 | Frontend UI | 🟢 Wired & Live | 90% |
 
-**Verified:** `test_e2e_full_flow.py` → **18/18 checks ✅**
+**Verified:** `test_e2e_full_flow.py` → **18/18 checks ✅** | Frontend: `npx tsc --noEmit` → **0 errors ✅**
 
 ---
 
@@ -102,8 +102,8 @@ python test_e2e_full_flow.py   # Layers 2,3,5 — 9/9 ✅
 
 ---
 
-## 🟡 4. Quantitative Portfolio Intelligence Engine
-**Status: 90% Complete**
+## 🟢 4. Quantitative Portfolio Intelligence Engine
+**Status: 100% Complete**
 
 | Capability | Status |
 |---|---|
@@ -112,22 +112,24 @@ python test_e2e_full_flow.py   # Layers 2,3,5 — 9/9 ✅
 | Sharpe Ratio | ✅ |
 | Diversification Score (HHI) | ✅ |
 | Sector allocation breakdown | ✅ |
-| `GET /portfolios/{id}` includes metrics | ✅ (in full get) |
-| `GET /portfolios/{id}/metrics` dedicated route | ❌ Gap 1 above |
-| Frontend Portfolio Dashboard charts | ❌ Frontend gap |
+| `GET /portfolios/{id}` includes metrics | ✅ |
+| `GET /portfolios/{id}/metrics` dedicated route | ✅ Live |
+| Frontend Portfolio Dashboard — Beta, Sharpe, Volatility, Diversification KPI cards | ✅ Wired |
 
 ---
 
-## 🟡 5. Thematic Discovery Engine
-**Status: 80% Complete**
+## 🟢 5. Thematic Discovery Engine
+**Status: 100% Complete**
 
 | Capability | Status |
 |---|---|
 | `VectorService.thematic_search()` | ✅ |
 | `thematic_discovery_search` LangChain tool | ✅ |
 | Thematic sub-agent registered in Iris | ✅ |
-| `GET /screens/thematic?q=` API route | ❌ Gap 2 above |
-| Frontend thematic search (AI semantic) | ❌ Frontend wired to keyword only |
+| `GET /screens/thematic?q=` API route | ✅ Live |
+| Frontend DiscoveryView — AI Thematic mode toggle | ✅ Wired |
+| Evidence snippets from filings shown in UI | ✅ Wired |
+| Relevance score chip (% match) | ✅ Wired |
 
 ---
 
