@@ -397,17 +397,31 @@ def process_filing(self, filing_id: str):
         
         # Transform
         transformer = ETLTransformTask()
-        chunks = transformer.process_filing(
+        result = transformer.process_filing(
             file_path=file_path,
             **metadata
         )
         
-        # Load
+        chunks = result.get("chunks", [])
+        enrichment = result.get("enrichment", {})
+        
+        # Load chunks to Qdrant
         loader = ETLLoadTask()
         loaded_count = loader.load_chunks(chunks)
         
-        # Update filing status
+        # Update filing status and save enrichment metadata to DB
         filing.status = "processed"
+        
+        if filing.metadata_ is None:
+            filing.metadata_ = {}
+            
+        # Ensure we don't overwrite existing metadata completely
+        current_meta = dict(filing.metadata_)
+        current_meta['timeline_summary'] = enrichment.get("timeline_summary", "")
+        current_meta['red_flags'] = enrichment.get("red_flags", [])
+        current_meta['extracted_metrics'] = enrichment.get("metrics", {})
+        filing.metadata_ = current_meta
+        
         db.commit()
         
         _finish_etl_run(db, run, records=loaded_count)

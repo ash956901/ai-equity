@@ -39,7 +39,15 @@ def test_pdf_pipeline():
     transformer = ETLTransformTask()
     
     try:
-        chunks = transformer.process_filing(str(pdf_path), **metadata)
+        result = transformer.process_filing(str(pdf_path), **metadata)
+        chunks = result.get("chunks", [])
+        enrichment = result.get("enrichment", {})
+        
+        print("\n=== Enrichment Results ===")
+        print(f"Timeline Summary: {enrichment.get('timeline_summary')}")
+        print(f"Red Flags: {enrichment.get('red_flags')}")
+        print(f"Metrics: {enrichment.get('metrics')}")
+        
         print(f"\nSUCCESS: Generated {len(chunks)} chunks from the PDF.")
         for i, chunk in enumerate(chunks[:2]): # Print first 2 chunks
             print(f"\nChunk {i+1}:")

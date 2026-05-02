@@ -52,13 +52,27 @@ class DocumentProcessor:
             return None
 
     def extract_text_from_pdf(self, file_path: str) -> str:
-        """Extract text from PDF using PyMuPDF."""
+        """Extract text and tables from PDF using pdfplumber."""
         try:
-            doc = fitz.open(file_path)
+            import pdfplumber
             text = ""
-            for page in doc:
-                text += page.get_text("text")
-            doc.close()
+            with pdfplumber.open(file_path) as pdf:
+                for page in pdf.pages:
+                    page_text = page.extract_text()
+                    if page_text:
+                        text += page_text + "\n"
+                    
+                    tables = page.extract_tables()
+                    for table in tables:
+                        if not table:
+                            continue
+                        text += "\n"
+                        for i, row in enumerate(table):
+                            clean_row = [str(cell).replace('\n', ' ') if cell else '' for cell in row]
+                            text += "| " + " | ".join(clean_row) + " |\n"
+                            if i == 0:  # Add markdown table header separator
+                                text += "|" + "|".join(["---"] * len(clean_row)) + "|\n"
+                        text += "\n"
             return text
         except Exception as e:
             logger.error(f"Error extracting text from PDF {file_path}: {e}")

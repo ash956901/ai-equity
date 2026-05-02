@@ -7,6 +7,7 @@ from pathlib import Path
 from src.etl.document_processor import DocumentProcessor
 from src.etl.text_processor import TextCleaner, SemanticChunker
 from src.etl.embedding_generator import EmbeddingGenerator
+from src.etl.enricher import FilingEnricher
 
 logger = logging.getLogger(__name__)
 
@@ -18,6 +19,7 @@ class ETLTransformTask:
         self.text_cleaner = TextCleaner()
         self.chunker = SemanticChunker()
         self.embedding_generator = EmbeddingGenerator("nomic-embed-text")
+        self.enricher = FilingEnricher()
         
     def process_filing(self, file_path: str, **metadata) -> List[Dict[str, Any]]:
         """Process a filing through the entire pipeline."""
@@ -26,6 +28,9 @@ class ETLTransformTask:
         if not processed_doc:
             return []
             
+        # Generate timeline summary, metrics, and red flags via LLM
+        enrichment_data = self.enricher.enrich_filing(processed_doc['text'], metadata)
+        
         # Clean text
         cleaned_text = self.text_cleaner.clean_text(processed_doc['text'])
         normalized_text = self.text_cleaner.normalize_text(cleaned_text)
@@ -39,7 +44,10 @@ class ETLTransformTask:
         # Generate embeddings
         embedded_chunks = self.embedding_generator.generate_document_embeddings(chunks)
         
-        return embedded_chunks
+        return {
+            "chunks": embedded_chunks,
+            "enrichment": enrichment_data
+        }
 
 # Example usage
 if __name__ == "__main__":

@@ -61,8 +61,10 @@ To ensure the pipeline works asynchronously during production:
 ---
 
 ## 🧠 Summary of System Capabilities 
-- **Parser Supported Formats:** PDF (`PyMuPDF`), DOCX (`python-docx`), PPTX (`python-pptx`), TXT.
-- **Semantic Structuring:** Detects standard financial sections (Risk Factors, Financial Statements, MD&A).
+- **Parser Supported Formats:** PDF (`pdfplumber` for text AND Markdown-formatted tables), DOCX (`python-docx`), PPTX (`python-pptx`), TXT.
+- **LLM Enrichment:** Automatically extracts actionable Timeline Summaries, identifies Red Flags, and rips strict JSON financial metrics during ingestion.
+- **Semantic Structuring:** Detects standard financial sections (Risk Factors, Financial Statements, MD&A) and performs overlapping paragraph-based chunking.
 - **Embedder:** Defaults to local `ollama:nomic-embed-text` (configurable to OpenAI).
 - **Vector DB:** Qdrant with custom payload matching.
+- **Database Storage:** Saves vectors to Qdrant and saves the extracted summaries and metrics to PostgreSQL simultaneously.
 - **Inference Agent:** LangGraph DeepAgent orchestrating 5 specialist subagents with progressive context retrieval.

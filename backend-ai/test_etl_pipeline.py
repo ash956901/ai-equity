@@ -31,9 +31,16 @@ def test_pipeline():
     
     print("Running Transform Task...")
     transformer = ETLTransformTask()
-    chunks = transformer.process_filing(str(test_file), **metadata)
+    result = transformer.process_filing(str(test_file), **metadata)
+    chunks = result.get("chunks", [])
+    enrichment = result.get("enrichment", {})
     
-    print(f"Generated {len(chunks)} chunks.")
+    print("\n=== Enrichment Results ===")
+    print(f"Timeline Summary: {enrichment.get('timeline_summary')}")
+    print(f"Red Flags: {enrichment.get('red_flags')}")
+    print(f"Metrics: {enrichment.get('metrics')}")
+    
+    print(f"\nGenerated {len(chunks)} chunks.")
     for i, chunk in enumerate(chunks):
         print(f"\nChunk {i+1}:")
         print(f"  Text: {chunk.get('text')}")

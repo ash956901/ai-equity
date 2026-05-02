@@ -52,7 +52,15 @@ def setup_and_test_rag():
         "document_type": "annual_report"
     }
     
-    chunks = transformer.process_filing(str(test_file), **metadata)
+    result = transformer.process_filing(str(test_file), **metadata)
+    chunks = result.get("chunks", [])
+    enrichment = result.get("enrichment", {})
+    
+    print("\n=== Enrichment Results ===")
+    print(f"Timeline Summary: {enrichment.get('timeline_summary')}")
+    print(f"Red Flags: {enrichment.get('red_flags')}")
+    print(f"Metrics: {enrichment.get('metrics')}")
+    
     print(f"Generated and embedded {len(chunks)} chunks.")
     
     # 4. Load into Qdrant
