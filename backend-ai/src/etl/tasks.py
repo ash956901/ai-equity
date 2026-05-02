@@ -229,6 +229,7 @@ def crawl_nse_filings(
                 filing = ingestion_service.ingest_filing(company.id, result)
                 if filing:
                     downloaded += 1
+                    process_filing.delay(str(filing.id))
             _finish_etl_run(db, run, records=downloaded)
         else:
             # For batch processing, we need to find companies by symbol
@@ -250,6 +251,7 @@ def crawl_nse_filings(
                         filing = ingestion_service.ingest_filing(company.id, result)
                         if filing:
                             downloaded += 1
+                            process_filing.delay(str(filing.id))
             _finish_etl_run(db, run, records=downloaded)
     except Exception as e:
         _finish_etl_run(db, run, status="failed", error=str(e))
@@ -289,6 +291,7 @@ def crawl_bse_filings(
                 filing = ingestion_service.ingest_filing(company.id, result)
                 if filing:
                     downloaded += 1
+                    process_filing.delay(str(filing.id))
             _finish_etl_run(db, run, records=downloaded)
         else:
             # For batch processing, we need to find companies by symbol
@@ -310,6 +313,7 @@ def crawl_bse_filings(
                         filing = ingestion_service.ingest_filing(company.id, result)
                         if filing:
                             downloaded += 1
+                            process_filing.delay(str(filing.id))
             _finish_etl_run(db, run, records=downloaded)
     except Exception as e:
         _finish_etl_run(db, run, status="failed", error=str(e))
@@ -358,3 +362,59 @@ def refresh_company(self, company_id: str):
     ir_sig: Any = crawl_ir_pages.s(company_id=company_id)
     workflow: Any = chain_fn(enrich_sig, nse_sig, ir_sig)
     workflow.apply_async()
+
+
+# ------------------------------------------------------------------ #
+#  Document Processing pipeline                                        #
+# ------------------------------------------------------------------ #
+
+
+@app.task(bind=True, name="etl.process_filing")
+def process_filing(self, filing_id: str):
+    """Process a downloaded filing through the semantic processing pipeline."""
+    db = SessionLocal()
+    run = _log_etl_run(db, "process_filing")
+    try:
+        from src.db.models import Filing, Company
+        from src.etl.transform_task import ETLTransformTask
+        from src.etl.load_task import ETLLoadTask
+        
+        filing = db.query(Filing).filter(Filing.id == UUID(filing_id)).first()
+        if not filing or not filing.raw_uri:
+            logger.warning("Filing not found or has no raw_uri: %s", filing_id)
+            return
+            
+        file_path = filing.raw_uri
+        
+        # Get metadata
+        metadata = {
+            "company_id": str(filing.company_id),
+            "filing_id": str(filing.id),
+            "filing_type": filing.filing_type or "",
+            "filing_date": filing.filing_date.isoformat() if filing.filing_date else "",
+            "document_type": filing.filing_type or "",
+        }
+        
+        # Transform
+        transformer = ETLTransformTask()
+        chunks = transformer.process_filing(
+            file_path=file_path,
+            **metadata
+        )
+        
+        # Load
+        loader = ETLLoadTask()
+        loaded_count = loader.load_chunks(chunks)
+        
+        # Update filing status
+        filing.status = "processed"
+        db.commit()
+        
+        _finish_etl_run(db, run, records=loaded_count)
+        return {"loaded": loaded_count}
+    except Exception as e:
+        _finish_etl_run(db, run, status="failed", error=str(e))
+        logger.exception("Filing processing failed")
+        raise
+    finally:
+        db.close()

@@ -3,7 +3,7 @@
 import uuid
 from datetime import date, datetime
 from decimal import Decimal
-from typing import Optional
+from typing import List, Optional
 
 from sqlalchemy import (
     JSON,
@@ -499,13 +499,94 @@ class CompanyComparisonSnapshot(Base):
     )
 
 
-class CompareFlowLog(Base):
-    """Persisted request-level logs for compare decision pipeline."""
+class DocumentChunk(Base):
+    """Processed document chunks with embeddings for semantic search."""
 
-    __tablename__ = "compare_flow_logs"
+    __tablename__ = "document_chunks"
 
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    filing_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("filings.id", ondelete="CASCADE"), nullable=False
+    )
+    company_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("companies.id", ondelete="CASCADE"), nullable=False
+    )
+    chunk_id: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    text: Mapped[str] = mapped_column(Text, nullable=False)
+    embedding: Mapped[List[float]] = mapped_column(
+        ARRAY(Float), nullable=False
+    )
+    section: Mapped[str] = mapped_column(String(100), nullable=True)
+    document_type: Mapped[str] = mapped_column(String(50), nullable=True)
+    year: Mapped[str] = mapped_column(String(4), nullable=True)
+    filing_date: Mapped[date] = mapped_column(Date, nullable=True)
+    source_url: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    metadata_: Mapped[Optional[dict]] = mapped_column("metadata", JSON, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow
+    )
+
+    __table_args__ = (
+        Index("ix_document_chunks_company_filing", "company_id", "filing_id"),
+        Index("ix_document_chunks_section", "section"),
+        Index("ix_document_chunks_filing_date", "filing_date"),
+    )
+    request_id: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    company_a_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("companies.id", ondelete="CASCADE"), nullable=False
+    )
+    company_b_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("companies.id", ondelete="CASCADE"), nullable=False
+    )
+    flow_payload: Mapped[dict] = mapped_column(JSON, nullable=False)
+    )
+    result_payload: Mapped[dict] = mapped_column(JSON, nullable=False)
+    duration_ms: Mapped[int] = mapped_column(Integer, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    __table_args__ = (
+        Index("ix_compare_flow_logs_user_created", "user_id", "created_at"),
+    )
+
+
+class DocumentChunk(Base):
+    """Processed document chunks with embeddings for semantic search."""
+
+    __tablename__ = "document_chunks"
+
+    id: Muted[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    filing_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("filings.id", ondelete="CASCADE"), nullable=False
+    )
+    company_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("companies.id", ondelete="CASCADE"), nullable=False
+    )
+    chunk_id: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    text: Mapped[str] = mapped_column(Text, nullable=False)
+    embedding: Mapped[List[float]] = mapped_column(
+        ARRAY(Float), nullable=False
+    )
+    section: Mapped[str] = mapped_column(String(100), nullable=True)
+    document_type: Mapped[str] = mapped_column(String(50), nullable=True)
+    year: Mapped[str] = mapped_column(String(4), nullable=True)
+    filing_date: Mapped[date] = mapped_column(Date, nullable=True)
+    source_url: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    metadata_: Mapped[Optional[dict]] = mapped_column("metadata", JSON, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow
+    )
+
+    __table_args__ = (
+        Index("ix_document_chunks_company_filing", "company_id", "filing_id"),
+        Index("ix_document_chunks_section", "section"),
+        Index("ix_document_chunks_filing_date", "filing_date"),
     )
     request_id: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
     user_id: Mapped[uuid.UUID] = mapped_column(

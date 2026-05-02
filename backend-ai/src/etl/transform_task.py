@@ -1,0 +1,47 @@
+"""Main ETL Transform task implementation."""
+
+import logging
+from typing import List, Dict, Any
+from pathlib import Path
+
+from src.etl.document_processor import DocumentProcessor
+from src.etl.text_processor import TextCleaner, SemanticChunker
+from src.etl.embedding_generator import EmbeddingGenerator
+
+logger = logging.getLogger(__name__)
+
+class ETLTransformTask:
+    """Main ETL Transform task that processes filings through the pipeline."""
+    
+    def __init__(self):
+        self.document_processor = DocumentProcessor()
+        self.text_cleaner = TextCleaner()
+        self.chunker = SemanticChunker()
+        self.embedding_generator = EmbeddingGenerator("nomic-embed-text")
+        
+    def process_filing(self, file_path: str, **metadata) -> List[Dict[str, Any]]:
+        """Process a filing through the entire pipeline."""
+        # Process document
+        processed_doc = self.document_processor.process_document(file_path)
+        if not processed_doc:
+            return []
+            
+        # Clean text
+        cleaned_text = self.text_cleaner.clean_text(processed_doc['text'])
+        normalized_text = self.text_cleaner.normalize_text(cleaned_text)
+        
+        # Chunk text
+        chunks = self.chunker.chunk_text(
+            normalized_text,
+            **metadata
+        )
+        
+        # Generate embeddings
+        embedded_chunks = self.embedding_generator.generate_document_embeddings(chunks)
+        
+        return embedded_chunks
+
+# Example usage
+if __name__ == "__main__":
+    # This would be used in the actual ETL pipeline
+    pass
