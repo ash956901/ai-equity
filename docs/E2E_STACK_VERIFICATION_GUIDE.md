@@ -181,15 +181,17 @@ This means **the ETL and AI layer are fully ready to be consumed by backend REST
 
 Once verified, the backend APIs that consume these layers are:
 
-| API Endpoint | Layer It Uses |
-|---|---|
-| `POST /chat/query` | Layer 5 — Iris Agent |
-| `GET /filings/search` | Layer 2 — Vector Search |
-| `GET /discovery/thematic` | Layer 2 — Global Thematic Search |
-| `GET /portfolio/{id}/metrics` | Layer 4 — Portfolio Math |
-| `GET /timeline/{company_id}` | Layer 1 — ETL Enrichment |
-| `GET /companies/{id}/flags` | Layer 3 — Risk Flag Tool |
+| API Endpoint | Layer It Uses | Status |
+|---|---|---|
+| `POST /chat/query` | Layer 5 — Iris Agent | ✅ Live |
+| `GET /companies/search?q=` | PostgreSQL full-text | ✅ Live |
+| `GET /screens/thematic?q=` | Layer 2 — Global Thematic Search | ✅ Live (new) |
+| `GET /portfolios/{id}/metrics` | Layer 4 — Portfolio Math | ✅ Live (new) |
+| `GET /timeline/` | Layer 1 — ETL Enrichment summaries | ✅ Live |
+| `GET /companies/{id}/financials` | FMP + DB | ✅ Live |
+| `POST /compare/` | Layer 5 — Comparison Agent | ✅ Live |
 
 ---
 
-*Last verified: 2026-05-03 | All 18/18 checks passed | Stack: Ollama (nomic-embed-text) + Qdrant + NVIDIA NIM LLM + PostgreSQL*
+*Last verified: 2026-05-03 | All 18/18 checks passed | New endpoints: `/screens/thematic` ✅ + `/portfolios/{id}/metrics` ✅*
+
