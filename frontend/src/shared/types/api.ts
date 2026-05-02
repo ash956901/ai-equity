@@ -269,6 +269,33 @@ export interface TimelineEvent {
   data_sources?: DataSourceInfo[];
 }
 
+export interface ThematicResult {
+  company_id: string;
+  company_name: string;
+  ticker_nse?: string;
+  ticker_bse?: string;
+  sector?: string;
+  industry?: string;
+  market_cap_inr?: number;
+  relevance_score: number;
+  match_count: number;
+  evidence_snippets: string[];
+}
+
+export interface PortfolioMetrics {
+  portfolio_id: string;
+  portfolio_name: string;
+  total_value_inr: number;
+  holdings_count: number;
+  top_holding_pct: number;
+  portfolio_beta: number;
+  portfolio_volatility: number;
+  sharpe_ratio: number;
+  diversification_score: number;
+  sector_allocation: Record<string, number>;
+  holdings: AIHoldingDetail[];
+}
+
 export interface UserProfile {
   id: string;
   email: string;

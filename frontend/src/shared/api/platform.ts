@@ -15,6 +15,8 @@ import {
   type CompareResponse,
   type CreateAlertRequest,
   type HealthResponse,
+  type PortfolioMetrics,
+  type ThematicResult,
   type TimelineEvent,
   type Watchlist,
 } from "../types/api";
@@ -22,6 +24,22 @@ import { AI_BACKEND_URL, aiDelete, aiGet, aiPost, ApiError } from "./core";
 
 export async function fetchAIHealth(): Promise<HealthResponse> {
   return aiGet<HealthResponse>("/health");
+}
+
+export async function fetchThematicScreen(
+  query: string,
+  limit = 15
+): Promise<ThematicResult[]> {
+  const params = new URLSearchParams();
+  params.set("q", query);
+  params.set("limit", String(limit));
+  return aiGet<ThematicResult[]>(`/screens/thematic?${params.toString()}`);
+}
+
+export async function fetchPortfolioMetrics(
+  portfolioId: string
+): Promise<PortfolioMetrics> {
+  return aiGet<PortfolioMetrics>(`/portfolios/${portfolioId}/metrics`);
 }
 
 export async function sendChatQuery(req: ChatQueryRequest): Promise<ChatQueryResponse> {

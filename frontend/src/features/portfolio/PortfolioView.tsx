@@ -102,18 +102,41 @@ export function PortfolioView(props: PortfolioViewProps) {
 
   const totalWeight = useMemo(() => holdings.reduce((acc, h) => acc + h.weight, 0) || 100, [holdings]);
 
-  const weightedReturn = useMemo(
-    () => holdings.reduce((acc, h) => acc + (h.returnPct * h.weight) / 100, 0),
-    [holdings]
+  const portfolioBeta = useMemo(
+    () => {
+      const backendBeta = activePortfolio?.metrics?.portfolio_beta as number | undefined;
+      if (backendBeta != null) return backendBeta;
+      return holdings.length
+        ? holdings.reduce((acc, h) => acc + (h.beta * h.weight) / totalWeight, 0)
+        : 1;
+    },
+    [holdings, totalWeight, activePortfolio]
   );
 
-  const portfolioBeta = useMemo(
-    () =>
-      holdings.length
-        ? holdings.reduce((acc, h) => acc + (h.beta * h.weight) / totalWeight, 0)
-        : 1,
-    [holdings, totalWeight]
+  const sharpeRatio = useMemo(
+    () => (activePortfolio?.metrics?.sharpe_ratio as number | undefined) ?? null,
+    [activePortfolio]
   );
+
+  const portfolioVolatility = useMemo(
+    () => (activePortfolio?.metrics?.portfolio_volatility as number | undefined) ?? null,
+    [activePortfolio]
+  );
+
+  const diversificationScore = useMemo(
+    () => (activePortfolio?.metrics?.diversification_score as number | undefined) ?? null,
+    [activePortfolio]
+  );
+
+  const backendSectorAllocation = useMemo(() => {
+    const alloc = activePortfolio?.metrics?.sector_allocation as Record<string, number> | undefined;
+    if (alloc && Object.keys(alloc).length > 0) {
+      return Object.entries(alloc)
+        .map(([sector, weight]) => ({ sector, weight: weight * 100 }))
+        .sort((a, b) => b.weight - a.weight);
+    }
+    return null;
+  }, [activePortfolio]);
 
   const sectorWeights = useMemo(() => {
     const map = new Map<string, number>();
@@ -173,30 +196,28 @@ export function PortfolioView(props: PortfolioViewProps) {
 
       <div className="kpi-grid portfolio-kpi-grid">
         <article className="kpi-card">
-          <p>Portfolio Return (MTD)</p>
-          <h2 className={weightedReturn >= 0 ? "positive" : "negative"}>
-            {weightedReturn.toFixed(2)}%
-          </h2>
-          <small>Weighted by current allocation</small>
-        </article>
-        <article className="kpi-card">
           <p>Portfolio Beta</p>
           <h2>{portfolioBeta.toFixed(2)}</h2>
-          <small>Benchmark beta reference = 1.00</small>
+          <small>Benchmark beta = 1.00</small>
         </article>
         <article className="kpi-card">
-          <p>Holdings Count</p>
-          <h2>{holdings.length}</h2>
-          <small>{portfolios.length} portfolio(s)</small>
+          <p>Sharpe Ratio</p>
+          <h2>{sharpeRatio != null ? sharpeRatio.toFixed(2) : "—"}</h2>
+          <small>Risk-adjusted return vs 7% G-Sec</small>
         </article>
         <article className="kpi-card">
-          <p>Metrics</p>
-          <h2>{activePortfolio?.metrics ? Object.keys(activePortfolio.metrics).length : 0}</h2>
-          <small>Computed by backend</small>
+          <p>Volatility (σ)</p>
+          <h2>{portfolioVolatility != null ? `${(portfolioVolatility * 100).toFixed(1)}%` : "—"}</h2>
+          <small>Annualised portfolio volatility</small>
+        </article>
+        <article className="kpi-card">
+          <p>Diversification</p>
+          <h2>{diversificationScore != null ? `${diversificationScore}/100` : `${holdings.length} holdings`}</h2>
+          <small>{diversificationScore != null ? "HHI diversification score" : "Holdings count"}</small>
         </article>
       </div>
 
-      {sectorWeights.length > 0 && (
+      {(backendSectorAllocation ?? sectorWeights).length > 0 && (
         <div className="split-grid portfolio-grid-extended">
           <article className="feature-card">
             <div className="feature-head">
@@ -204,7 +225,7 @@ export function PortfolioView(props: PortfolioViewProps) {
               <h3>Sector Allocation</h3>
             </div>
             <div className="allocation-list">
-              {sectorWeights.map((sectorItem) => (
+              {(backendSectorAllocation ?? sectorWeights).map((sectorItem) => (
                 <div key={sectorItem.sector} className="allocation-item">
                   <div className="allocation-meta">
                     <span>{sectorItem.sector}</span>
@@ -213,7 +234,7 @@ export function PortfolioView(props: PortfolioViewProps) {
                   <div className="allocation-track">
                     <span
                       className="allocation-fill"
-                      style={{ width: `${(sectorItem.weight / maxSectorWeight) * 100}%` }}
+                      style={{ width: `${(sectorItem.weight / Math.max(...(backendSectorAllocation ?? sectorWeights).map(s => s.weight), 1)) * 100}%` }}
                     />
                   </div>
                 </div>
