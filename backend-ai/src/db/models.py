@@ -3,7 +3,7 @@
 import uuid
 from datetime import date, datetime
 from decimal import Decimal
-from typing import Optional
+from typing import List, Optional
 
 from sqlalchemy import (
     JSON,
@@ -499,8 +499,44 @@ class CompanyComparisonSnapshot(Base):
     )
 
 
+class DocumentChunk(Base):
+    """Processed document chunks with embeddings for semantic search."""
+
+    __tablename__ = "document_chunks"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    filing_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("filings.id", ondelete="CASCADE"), nullable=False
+    )
+    company_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("companies.id", ondelete="CASCADE"), nullable=False
+    )
+    chunk_id: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    text: Mapped[str] = mapped_column(Text, nullable=False)
+    embedding: Mapped[List[float]] = mapped_column(
+        ARRAY(Float), nullable=False
+    )
+    section: Mapped[str] = mapped_column(String(100), nullable=True)
+    document_type: Mapped[str] = mapped_column(String(50), nullable=True)
+    year: Mapped[str] = mapped_column(String(4), nullable=True)
+    filing_date: Mapped[date] = mapped_column(Date, nullable=True)
+    source_url: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    metadata_: Mapped[Optional[dict]] = mapped_column("metadata", JSON, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow
+    )
+
+    __table_args__ = (
+        Index("ix_document_chunks_company_filing", "company_id", "filing_id"),
+        Index("ix_document_chunks_section", "section"),
+        Index("ix_document_chunks_filing_date", "filing_date"),
+    )
+
+
 class CompareFlowLog(Base):
-    """Persisted request-level logs for compare decision pipeline."""
+    """Log of comparison flows."""
 
     __tablename__ = "compare_flow_logs"
 

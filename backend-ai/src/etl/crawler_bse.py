@@ -1,0 +1,131 @@
+"""BSE filings crawler."""
+
+import logging
+import time
+from typing import Any, Dict, List, Optional
+from uuid import UUID
+
+import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
+
+from src.etl.crawler_base import BaseCrawler
+
+logger = logging.getLogger(__name__)
+
+BSE_ANNOUNCEMENTS_API = "https://api.bseindia.com/BseIndiaAPI/api/AnnGetData/w"
+BSE_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
+    "Accept": "application/json",
+    "Accept-Language": "en-US,en;q=0.9",
+    "X-Requested-With": "XMLHttpRequest",
+}
+
+
+class BSECrawler(BaseCrawler):
+    """Crawler for BSE corporate filings."""
+    
+    def __init__(self):
+        super().__init__("https://api.bseindia.com")
+        
+    def _get_session(self):
+        """Get a session with proper BSE cookies and headers."""
+        session = requests.Session()
+        session.headers.update(BSE_HEADERS)
+        
+        # Configure retry strategy
+        retry_strategy = Retry(
+            total=3,
+            backoff_factor=1,
+            status_forcelist=[429, 500, 502, 503, 504],
+        )
+        adapter = HTTPAdapter(max_retries=retry_strategy)
+        session.mount("https://", adapter)
+        session.mount("http://", adapter)
+        return session
+
+    def crawl(
+        self,
+        company_id: Optional[UUID] = None,
+        symbol: Optional[str] = None,
+        since_date: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        """Crawl BSE filings for companies.
+        
+        Args:
+            company_id: Company ID to filter (ignored for direct BSE crawl)
+            symbol: BSE symbol to filter (e.g. "500110")
+            since_date: Date string YYYY-MM-DD to filter from
+            
+        Returns:
+            List of filing metadata dicts.
+        """
+        session = self._get_session()
+        
+        # First visit BSE main page to get session cookies
+        try:
+            # Visit main page to get cookies
+            session.get("https://www.bseindia.com", timeout=30)
+        except Exception as e:
+            logger.warning("Failed to initialize BSE session: %s", e)
+            
+        # Try to get announcements
+        try:
+            params = {"strCat": "-1"}
+            if since_date:
+                # Format date for BSE API (DD-MM-YYYY)
+                if "-" in since_date and len(since_date) == 10:
+                    parts = since_date.split("-")
+                    if len(parts) == 3:
+                        bse_date = f"{parts[2]}-{parts[1]}-{parts[0]}"
+                        params["strFromDate"] = bse_date
+                        params["strToDate"] = bse_date
+                        
+            resp = session.get(
+                BSE_ANNOUNCEMENTS_API,
+                params=params,
+                timeout=30,
+            )
+            
+            if resp.status_code != 200:
+                logger.warning("BSE API returned status %d", resp.status_code)
+                return []
+
+            data = resp.json()
+            items = data.get("Table", [])
+            if not isinstance(items, list):
+                items = []
+                
+            results = []
+            for item in items[:50]:  # Limit to first 50
+                # Extract filing metadata
+                filing_data = {
+                    "symbol": item.get("scrip_cd", ""),
+                    "subject": item.get("NEWSSUB", item.get("SUBJECT", "")),
+                    "filing_type": item.get("ANNOUNCEMENT_TYPE", "announcement"),
+                    "date": item.get("DT_TM", ""),
+                    "attachment_url": item.get("ATTACHMENTNAME", ""),
+                    "source": "BSE",
+                }
+                
+                # Add company info if available
+                if symbol:
+                    filing_data["symbol"] = symbol
+                    
+                results.append(filing_data)
+                
+            logger.info("BSE crawler fetched %d announcements", len(results))
+            return results
+        except Exception as e:
+            logger.error("BSE crawl failed: %s", e)
+            return []
+
+    def _get_announcements(self, session) -> List[Dict[str, Any]]:
+        """Get BSE announcements with proper session management."""
+        # This is the actual implementation that would go in the crawler
+        pass
+
+    def _get_announcements(self, session) -> List[Dict[str, Any]]:
+        """Get BSE announcements with proper session management."""
+        # This is the actual implementation that would go in the crawler
+        pass

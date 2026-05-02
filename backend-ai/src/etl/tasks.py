@@ -205,6 +205,8 @@ def crawl_nse_filings(
     since_date: Optional[str] = None,
 ):
     """Crawl NSE filings for companies."""
+    from src.etl.ingestion_service import DocumentIngestionService
+    
     db = SessionLocal()
     run = _log_etl_run(
         db,
@@ -215,7 +217,104 @@ def crawl_nse_filings(
         crawler = NSECrawler()
         cid = UUID(company_id) if company_id else None
         results = crawler.crawl(company_id=cid, since_date=since_date)
-        _finish_etl_run(db, run, records=len(results))
+        
+        # Integrate with ingestion service to download filings
+        ingestion_service = DocumentIngestionService(db)
+        company = db.query(Company).filter(Company.id == cid).first() if cid else None
+        
+        # If we have a specific company, use its ID; otherwise, we'll need to map symbols to companies
+        if company:
+            downloaded = 0
+            for result in results:
+                filing = ingestion_service.ingest_filing(company.id, result)
+                if filing:
+                    downloaded += 1
+                    process_filing.delay(str(filing.id))
+            _finish_etl_run(db, run, records=downloaded)
+        else:
+            # For batch processing, we need to find companies by symbol
+            downloaded = 0
+            for result in results:
+                symbol = result.get("symbol")
+                if symbol:
+                    # Try to find company by NSE symbol
+                    company = db.query(Company).filter(
+                        (Company.ticker_nse == symbol) | (Company.tl_nse == symbol)
+                    ).first()
+                    if company is None:
+                        # Try to find by BSE symbol
+                        company = db.query(Company).filter(
+                            (Company.ticker_nse == symbol) | (Company.ticker_bse == symbol)
+                        ).first()
+                    
+                    if company:
+                        filing = ingestion_service.ingest_filing(company.id, result)
+                        if filing:
+                            downloaded += 1
+                            process_filing.delay(str(filing.id))
+            _finish_etl_run(db, run, records=downloaded)
+    except Exception as e:
+        _finish_etl_run(db, run, status="failed", error=str(e))
+    finally:
+        db.close()
+
+
+@app.task(bind=True, name="etl.crawl_bse")
+def crawl_bse_filings(
+    self,
+    company_id: Optional[str] = None,
+    since_date: Optional[str] = None,
+):
+    """Crawl BSE filings for companies."""
+    from src.etl.ingestion_service import DocumentIngestionService
+    from src.etl.crawler_bse import BSECrawler
+    
+    db = SessionLocal()
+    run = _log_etl_run(
+        db,
+        "bse_filings",
+        company_id=UUID(company_id) if company_id else None,
+    )
+    try:
+        crawler = BSECrawler()
+        cid = UUID(company_id) if company_id else None
+        results = crawler.crawl(company_id=cid, since_date=since_date)
+        
+        # Integrate with ingestion service to download filings
+        ingestion_service = DocumentIngestionService(db)
+        company = db.query(Company).filter(Company.id == cid).first() if cid else None
+        
+        # If we have a specific company, use its ID; otherwise, we'll need to map symbols to companies
+        if company:
+            downloaded = 0
+            for result in results:
+                filing = ingestion_service.ingest_filing(company.id, result)
+                if filing:
+                    downloaded += 1
+                    process_filing.delay(str(filing.id))
+            _finish_etl_run(db, run, records=downloaded)
+        else:
+            # For batch processing, we need to find companies by symbol
+            downloaded = 0
+            for result in results:
+                symbol = result.get("symbol")
+                if symbol:
+                    # Try to find company by BSE symbol
+                    company = db.query(Company).filter(
+                        (Company.ticker_bse == symbol) | (Company.ticker_nse == symbol)
+                    ).first()
+                    if company is None:
+                        # Try to find by NSE symbol as fallback
+                        company = db.query(Company).filter(
+                            Company.ticker_nse == symbol
+                        ).first()
+                    
+                    if company:
+                        filing = ingestion_service.ingest_filing(company.id, result)
+                        if filing:
+                            downloaded += 1
+                            process_filing.delay(str(filing.id))
+            _finish_etl_run(db, run, records=downloaded)
     except Exception as e:
         _finish_etl_run(db, run, status="failed", error=str(e))
     finally:
@@ -263,3 +362,73 @@ def refresh_company(self, company_id: str):
     ir_sig: Any = crawl_ir_pages.s(company_id=company_id)
     workflow: Any = chain_fn(enrich_sig, nse_sig, ir_sig)
     workflow.apply_async()
+
+
+# ------------------------------------------------------------------ #
+#  Document Processing pipeline                                        #
+# ------------------------------------------------------------------ #
+
+
+@app.task(bind=True, name="etl.process_filing")
+def process_filing(self, filing_id: str):
+    """Process a downloaded filing through the semantic processing pipeline."""
+    db = SessionLocal()
+    run = _log_etl_run(db, "process_filing")
+    try:
+        from src.db.models import Filing, Company
+        from src.etl.transform_task import ETLTransformTask
+        from src.etl.load_task import ETLLoadTask
+        
+        filing = db.query(Filing).filter(Filing.id == UUID(filing_id)).first()
+        if not filing or not filing.raw_uri:
+            logger.warning("Filing not found or has no raw_uri: %s", filing_id)
+            return
+            
+        file_path = filing.raw_uri
+        
+        # Get metadata
+        metadata = {
+            "company_id": str(filing.company_id),
+            "filing_id": str(filing.id),
+            "filing_type": filing.filing_type or "",
+            "filing_date": filing.filing_date.isoformat() if filing.filing_date else "",
+            "document_type": filing.filing_type or "",
+        }
+        
+        # Transform
+        transformer = ETLTransformTask()
+        result = transformer.process_filing(
+            file_path=file_path,
+            **metadata
+        )
+        
+        chunks = result.get("chunks", [])
+        enrichment = result.get("enrichment", {})
+        
+        # Load chunks to Qdrant
+        loader = ETLLoadTask()
+        loaded_count = loader.load_chunks(chunks)
+        
+        # Update filing status and save enrichment metadata to DB
+        filing.status = "processed"
+        
+        if filing.metadata_ is None:
+            filing.metadata_ = {}
+            
+        # Ensure we don't overwrite existing metadata completely
+        current_meta = dict(filing.metadata_)
+        current_meta['timeline_summary'] = enrichment.get("timeline_summary", "")
+        current_meta['red_flags'] = enrichment.get("red_flags", [])
+        current_meta['extracted_metrics'] = enrichment.get("metrics", {})
+        filing.metadata_ = current_meta
+        
+        db.commit()
+        
+        _finish_etl_run(db, run, records=loaded_count)
+        return {"loaded": loaded_count}
+    except Exception as e:
+        _finish_etl_run(db, run, status="failed", error=str(e))
+        logger.exception("Filing processing failed")
+        raise
+    finally:
+        db.close()
