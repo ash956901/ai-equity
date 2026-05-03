@@ -234,29 +234,42 @@ def seed():
             db.add(portfolio)
             db.flush()
 
-            portfolio_holdings = [
-                ("RELIANCE", 50, 2800),
-                ("TCS", 30, 3800),
-                ("HDFCBANK", 100, 1650),
-                ("INFY", 75, 1500),
-                ("ICICIBANK", 60, 1100),
-                ("BHARTIARTL", 40, 1200),
-                ("LT", 20, 3400),
-                ("MARUTI", 5, 12000),
-            ]
-            for ticker, qty, avg_price in portfolio_holdings:
-                company = company_map.get(ticker)
-                if not company:
-                    continue
+        portfolio_holdings = [
+            ("RELIANCE", 50, 2800),
+            ("TCS", 30, 3800),
+            ("HDFCBANK", 100, 1650),
+            ("INFY", 75, 1500),
+            ("ICICIBANK", 60, 1100),
+            ("BHARTIARTL", 40, 1200),
+            ("LT", 20, 3400),
+            ("MARUTI", 5, 12000),
+        ]
+        
+        for ticker, qty, avg_price in portfolio_holdings:
+            company = company_map.get(ticker)
+            if not company:
+                continue
+                
+            # Check if holding already exists, if so update it
+            existing_holding = db.query(Holding).filter(
+                Holding.portfolio_id == portfolio.id,
+                Holding.company_id == company.id
+            ).first()
+            
+            if existing_holding:
+                existing_holding.quantity = Decimal(str(qty))
+                existing_holding.average_price = Decimal(str(avg_price))
+                existing_holding.current_price = Decimal(str(avg_price * 1.15))
+            else:
                 holding = Holding(
                     portfolio_id=portfolio.id,
                     company_id=company.id,
                     quantity=Decimal(str(qty)),
                     average_price=Decimal(str(avg_price)),
-                    current_price=Decimal(str(avg_price * 1.15)), # Mock 15% gain for dashboard
+                    current_price=Decimal(str(avg_price * 1.15)),
                 )
-
                 db.add(holding)
+
 
         db.commit()
         print(f"Seeded {len(COMPANIES)} companies, {len(SAMPLE_RATIOS)} ratio sets, "
