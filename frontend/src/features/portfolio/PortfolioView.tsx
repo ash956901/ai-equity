@@ -38,11 +38,8 @@ const CHART_COLORS = [
 ];
 
 function getUserId(): string {
-  let id = localStorage.getItem("equityai-user-id");
-  if (!id) {
-    id = crypto.randomUUID();
-    localStorage.setItem("equityai-user-id", id);
-  }
+  const id = "00000000-0000-0000-0000-000000000001";
+  localStorage.setItem("equityai-user-id", id);
   return id;
 }
 
@@ -71,7 +68,8 @@ export function PortfolioView(props: PortfolioViewProps) {
         const detail = await fetchPortfolioDetail(primary.id);
         setActivePortfolio(detail);
         setDataSources(detail.data_sources ?? []);
-        const mapped: PortfolioHolding[] = (detail.holdings ?? []).map((h: AIHoldingDetail) => ({
+        const sourceHoldings = detail.metrics?.holdings ?? detail.holdings ?? [];
+        const mapped: PortfolioHolding[] = sourceHoldings.map((h: any) => ({
           symbol: h.ticker_nse ?? h.company_id.slice(0, 6),
           company: h.company_name ?? "Unknown",
           sector: h.sector ?? "Unknown",

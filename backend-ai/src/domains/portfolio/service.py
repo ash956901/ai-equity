@@ -7,7 +7,8 @@ from uuid import UUID
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
-from src.db.models import Company, Holding, Portfolio
+from src.agents import build_research_agent
+from src.db.models import Company, Holding, Portfolio, User
 from src.services.portfolio_service import PortfolioService
 from src.utils.data_sources import portfolio_sources
 
@@ -18,6 +19,36 @@ class PortfoliosService:
     def __init__(self, db: Session):
         self.db = db
         self._portfolio_service = PortfolioService(db)
+
+    def get_ai_suggestions(self, user_id: UUID) -> dict[str, Any]:
+        """Generate AI-driven investment suggestions for the user's primary portfolio."""
+        portfolio_id = self._portfolio_service.get_primary_portfolio(user_id)
+        if not portfolio_id:
+            return {"suggestions": "No primary portfolio found. Add one to get AI insights."}
+
+        # We use the research agent to generate a summary/suggestion
+        agent = build_research_agent()
+        task = (
+            f"Analyse the portfolio {portfolio_id} and recent market news. "
+            "Provide 3-4 specific 'Hidden Insights' and 'Investment Suggestions' "
+            "(Buy/Sell/Hold) for this user. "
+            "Return the response as a clean, professional markdown block with headers and bullet points. "
+            "Do NOT return JSON or structured lists, just formatted text."
+        )
+
+
+        try:
+            result = agent.invoke(
+                {"messages": [{"role": "user", "content": task}]},
+                config={"configurable": {"thread_id": f"suggestions-{user_id}"}},
+            )
+            response_text = result["messages"][-1].content
+            return {"suggestions": response_text}
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).error(f"Failed to generate AI suggestions: {e}")
+            return {"suggestions": "AI insights are temporarily unavailable. Please try again later."}
+
 
     def list_portfolios(self, user_id: UUID) -> list[dict[str, Any]]:
         portfolios = (

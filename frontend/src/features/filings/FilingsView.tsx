@@ -35,8 +35,8 @@ interface FilingsViewProps {
 
 export function FilingsView(props: FilingsViewProps) {
   const [lastSelectionStamp, setLastSelectionStamp] = useState<number>(0);
-  const [symbolInput, setSymbolInput] = useState("AAPL");
-  const [activeSymbol, setActiveSymbol] = useState("AAPL");
+  const [symbolInput, setSymbolInput] = useState("RELIANCE");
+  const [activeSymbol, setActiveSymbol] = useState("RELIANCE");
   const [filingType, setFilingType] = useState("");
 
   const [filings, setFilings] = useState<SecFiling[]>([]);
@@ -176,9 +176,11 @@ export function FilingsView(props: FilingsViewProps) {
             onChange={(event) => setFilingType(event.target.value)}
           >
             <option value="">All Types</option>
-            <option value="10-K">10-K</option>
-            <option value="10-Q">10-Q</option>
-            <option value="8-K">8-K</option>
+            <option value="Annual Report">Annual Report</option>
+            <option value="Investor Presentation">Investor Presentation</option>
+            <option value="Regulatory">Regulatory</option>
+            <option value="Transcript">Transcript</option>
+            <option value="Update">Update</option>
           </select>
           <button type="button" className="secondary-btn mini-btn" onClick={() => void handleSearch()}>
             {searchLoading ? "Searching..." : "Search Companies"}

@@ -1450,6 +1450,55 @@ html.theme-transitioning * {
   font-size: 0.86rem;
 }
 
+/* ── Dashboard: risk metrics ── */
+.risk-metric-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 0;
+  font-size: 0.85rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--line) 50%, transparent);
+}
+.risk-metric-row:last-child {
+  border-bottom: none;
+}
+.risk-metric-row span {
+  color: var(--muted);
+}
+.risk-metric-row strong {
+  color: var(--ink);
+}
+
+/* ── Dashboard: insight mini cards ── */
+.insight-mini-card {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 12px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  font-size: 0.82rem;
+}
+.insight-mini-label {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  margin-bottom: 2px;
+}
+
+/* ── Dashboard: bg layer variable ── */
+:root {
+  --bg-layer-1: color-mix(in srgb, var(--bg) 60%, var(--card));
+}
+
+/* ── Holdings table zebra ── */
+.holdings-table tbody tr:nth-child(even) {
+  background: color-mix(in srgb, var(--bg) 30%, transparent);
+}
+
 .chat-page-wrap {
   height: calc(100vh - 52px);
   max-height: calc(100vh - 52px);

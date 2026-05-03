@@ -51,6 +51,16 @@ def create_portfolio(
     )
 
 
+@router.get("/suggestions")
+def get_ai_suggestions(
+    user_id: UUID,
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """Get AI-generated investment suggestions for the user's primary portfolio."""
+    service = PortfoliosService(db)
+    return service.get_ai_suggestions(user_id)
+
+
 @router.get("/{portfolio_id}")
 def get_portfolio(
     portfolio_id: UUID,
@@ -75,7 +85,10 @@ def get_portfolio_metrics(
     return service.get_metrics(portfolio_id)
 
 
+
+
 @router.post("/{portfolio_id}/holdings", status_code=201)
+
 def add_holding(
     portfolio_id: UUID,
     request: AddHoldingRequest,

@@ -6,7 +6,7 @@ from uuid import UUID
 
 from sqlalchemy.orm import Session
 
-from src.db.models import Company, Filing, NewsArticle
+from src.db.models import Company, Filing, NewsArticle, MarketSignal
 from src.utils.data_sources import timeline_sources
 
 
@@ -77,6 +77,34 @@ class TimelineService:
                         "source_url": source_url,
                     },
                     "data_sources": timeline_sources("news", source_url),
+                }
+            )
+
+        signal_query = self.db.query(MarketSignal).filter(MarketSignal.detected_at >= cutoff)
+        if company_id:
+            signal_query = signal_query.filter(MarketSignal.company_id == company_id)
+        signals = signal_query.order_by(MarketSignal.detected_at.desc()).limit(limit).all()
+
+        for signal in signals:
+            company = (
+                self.db.query(Company).filter(Company.id == signal.company_id).first()
+                if signal.company_id
+                else None
+            )
+            events.append(
+                {
+                    "id": str(signal.id),
+                    "event_type": "signal",
+                    "title": signal.title,
+                    "summary": signal.summary,
+                    "timestamp": signal.detected_at.isoformat(),
+                    "company_id": str(signal.company_id) if signal.company_id else None,
+                    "company_name": company.name if company else None,
+                    "metadata": {
+                        "signal_type": signal.signal_type,
+                        "impact": signal.impact_level,
+                    },
+                    "data_sources": [],
                 }
             )
 

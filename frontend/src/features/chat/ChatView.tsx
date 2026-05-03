@@ -105,6 +105,8 @@ export function ChatView(props: ChatViewProps) {
   const [attachedUploadId, setAttachedUploadId] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const pendingPromptRef = useRef<string | null>(null);
+  const isSendingRef = useRef(false);
 
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
 
@@ -197,8 +199,8 @@ export function ChatView(props: ChatViewProps) {
     setAttachedUploadId(null);
   }, []);
 
-  const sendMessage = useCallback(async () => {
-    const text = composerText.trim();
+  const sendMessage = useCallback(async (overrideText?: string) => {
+    const text = overrideText?.trim() || composerText.trim();
     if (!text || !activeThread) return;
 
     const now = new Date().toISOString();
@@ -363,21 +365,26 @@ export function ChatView(props: ChatViewProps) {
     setComposerText((current) => (current ? current : ""));
   }, [activeThread]);
 
+  // Handle incoming prompts from other views (e.g. "Ask Iris About This Event")
   useEffect(() => {
     if (!props.searchSelection) return;
     if (props.searchSelection.stamp === lastSelectionStamp) return;
+    setLastSelectionStamp(props.searchSelection.stamp);
 
     if (props.searchSelection.chatPrompt) {
+      const prompt = props.searchSelection.chatPrompt;
       if (activeThread && activeThread.messages.length <= 1) {
-        setComposerText(props.searchSelection.chatPrompt);
+        // Current thread is empty — queue the prompt to send
+        pendingPromptRef.current = prompt;
+        setComposerText(prompt);
       } else {
-        const created = createThread(props.searchSelection.chatPrompt);
+        // Create a fresh thread, then queue the prompt
+        pendingPromptRef.current = prompt;
+        const created = createThread();
         props.setActiveThreadId(created.id);
-        setComposerText("");
+        setComposerText(prompt);
       }
     }
-
-    setLastSelectionStamp(props.searchSelection.stamp);
   }, [
     activeThread,
     createThread,
@@ -386,6 +393,25 @@ export function ChatView(props: ChatViewProps) {
     props.searchSelection,
     props.setActiveThreadId,
   ]);
+
+  // Consume pendingPromptRef once the active thread is ready
+  useEffect(() => {
+    if (!activeThread) return;
+    if (!pendingPromptRef.current) return;
+    if (isSendingRef.current) return;
+
+    const prompt = pendingPromptRef.current;
+    pendingPromptRef.current = null;
+    isSendingRef.current = true;
+
+    // Small delay so React state settles after thread creation
+    const timer = setTimeout(() => {
+      sendMessage(prompt).finally(() => {
+        isSendingRef.current = false;
+      });
+    }, 50);
+    return () => clearTimeout(timer);
+  }, [activeThread, sendMessage]);
 
   if (!activeThread) return null;
 

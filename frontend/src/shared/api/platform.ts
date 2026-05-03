@@ -42,6 +42,13 @@ export async function fetchPortfolioMetrics(
   return aiGet<PortfolioMetrics>(`/portfolios/${portfolioId}/metrics`);
 }
 
+export async function fetchPortfolioSuggestions(
+  userId: string
+): Promise<{ suggestions: string }> {
+  return aiGet<{ suggestions: string }>(`/portfolios/suggestions?user_id=${userId}`);
+}
+
+
 export async function sendChatQuery(req: ChatQueryRequest): Promise<ChatQueryResponse> {
   return aiPost<ChatQueryResponse>("/chat/query", req);
 }

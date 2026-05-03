@@ -6,7 +6,7 @@ from uuid import UUID
 
 from sqlalchemy.orm import Session
 
-from src.db.models import Company, SavedScreen
+from src.db.models import Company, SavedScreen, CompanyTheme
 from src.services.vector_service import VectorService
 
 logger = logging.getLogger(__name__)
@@ -91,10 +91,30 @@ class ScreensService:
             raw_results = vector_svc.thematic_search(query=query, limit=limit * 3)
         except Exception as exc:
             logger.error("Thematic vector search failed: %s", exc)
-            return []
-
+            raw_results = []
+            
         enriched: list[dict[str, Any]] = []
         seen_company_ids: set[str] = set()
+
+        # SQL Fallback
+        sql_themes = self.db.query(CompanyTheme).filter(CompanyTheme.theme_name.ilike(f"%{query}%")).all()
+        for theme in sql_themes:
+            if str(theme.company_id) not in seen_company_ids:
+                company = self.db.query(Company).filter(Company.id == theme.company_id).first()
+                if company:
+                    seen_company_ids.add(str(company.id))
+                    enriched.append({
+                        "company_id": str(company.id),
+                        "company_name": company.name,
+                        "ticker_nse": company.ticker_nse,
+                        "ticker_bse": company.ticker_bse,
+                        "sector": company.sector,
+                        "industry": company.industry,
+                        "market_cap_inr": company.market_cap_inr,
+                        "relevance_score": float(theme.confidence_score),
+                        "match_count": 1,
+                        "evidence_snippets": [f"Direct exposure to {theme.theme_name}"],
+                    })
 
         for result in raw_results:
             company_id_str = result.get("company_id")

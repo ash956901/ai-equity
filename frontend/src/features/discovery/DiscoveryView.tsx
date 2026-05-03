@@ -187,7 +187,35 @@ export function DiscoveryView(props: DiscoveryViewProps) {
           )}
         </form>
 
+        <div className="discovery-trending-themes" style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
+          <span style={{ fontSize: 12, color: "var(--muted)", alignSelf: "center" }}>Trending:</span>
+          {["AI Infrastructure", "Green Hydrogen", "Digital Banking", "EV Supply Chain", "Defense Systems"].map(theme => (
+            <button
+              key={theme}
+              type="button"
+              className="mini-chip-btn"
+              onClick={() => {
+                setQuery(theme);
+                setMode("thematic");
+                void runThematicSearch(theme);
+              }}
+              style={{
+                fontSize: 11,
+                padding: "4px 10px",
+                borderRadius: 20,
+                border: "1px solid var(--line)",
+                background: "var(--bg-elevated)",
+                cursor: "pointer",
+                color: "var(--ink)"
+              }}
+            >
+              {theme}
+            </button>
+          ))}
+        </div>
+
         <div className="discovery-controls">
+
           {mode === "keyword" && (
             <select
               className="type-select"

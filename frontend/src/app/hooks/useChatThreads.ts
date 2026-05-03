@@ -20,23 +20,9 @@ function createInitialThread(promptText?: string): ChatThread {
     },
   ];
 
-  if (messageSeed) {
-    messages.push({
-      id: `user-${Date.now()}-seed`,
-      role: "user",
-      text: messageSeed,
-    });
-    messages.push({
-      id: `assistant-${Date.now()}-seed`,
-      role: "assistant",
-      text: `Got it. I will analyze: "${messageSeed}" and structure the answer with risks, catalysts, and next checks.`,
-      sources: ["Prompt intent parser", "Research heuristics"],
-    });
-  }
-
   return {
     id: `thread-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-    title: messageSeed ? messageSeed.slice(0, 44) : "New thread",
+    title: "New thread",
     pinned: false,
     createdAt: now,
     updatedAt: now,

@@ -428,6 +428,33 @@ class AlertRule(Base):
     )
 
 
+class MarketSignal(Base):
+    """Signals detected from news, filings, or price action."""
+
+    __tablename__ = "market_signals"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    company_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("companies.id", ondelete="CASCADE"), nullable=True
+    )
+    signal_type: Mapped[str] = mapped_column(String(50), nullable=False)  # risk, growth, governance
+    impact_level: Mapped[str] = mapped_column(String(20), default="medium")  # high, medium, low
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    summary: Mapped[str] = mapped_column(Text, nullable=False)
+    source_event_type: Mapped[str] = mapped_column(String(50))  # news, filing
+    source_event_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
+    detected_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    metadata_: Mapped[Optional[dict]] = mapped_column("metadata", JSON, nullable=True)
+
+    __table_args__ = (
+        Index("ix_market_signals_company", "company_id"),
+        Index("ix_market_signals_detected", "detected_at"),
+    )
+
+
+
 class WatchlistModel(Base):
     __tablename__ = "watchlists"
 

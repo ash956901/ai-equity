@@ -9,8 +9,9 @@ from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
 from src.agents import build_research_agent
-from src.db.models import ChatMessage, ChatSession, User
+from src.db.models import ChatMessage, ChatSession, User, Portfolio
 from src.utils.data_sources import DataSource
+
 
 logger = logging.getLogger(__name__)
 
@@ -24,17 +25,20 @@ class ChatService:
     def __init__(self, db: Session):
         self.db = db
 
-    @staticmethod
     def _build_user_message(
+        self,
         query: str,
         user_id: UUID,
         expertise_level: str,
         upload_id: Optional[UUID],
+        primary_portfolio_id: Optional[UUID],
     ) -> str:
         parts = [query]
         context_lines = [f"user_id={user_id}"]
         if upload_id:
             context_lines.append(f"upload_id={upload_id}")
+        if primary_portfolio_id:
+            context_lines.append(f"primary_portfolio_id={primary_portfolio_id}")
         context_lines.append(f"expertise_level={expertise_level}")
         parts.append(f"\n\n[Context: {', '.join(context_lines)}]")
         return "".join(parts)
@@ -81,11 +85,20 @@ class ChatService:
                 raise HTTPException(status_code=404, detail="Session not found")
 
         agent = build_research_agent()
+        
+        primary_portfolio = (
+            self.db.query(Portfolio)
+            .filter(Portfolio.user_id == user_id, Portfolio.is_primary == True)
+            .first()
+        )
+        primary_portfolio_id = primary_portfolio.id if primary_portfolio else None
+
         user_message = self._build_user_message(
             query=query,
             user_id=user_id,
             expertise_level=expertise_level,
             upload_id=upload_id,
+            primary_portfolio_id=primary_portfolio_id,
         )
 
         result: Optional[dict[str, Any]] = None

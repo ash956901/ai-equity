@@ -30,7 +30,7 @@ function getUserId(): string {
 export function TimelineView(props: TimelineViewProps) {
   const [lastSelectionStamp, setLastSelectionStamp] = useState<number>(0);
   const [query, setQuery] = useState("");
-  const [typeFilter, setTypeFilter] = useState<"all" | "filing" | "news">("all");
+  const [typeFilter, setTypeFilter] = useState<"all" | "filing" | "news" | "signal">("all");
   const [events, setEvents] = useState<BackendTimelineEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -95,7 +95,11 @@ export function TimelineView(props: TimelineViewProps) {
     return Number.isNaN(d.getTime()) ? value : d.toLocaleString();
   };
 
-  const getTypeClass = (type: string) => (type === "filing" ? "chip type-filing" : "chip type-news");
+  const getTypeClass = (type: string) => {
+    if (type === "filing") return "chip type-filing";
+    if (type === "signal") return "chip type-signal";
+    return "chip type-news";
+  };
   const getImpactClass = (impact?: string) => {
     if (impact === "high") return "chip negative";
     if (impact === "medium") return "chip warning";
@@ -125,7 +129,9 @@ export function TimelineView(props: TimelineViewProps) {
             <option value="all">Type: All</option>
             <option value="filing">Type: Filing</option>
             <option value="news">Type: News</option>
+            <option value="signal">Type: Signal</option>
           </select>
+
         </div>
       </div>
 

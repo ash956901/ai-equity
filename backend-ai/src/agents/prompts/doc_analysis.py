@@ -19,6 +19,10 @@ Structure your response with ALL of the following sections:
 ## Document Overview
 Brief summary of what the document contains and its relevance.
 
+## Quick Summary (< 50 words)
+Provide a punchy, one-paragraph summary of the most critical takeaways for a busy investor. Keep it under 50 words.
+
+
 ## Company Performance Summary
 - Revenue, profit, margin trends with specific numbers from the document.
 - Year-over-year comparisons if available.

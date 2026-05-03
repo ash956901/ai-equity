@@ -120,6 +120,27 @@ class PortfolioService:
         # HHI ranges from ~0 (highly diversified) to 10000 (single sector)
         diversification_score = max(0, min(100, 100 - (hhi / 100)))
 
+        # Second pass to add weights and company details to holdings
+        enriched_holdings = []
+        for h in holdings:
+            company = self.db.query(Company).filter(Company.id == UUID(h["company_id"])).first()
+            val = h.get("value", 0) or 0
+            weight = val / total_value if total_value > 0 else 0
+            
+            # Simple mock return pct
+            avg_price = h.get("average_price") or 0
+            curr_price = h.get("current_price") or 0
+            return_pct = ((curr_price - avg_price) / avg_price * 100) if avg_price > 0 else 0
+            
+            enriched_holdings.append({
+                **h,
+                "weight": weight * 100,
+                "return_pct": return_pct,
+                "company_name": company.name if company else "Unknown",
+                "ticker_nse": company.ticker_nse if company else "Unknown",
+                "sector": company.sector if company else "Unknown",
+            })
+
         return {
             "portfolio_id": str(portfolio_id),
             "total_value_inr": total_value,
@@ -130,5 +151,5 @@ class PortfolioService:
             "sharpe_ratio": round(sharpe_ratio, 2),
             "diversification_score": int(diversification_score),
             "sector_allocation": {k: round(v, 4) for k, v in sector_allocation.items()},
-            "holdings": holdings,
+            "holdings": enriched_holdings,
         }

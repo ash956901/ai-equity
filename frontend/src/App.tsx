@@ -127,6 +127,9 @@ export default function App() {
     root.classList.toggle("theme-dark", theme === "dark");
     root.classList.toggle("theme-light", theme === "light");
     window.localStorage.setItem(THEME_STORAGE_KEY, theme);
+    
+    // Force demo user UUID for seed database
+    window.localStorage.setItem("equityai-user-id", "00000000-0000-0000-0000-000000000001");
   }, [theme]);
 
   useEffect(() => {

@@ -1,6 +1,7 @@
 """Seed the database with sample Indian companies, a test user, and financial data."""
 
 import sys
+import uuid
 from datetime import date, datetime
 from decimal import Decimal
 from pathlib import Path
@@ -18,6 +19,7 @@ from src.db.models import (  # noqa: E402
     Portfolio,
     Holding,
     CompanyTheme,
+    Filing,
 )
 
 COMPANIES = [
@@ -78,32 +80,37 @@ def seed():
 
     try:
         existing = db.query(Company).count()
-        if existing > 0:
-            print(f"Database already has {existing} companies. Skipping seed.")
-            return
-
-        nse = Exchange(code="NSE", name="National Stock Exchange of India")
-        bse = Exchange(code="BSE", name="Bombay Stock Exchange")
-        db.add_all([nse, bse])
-        db.flush()
-
-        company_map = {}
-        for c_data in COMPANIES:
-            company = Company(
-                name=c_data["name"],
-                ticker_nse=c_data["ticker_nse"],
-                ticker_bse=c_data["ticker_bse"],
-                isin=c_data["isin"],
-                sector=c_data["sector"],
-                industry=c_data["industry"],
-                market_cap_inr=c_data["market_cap_inr"],
-                website_domain=c_data["website_domain"],
-                country="IND",
-                listing_status="active",
-            )
-            db.add(company)
+        if existing == 0:
+            nse = Exchange(code="NSE", name="National Stock Exchange of India")
+            bse = Exchange(code="BSE", name="Bombay Stock Exchange")
+            db.add_all([nse, bse])
             db.flush()
-            company_map[c_data["ticker_nse"]] = company
+
+            for c_data in COMPANIES:
+                company = Company(
+                    name=c_data["name"],
+                    ticker_nse=c_data["ticker_nse"],
+                    ticker_bse=c_data["ticker_bse"],
+                    isin=c_data["isin"],
+                    sector=c_data["sector"],
+                    industry=c_data["industry"],
+                    market_cap_inr=c_data["market_cap_inr"],
+                    website_domain=c_data["website_domain"],
+                    country="IND",
+                    listing_status="active",
+                )
+                db.add(company)
+                db.flush()
+
+        # Build company map regardless
+        company_map = {}
+        for c in db.query(Company).all():
+            if c.ticker_nse:
+                company_map[c.ticker_nse] = c
+            if c.ticker_bse:
+                company_map[c.ticker_bse] = c
+
+
 
         for ticker, ratios in SAMPLE_RATIOS.items():
             company = company_map[ticker]
@@ -181,46 +188,77 @@ def seed():
             )
             db.add(article)
 
-        test_user = User(
-            email="test@equityai.dev",
-            username="testuser",
-            full_name="Test User",
-            expertise_level="intermediate",
-        )
-        db.add(test_user)
-        db.flush()
-
-        portfolio = Portfolio(
-            user_id=test_user.id,
-            name="My Portfolio",
-            is_primary=True,
-        )
-        db.add(portfolio)
-        db.flush()
-
-        portfolio_holdings = [
-            ("RELIANCE", 50, 2800),
-            ("TCS", 30, 3800),
-            ("HDFCBANK", 100, 1650),
-            ("INFY", 75, 1500),
-            ("ICICIBANK", 60, 1100),
+        filing_items = [
+            ("RELIANCE", "Annual Report 2024-25", "Annual Report"),
+            ("TCS", "Q4 Investor Presentation", "Investor Presentation"),
+            ("HDFCBANK", "Basel III Disclosures Q4", "Regulatory"),
+            ("INFY", "Earnings Call Transcript Q4", "Transcript"),
+            ("ICICIBANK", "Annual Report 2024-25", "Annual Report"),
+            ("BHARTIARTL", "Spectrum Allocation Update", "Regulatory"),
+            ("LT", "Q4 Investor Presentation", "Investor Presentation"),
+            ("MARUTI", "Monthly Sales Report", "Update"),
         ]
-        for ticker, qty, avg_price in portfolio_holdings:
+        for ticker, title, filing_type in filing_items:
             company = company_map.get(ticker)
             if not company:
                 continue
-            holding = Holding(
-                portfolio_id=portfolio.id,
+            filing = Filing(
                 company_id=company.id,
-                quantity=Decimal(str(qty)),
-                average_price=Decimal(str(avg_price)),
+                title=title,
+                filing_type=filing_type,
+                filing_date=date.today(),
+                source_url=f"https://www.screener.in/company/{ticker}/consolidated/",
             )
-            db.add(holding)
+            db.add(filing)
+
+        test_user_id = uuid.UUID("00000000-0000-0000-0000-000000000001")
+        test_user = db.query(User).filter(User.id == test_user_id).first()
+        if not test_user:
+            test_user = User(
+                id=test_user_id,
+                email="test@equityai.dev",
+                username="testuser",
+                full_name="Test User",
+                expertise_level="intermediate",
+            )
+            db.add(test_user)
+            db.flush()
+
+        portfolio = db.query(Portfolio).filter(Portfolio.user_id == test_user_id).first()
+        if not portfolio:
+            portfolio = Portfolio(
+                user_id=test_user.id,
+                name="My Portfolio",
+                is_primary=True,
+            )
+            db.add(portfolio)
+            db.flush()
+
+            portfolio_holdings = [
+                ("RELIANCE", 50, 2800),
+                ("TCS", 30, 3800),
+                ("HDFCBANK", 100, 1650),
+                ("INFY", 75, 1500),
+                ("ICICIBANK", 60, 1100),
+                ("BHARTIARTL", 40, 1200),
+                ("LT", 20, 3400),
+                ("MARUTI", 5, 12000),
+            ]
+            for ticker, qty, avg_price in portfolio_holdings:
+                company = company_map.get(ticker)
+                if not company:
+                    continue
+                holding = Holding(
+                    portfolio_id=portfolio.id,
+                    company_id=company.id,
+                    quantity=Decimal(str(qty)),
+                    average_price=Decimal(str(avg_price)),
+                )
+                db.add(holding)
 
         db.commit()
         print(f"Seeded {len(COMPANIES)} companies, {len(SAMPLE_RATIOS)} ratio sets, "
-              f"{len(THEMES)} themes, {len(news_items)} news articles, "
-              f"1 user with portfolio ({len(portfolio_holdings)} holdings)")
+              f"{len(THEMES)} themes, {len(news_items)} news articles")
         print(f"Test user ID: {test_user.id}")
         print(f"Test user email: {test_user.email}")
 
