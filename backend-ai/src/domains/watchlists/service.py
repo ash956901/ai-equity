@@ -15,6 +15,18 @@ class WatchlistsService:
     def __init__(self, db: Session):
         self.db = db
 
+    def assert_owns_watchlist(self, watchlist_id: UUID, user_id: UUID) -> WatchlistModel:
+        watchlist = (
+            self.db.query(WatchlistModel)
+            .filter(WatchlistModel.id == watchlist_id)
+            .first()
+        )
+        if not watchlist:
+            raise HTTPException(status_code=404, detail="Watchlist not found")
+        if watchlist.user_id != user_id:
+            raise HTTPException(status_code=403, detail="Not your watchlist")
+        return watchlist
+
     def list_watchlists(self, user_id: UUID) -> list[dict[str, Any]]:
         watchlists = (
             self.db.query(WatchlistModel)

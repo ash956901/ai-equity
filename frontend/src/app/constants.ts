@@ -6,6 +6,7 @@ import {
   Compass,
   FileText,
   GitCompareArrows,
+  Home,
   LayoutDashboard,
   Newspaper,
   Settings,
@@ -66,10 +67,11 @@ export const DEFAULT_NOTIFICATIONS: NotificationItem[] = [
 ];
 
 export const navItems: NavItem[] = [
+  { key: "home", label: "Home", icon: Home, caption: "Personalised" },
   { key: "dashboard", label: "Dashboard", icon: LayoutDashboard, caption: "Overview" },
   { key: "compare", label: "Compare", icon: GitCompareArrows, caption: "Side-by-side" },
   { key: "company", label: "Company", icon: Building2, caption: "Workspace" },
-  { key: "chat", label: "Iris Chat", icon: Bot, caption: "Copilot" },
+  { key: "chat", label: "Minerva Chat", icon: Bot, caption: "Copilot" },
   { key: "discovery", label: "Discovery", icon: Compass, caption: "Themes" },
   { key: "portfolio", label: "Portfolio", icon: Wallet, caption: "Exposure" },
   { key: "filings", label: "Filings", icon: FileText, caption: "Reports" },

@@ -1,5 +1,7 @@
 # Database Schema Design – AI Equity Research Platform
 
+> **Status (as of Round 2):** historical design document. The shipped schema overlaps but has additions (asymmetric flags on `company_themes`, `filing_summaries`, `chart_series`, `statement_items`, `transactions`, `alert_events`, `system_config`, etc.) and the User table has Round 2 auth columns. **For the actual table list and migration order, see [SHIPPED.md](./SHIPPED.md) and `backend-ai/alembic/versions/`.** Original design retained as reference.
+
 ## Overview
 
 This document defines the **PostgreSQL schema** for the AI-native equity research platform, optimized for Indian equities with support for large-scale financial data, document metadata, portfolio management, and chat-based interactions.

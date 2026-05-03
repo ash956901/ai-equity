@@ -10,6 +10,8 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from src.db.database import get_db
+from src.db.models import User
+from src.domains.auth.dependencies import assert_self, get_current_user
 from src.domains.chat.service import ChatService
 
 logger = logging.getLogger(__name__)
@@ -44,14 +46,19 @@ class QueryResponse(BaseModel):
 
 
 @router.post("/query", response_model=QueryResponse)
-def process_query(request: QueryRequest, db: Session = Depends(get_db)) -> QueryResponse:
+def process_query(
+    request: QueryRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> QueryResponse:
     """Process a research query through the deep agent orchestrator."""
+    assert_self(request.user_id, current_user)
     service = ChatService(db)
     try:
         result = service.process_query(
             user_id=request.user_id,
             query=request.query,
-            expertise_level=request.expertise_level,
+            expertise_level=request.expertise_level or current_user.expertise_level,
             session_id=request.session_id,
             upload_id=request.upload_id,
         )
@@ -69,7 +76,9 @@ def list_sessions(
     user_id: UUID,
     limit: int = 20,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     """List chat sessions for a user."""
+    assert_self(user_id, current_user)
     service = ChatService(db)
     return service.list_sessions(user_id=user_id, limit=limit)

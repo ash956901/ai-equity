@@ -18,7 +18,7 @@ import {
   type TimelineEvent,
   type Watchlist,
 } from "../types/api";
-import { AI_BACKEND_URL, aiDelete, aiGet, aiPost, ApiError } from "./core";
+import { aiDelete, aiGet, aiPost, aiUpload } from "./core";
 
 export async function fetchAIHealth(): Promise<HealthResponse> {
   return aiGet<HealthResponse>("/health");
@@ -151,6 +151,66 @@ export async function fetchTimeline(
   return aiGet<TimelineEvent[]>(`/timeline/?${params.toString()}`);
 }
 
+export interface InsightCard {
+  insight_id: string;
+  insight_type: string;
+  headline: string;
+  narrative?: string | null;
+  predicted_direction?: string | null;
+  horizon_days?: number | null;
+  primary_companies?: { company_id?: string | null; role?: string | null }[];
+  related_themes?: string[];
+  related_sectors?: string[];
+  confidence?: number | null;
+  generated_at?: string | null;
+  valid_until?: string | null;
+  status?: string;
+}
+
+export interface InsightFeedResponse {
+  total: number;
+  limit: number;
+  offset: number;
+  items: InsightCard[];
+}
+
+export interface InsightDetail extends InsightCard {
+  evidence_links?: { source_type?: string; source_id?: string; snippet?: string }[];
+  counter_evidence?: { source_type?: string; source_id?: string; snippet?: string }[];
+  evidence_records?: { source_type: string; source_id?: string | null; snippet?: string | null; weight?: number | null }[];
+  confidence_components?: Record<string, number | string | null>;
+  related_policies?: unknown[];
+}
+
+export async function fetchInsights(params: {
+  insightType?: string;
+  sector?: string;
+  theme?: string;
+  limit?: number;
+  offset?: number;
+  days?: number;
+} = {}): Promise<InsightFeedResponse> {
+  const search = new URLSearchParams();
+  if (params.insightType) search.set("insight_type", params.insightType);
+  if (params.sector) search.set("sector", params.sector);
+  if (params.theme) search.set("theme", params.theme);
+  search.set("limit", String(params.limit ?? 20));
+  search.set("offset", String(params.offset ?? 0));
+  search.set("days", String(params.days ?? 7));
+  return aiGet<InsightFeedResponse>(`/discovery/insights?${search.toString()}`);
+}
+
+export async function fetchInsightDetail(insightId: string): Promise<InsightDetail> {
+  return aiGet<InsightDetail>(`/discovery/insights/${insightId}`);
+}
+
+export async function fetchInsightMetrics(lookbackDays = 30): Promise<{
+  lookback_days: number;
+  precision_by_type: { insight_type: string; evaluated: number; confirmed: number; contradicted: number; stale: number; precision: number }[];
+}> {
+  return aiGet(`/discovery/insights/metrics?lookback_days=${lookbackDays}`);
+}
+
 export async function uploadDocument(
   userId: string,
   file: File,
@@ -161,14 +221,8 @@ export async function uploadDocument(
   formData.append("user_id", userId);
   if (sessionId) formData.append("session_id", sessionId);
 
-  const response = await fetch(`${AI_BACKEND_URL}/chat/upload`, {
-    method: "POST",
-    body: formData,
-  });
-
-  if (!response.ok) {
-    throw new ApiError(`Upload failed with status ${response.status}`, response.status);
-  }
-
-  return response.json();
+  return aiUpload<{ upload_id: string; filename: string; status: string }>(
+    "/chat/upload",
+    formData,
+  );
 }

@@ -1,5 +1,7 @@
 # Cloud Deployment & Asynchronicity Strategy – AI Equity Research Platform
 
+> **Status (as of Round 2):** historical design document. Today the platform runs on Docker Compose locally (Postgres + Redis + Qdrant) with the FastAPI + Vite processes on the host. AWS-readiness (ECS / RDS / SQS / EventBridge) is intact; the migration to managed orchestrators (Airflow / MWAA / Databricks) is explicitly **deferred** per [07_round2_broker_grade_plan.md](./07_round2_broker_grade_plan.md) D1, with a documented trigger. **For current deploy + observability state, see [SHIPPED.md](./SHIPPED.md) and `backend-ai/src/observability.py`.** Original design retained as reference.
+
 ## Overview
 
 This document defines the **cloud infrastructure, deployment architecture, and asynchronous processing strategy** for the AI equity research platform, including cloud provider selection, storage, compute, background workers, and near-time query handling.

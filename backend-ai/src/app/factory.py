@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Response
 from fastapi.staticfiles import StaticFiles
 
 from src.app.lifespan import app_lifespan
@@ -33,8 +33,26 @@ def create_app() -> FastAPI:
 
     @app.get("/health")
     def health():
-        """Health endpoint for load balancers."""
+        """Liveness probe — succeeds whenever the process is up."""
         return {"status": "healthy"}
+
+    @app.get("/ready")
+    def ready(response: Response):
+        """Readiness probe — checks Postgres / Redis / Qdrant."""
+        from src.observability import aggregate_readiness
+
+        payload = aggregate_readiness()
+        if not payload["ready"]:
+            response.status_code = 503
+        return payload
+
+    @app.get("/metrics")
+    def metrics():
+        """Prometheus exposition (text/plain)."""
+        from src.observability import metrics_payload
+
+        content_type, body = metrics_payload()
+        return Response(content=body, media_type=content_type)
 
     @app.get("/api/v1/status")
     def api_status():

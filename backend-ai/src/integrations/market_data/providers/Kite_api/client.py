@@ -131,6 +131,54 @@ class KiteClient:
         raw = f"{self.api_key}{request_token}{api_secret}"
         return hashlib.sha256(raw.encode()).hexdigest()
 
+    async def exchange_request_token(self, request_token: str) -> Dict[str, Any]:
+        """Exchange a `request_token` from the OAuth redirect for an
+        `access_token` plus user/profile metadata. Sets ``self.access_token``
+        on success so the caller can immediately make read-side requests.
+
+        Returns the full ``data`` block from Kite (includes ``access_token``,
+        ``user_id``, ``user_name``, ``email``).
+        """
+        url = f"{self.BASE_URL}/session/token"
+        checksum = self.generate_checksum(request_token)
+        payload = {
+            "api_key": self.api_key,
+            "request_token": request_token,
+            "checksum": checksum,
+        }
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                response = await client.post(
+                    url,
+                    headers={"X-Kite-Version": self.KITE_VERSION},
+                    data=payload,
+                )
+                response.raise_for_status()
+                data = response.json().get("data", {}) or {}
+                self.access_token = data.get("access_token", self.access_token)
+                return data
+        except httpx.HTTPStatusError as e:
+            logger.error(
+                "Kite token exchange HTTP error %s - %s",
+                e.response.status_code,
+                e.response.text,
+            )
+            raise
+
+    async def get_holdings(self) -> List[Dict[str, Any]]:
+        """Return the authenticated user's long-term equity holdings.
+
+        Requires a valid ``access_token`` (set via constructor or
+        ``exchange_request_token``).
+        """
+        data = await self._get("/portfolio/holdings")
+        return list(data.get("data", []) or [])
+
+    async def get_positions(self) -> Dict[str, Any]:
+        """Return the authenticated user's intraday + overnight positions."""
+        data = await self._get("/portfolio/positions")
+        return data.get("data", {}) or {}
+
     # ------------------------------------------------------------------
     # Market quotes  (free tier)
     # ------------------------------------------------------------------

@@ -1,0 +1,23 @@
+# Build context lives in frontend/. Keep the context lean — Vite + npm ci will
+# rebuild node_modules from package-lock.json inside the build stage.
+
+node_modules/
+dist/
+coverage/
+
+# Local envs (build-time vars come from --build-arg, not files)
+.env
+.env.*
+!.env.example
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/
+
+# Test runner caches
+.vitest/
+
+# Docker self-references
+Dockerfile
+.dockerignore

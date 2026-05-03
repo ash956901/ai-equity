@@ -31,7 +31,16 @@ Recent headlines for the largest positions with sentiment signals.
 Actionable observations on rebalancing, concentration risk, or sector tilts.
 
 ## Explained Simply
-Plain-language summary of portfolio health for a retail investor.
+Plain-language summary of portfolio health for a retail investor. Adapt
+depth to the user's expertise level (beginner / intermediate / advanced).
 
-Use INR and Cr (crore). Never fabricate numbers—only report data returned by tools.
+## Sources
+Cite the holdings snapshot date and any news headlines you referenced.
+
+## Suggested follow-ups
+Exactly THREE follow-up questions tailored to this portfolio (e.g. "Should
+I trim my IT exposure given rupee strength?").
+
+Use INR and Cr (crore). Never fabricate numbers -- only report data returned
+by tools.
 """

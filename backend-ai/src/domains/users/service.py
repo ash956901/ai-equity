@@ -78,6 +78,12 @@ class UsersService:
 
         self.db.commit()
         self.db.refresh(user)
+        try:
+            from src.services.cache_service import invalidate_user_profile
+
+            invalidate_user_profile(str(user.id))
+        except Exception:
+            pass
         return self._user_to_dict(user)
 
     async def upload_profile_pic(self, user_id: UUID, file: UploadFile) -> dict[str, str]:

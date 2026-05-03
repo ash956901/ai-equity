@@ -1,11 +1,12 @@
 """Business logic for screening and saved screens."""
 
+from decimal import Decimal
 from typing import Any, Optional
 from uuid import UUID
 
 from sqlalchemy.orm import Session
 
-from src.db.models import Company, SavedScreen
+from src.db.models import Company, CompanyTheme, FinancialRatio, SavedScreen
 
 
 class ScreensService:
@@ -44,11 +45,18 @@ class ScreensService:
 
     def run_screen(
         self,
-        sector: Optional[str],
-        industry: Optional[str],
-        min_market_cap: Optional[int],
-        max_market_cap: Optional[int],
-        limit: int,
+        sector: Optional[str] = None,
+        industry: Optional[str] = None,
+        min_market_cap: Optional[int] = None,
+        max_market_cap: Optional[int] = None,
+        themes: Optional[list[str]] = None,
+        min_theme_confidence: Optional[float] = None,
+        asymmetric_only: bool = False,
+        min_pe: Optional[float] = None,
+        max_pe: Optional[float] = None,
+        min_roe: Optional[float] = None,
+        max_debt_to_equity: Optional[float] = None,
+        limit: int = 50,
     ) -> list[dict[str, Any]]:
         query = self.db.query(Company).filter(Company.listing_status == "active")
 
@@ -61,7 +69,42 @@ class ScreensService:
         if max_market_cap:
             query = query.filter(Company.market_cap_inr <= max_market_cap)
 
-        companies = query.order_by(Company.market_cap_inr.desc().nullslast()).limit(limit).all()
+        if themes:
+            theme_q = (
+                self.db.query(CompanyTheme.company_id)
+                .filter(CompanyTheme.is_active.is_(True))
+                .filter(CompanyTheme.theme_name.in_(themes))
+            )
+            if min_theme_confidence is not None:
+                theme_q = theme_q.filter(
+                    CompanyTheme.confidence_score >= Decimal(str(min_theme_confidence))
+                )
+            if asymmetric_only:
+                theme_q = theme_q.filter(CompanyTheme.is_asymmetric.is_(True))
+            query = query.filter(Company.id.in_(theme_q))
+
+        if any(
+            v is not None
+            for v in (min_pe, max_pe, min_roe, max_debt_to_equity)
+        ):
+            ratio_q = self.db.query(FinancialRatio.company_id).distinct()
+            if min_pe is not None:
+                ratio_q = ratio_q.filter(FinancialRatio.pe_ratio >= Decimal(str(min_pe)))
+            if max_pe is not None:
+                ratio_q = ratio_q.filter(FinancialRatio.pe_ratio <= Decimal(str(max_pe)))
+            if min_roe is not None:
+                ratio_q = ratio_q.filter(FinancialRatio.roe >= Decimal(str(min_roe)))
+            if max_debt_to_equity is not None:
+                ratio_q = ratio_q.filter(
+                    FinancialRatio.debt_to_equity <= Decimal(str(max_debt_to_equity))
+                )
+            query = query.filter(Company.id.in_(ratio_q))
+
+        companies = (
+            query.order_by(Company.market_cap_inr.desc().nullslast())
+            .limit(limit)
+            .all()
+        )
         return [
             {
                 "id": str(c.id),

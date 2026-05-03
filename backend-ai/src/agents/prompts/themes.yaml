@@ -1,0 +1,253 @@
+# Curated theme taxonomy for the Insight Engine. Loaded by
+# ``src.etl.theme_taxonomy_loader``. Codes are stable identifiers used in
+# ``company_themes.theme_name`` and ``insights.related_themes``.
+
+themes:
+  - code: ai_data_centres
+    label: "AI / Data Centres"
+    category: technology
+    keywords: [artificial intelligence, ai, ml, gpu, data centre, data center, cloud, hyperscale, llm, foundation model]
+    description: "Companies building, supplying, or benefitting from AI data-centre buildouts."
+
+  - code: ai_inference_hardware
+    label: "AI Inference Hardware"
+    category: technology
+    keywords: [tpu, gpu, asic, accelerator, h100, mi300, npu]
+    parent_code: ai_data_centres
+
+  - code: data_centre_lubricants
+    label: "Data-centre Lubricants & Cooling"
+    category: industrials
+    keywords: [data centre cooling, immersion, dielectric fluid, specialty lubricant, thermal management]
+    description: "Specialty lubricants/coolants used by data-centre operators - second-order AI exposure."
+    parent_code: ai_data_centres
+
+  - code: ethanol_blending
+    label: "Ethanol Blending Programme"
+    category: policy
+    keywords: [ethanol, blending, bio-fuel, e20, eb policy, sugar to ethanol]
+    description: "20% ethanol blending mandate in petrol; sugar mills + distilleries primary beneficiaries."
+
+  - code: sugar_industry
+    label: "Sugar Industry"
+    category: industrials
+    keywords: [sugar mill, sugarcane, srl, ethanol distillery]
+
+  - code: electric_vehicles
+    label: "Electric Vehicles"
+    category: automotive
+    keywords: [ev, electric vehicle, fame, battery, charging infrastructure, tata motors ev, ola electric]
+
+  - code: lithium_battery
+    label: "Lithium / Battery"
+    category: chemicals
+    keywords: [lithium, lithium-ion, gigafactory, cathode, anode, lfp, nmc, lithium triangle]
+
+  - code: defence_indigenisation
+    label: "Defence Indigenisation"
+    category: defence
+    keywords: [defence, brahmos, drdo, hal, made in india defence, defpro]
+
+  - code: drone_aerospace
+    label: "Drones & Aerospace"
+    category: defence
+    keywords: [drone, uav, idex, aerospace component, aero india]
+
+  - code: renewable_solar
+    label: "Renewable Power - Solar"
+    category: energy
+    keywords: [solar, photovoltaic, module, alimd, mnre, kusum, rooftop solar]
+
+  - code: renewable_wind
+    label: "Renewable Power - Wind"
+    category: energy
+    keywords: [wind, gw wind, wind turbine, suzlon, inox wind, wtg]
+
+  - code: green_hydrogen
+    label: "Green Hydrogen"
+    category: energy
+    keywords: [green hydrogen, electrolyser, h2 mission, hydrogen fuel, ammonia]
+
+  - code: semiconductors
+    label: "Semiconductors"
+    category: technology
+    keywords: [semiconductor, fab, chip design, isemicon, vlsi, foundry, packaging]
+
+  - code: pli_scheme
+    label: "PLI / Make in India"
+    category: policy
+    keywords: [production linked incentive, pli, make in india, atmanirbhar, smart cities]
+
+  - code: capex_revival
+    label: "Private Capex Revival"
+    category: macro
+    keywords: [capex announcement, brownfield, greenfield, capacity expansion, debottlenecking]
+
+  - code: rural_consumption
+    label: "Rural Consumption"
+    category: consumer
+    keywords: [monsoon, rural demand, msp, rural recovery, fmcg rural]
+
+  - code: india_real_estate
+    label: "Real Estate Cycle"
+    category: real_estate
+    keywords: [residential launch, ready reckoner, tier-2 housing, dlf, godrej properties, prestige]
+
+  - code: oil_imports
+    label: "Crude Oil Import Sensitivity"
+    category: energy
+    keywords: [brent, wti, crude basket, opec cut, import bill, ocp]
+
+  - code: rate_sensitive_banks
+    label: "Rate-sensitive Banks/NBFC"
+    category: financials
+    keywords: [repo rate, rbi policy, nim, deposit growth, credit cost, asset quality]
+
+  - code: it_export_demand
+    label: "IT Export Demand"
+    category: technology
+    keywords: [tcs, infosys, wipro, deal pipeline, bfsi vertical, gen ai it spend]
+
+  - code: pharma_us_market
+    label: "Pharma - US Market"
+    category: healthcare
+    keywords: [usfda, anda, complex generic, gx, sun pharma, dr reddys]
+
+  - code: chinaplus_one
+    label: "China + 1 Manufacturing"
+    category: industrials
+    keywords: [china plus one, contract manufacturing, supply chain diversification]
+
+  - code: fertilizer_subsidy
+    label: "Fertilizer Subsidy"
+    category: policy
+    keywords: [urea, di-ammonium phosphate, dap, subsidy, nutrient based]
+
+  # ----- Augmented themes (Phase A1 of Discovery plan) -----
+
+  - code: cooling_thermal
+    label: "Cooling & Thermal Management"
+    category: industrials
+    keywords: [coolant, immersion cooling, liquid cooling, thermal management, hvac, chiller, dielectric fluid, heat transfer fluid]
+    description: "Generic cooling, HVAC, and thermal-management exposure (data centres, EVs, industrial). Parent of data_centre_lubricants."
+
+  - code: cybersecurity
+    label: "Cybersecurity"
+    category: technology
+    keywords: [cybersecurity, cyber security, infosec, soc, mssp, endpoint protection, zero trust, mdr, siem]
+
+  - code: quantum_computing
+    label: "Quantum Computing"
+    category: technology
+    keywords: [quantum computing, qubit, post-quantum, qkd, quantum networking, quantum-safe]
+
+  - code: cloud_infrastructure
+    label: "Cloud Infrastructure"
+    category: technology
+    keywords: [cloud, aws, azure, gcp, hyperscaler, saas, cloud migration, cloud native]
+    parent_code: ai_data_centres
+
+  - code: battery_storage
+    label: "Battery & Energy Storage"
+    category: energy
+    keywords: [battery cell, bess, energy storage, gigafactory, battery pack, battery recycling, acc pli, sodium-ion]
+
+  - code: nuclear_power
+    label: "Nuclear Power"
+    category: energy
+    keywords: [nuclear, smr, small modular reactor, uranium, thorium, phwr]
+
+  - code: space_economy
+    label: "Space Economy"
+    category: defence
+    keywords: [space, satellite, launch vehicle, pslv, gslv, isro, in-space, ground station, earth observation]
+
+  - code: industrial_automation
+    label: "Industrial Automation & Robotics"
+    category: industrials
+    keywords: [automation, robotics, robot, plc, scada, industrial iot, iiot, machine vision, cobot]
+
+  - code: smart_manufacturing
+    label: "Smart Manufacturing / Industry 4.0"
+    category: industrials
+    keywords: [industry 4.0, digital twin, mes, additive manufacturing, 3d printing, smart factory]
+
+  - code: specialty_chemicals
+    label: "Specialty Chemicals"
+    category: chemicals
+    keywords: [specialty chemical, fine chemical, agro intermediate, fluorine, fluorochemical, performance chemical]
+
+  - code: cdmo_crams
+    label: "Pharma CDMO / CRAMS"
+    category: healthcare
+    keywords: [cdmo, crams, contract development, api manufacturing, outsourced pharma, biologics cdmo]
+
+  - code: critical_minerals
+    label: "Critical Minerals"
+    category: chemicals
+    keywords: [lithium, cobalt, nickel, rare earth, ree, critical mineral, copper, graphite]
+
+  - code: quick_commerce
+    label: "Quick Commerce"
+    category: consumer
+    keywords: [quick commerce, q-commerce, dark store, 10-minute delivery, blinkit, zepto, instamart]
+
+  - code: premiumisation
+    label: "Premiumisation / Discretionary Spend"
+    category: consumer
+    keywords: [premiumisation, premium category, trade up, discretionary spend, luxury, branded]
+
+  - code: fintech_lending
+    label: "FinTech / Digital Lending"
+    category: financials
+    keywords: [fintech, digital lending, bnpl, co-lending, neobank, consumer finance]
+
+  - code: insurance_listed
+    label: "Insurance / InsurTech"
+    category: financials
+    keywords: [insurance, insurer, insurtech, premium, embedded value, general insurance, life insurance, health insurance]
+
+  - code: digital_payments
+    label: "Digital Payments"
+    category: financials
+    keywords: [upi, payments, payment gateway, psp, merchant acquiring, digital wallet]
+
+  - code: power_transmission
+    label: "Power Transmission & Grid"
+    category: infrastructure
+    keywords: [transmission, grid, substation, t&d, smart meter, amisp, hvdc, transformer]
+
+  - code: water_infrastructure
+    label: "Water Infrastructure"
+    category: infrastructure
+    keywords: [water treatment, jal jeevan, irrigation, pipes, pumps, desalination, wastewater]
+
+  - code: logistics_warehousing
+    label: "Logistics & Warehousing"
+    category: infrastructure
+    keywords: [logistics, 3pl, warehousing, cold chain, express, multi-modal, supply chain solutions]
+
+  - code: commercial_reit
+    label: "Commercial Real Estate / REIT"
+    category: real_estate
+    keywords: [reit, commercial real estate, office leasing, gcc, global capability centre, grade a office]
+
+  - code: genomics_diagnostics
+    label: "Genomics & Diagnostics"
+    category: healthcare
+    keywords: [diagnostics, pathology, genomics, next generation sequencing, ngs, precision medicine, molecular diagnostics]
+
+  - code: medtech_devices
+    label: "MedTech & Devices"
+    category: healthcare
+    keywords: [medtech, medical device, surgical, orthopaedic, implant, consumables]
+
+  - code: biotech_biologics
+    label: "Biotech & Biologics"
+    category: healthcare
+    keywords: [biosimilar, biologic, vaccine, biotech, monoclonal antibody, mab]
+
+  - code: travel_hospitality
+    label: "Travel & Hospitality"
+    category: consumer
+    keywords: [airline, hotel, hospitality, ota, travel demand, arr, revpar]

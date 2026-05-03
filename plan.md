@@ -17,7 +17,7 @@ A unified, AI-driven platform designed to democratize institutional-grade equity
     * Construct a lightweight Semantic Knowledge Graph to map entity relationships (Multi-hop reasoning).
 * **Tech:** Hugging Face (FinBERT), LangChain, NetworkX (for graph logic), Pinecone (Vector DB).
 
-### 2.3 Conversational AI ("Iris" Deep Research Assistant)
+### 2.3 Conversational AI ("Minerva" Deep Research Assistant)
 * **Goal:** A domain-specific chatbot for querying financial data grounded strictly in uploaded documents to minimize hallucination.
 * **How:** Implement an advanced RAG pipeline with strict context windowing.
 * **Tech:** FastAPI (Backend), OpenAI/Open-source base models (Llama 3 / GPT-4o).
@@ -44,7 +44,7 @@ A unified, AI-driven platform designed to democratize institutional-grade equity
 * [ ] Deploy Vector Database (Pinecone) for document indexing.
 * [ ] Build the core RAG pipeline using LangChain/LlamaIndex.
 * [ ] Implement the Knowledge Graph logic for *Second-Order Effect* thematic tagging.
-* [ ] Develop the "Iris" conversational agent for financial context handling.
+* [ ] Develop the "Minerva" conversational agent for financial context handling.
 
 ### Phase 4: Analytics Orchestration & UI Development (Weeks 8-9)
 * [ ] Build quantitative analytics engine using Pandas for portfolio intelligence.

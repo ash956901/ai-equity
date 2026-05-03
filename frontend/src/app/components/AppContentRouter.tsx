@@ -4,6 +4,7 @@ import { ChatView } from "../../features/chat/ChatView";
 import { ComparisonWorkspaceView } from "../../features/compare/ComparisonWorkspaceView";
 import { CompanyWorkspaceView } from "../../features/company/CompanyWorkspaceView";
 import { DashboardView } from "../../features/dashboard/DashboardView";
+import { HomeView } from "../../features/home/HomeView";
 import { DiscoveryView } from "../../features/discovery/DiscoveryView";
 import { FilingsView } from "../../features/filings/FilingsView";
 import { NewsView } from "../../features/news/NewsView";
@@ -55,6 +56,19 @@ interface AppContentRouterProps {
 
 export function AppContentRouter(props: AppContentRouterProps) {
   switch (props.activeView) {
+    case "home":
+      return (
+        <HomeView
+          onPickCompany={(ticker, companyId) => {
+            props.setSearchSelection({
+              stamp: Date.now(),
+              companySymbol: ticker,
+              companyId: companyId,
+            });
+            props.goToView("company");
+          }}
+        />
+      );
     case "dashboard":
       return (
         <DashboardView

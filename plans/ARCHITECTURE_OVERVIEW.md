@@ -1,227 +1,295 @@
-# AI Equity Research Platform – Architecture Overview
+# AI Equity Research Platform — Architecture Overview
 
-**Backend-Only, Agent-Centric System for Indian Equities**
+**Backend + frontend, agent-centric, broker-grade, for Indian equities (NSE / BSE)**
 
----
-
-## Core Architecture
-
-### Technology Stack
-
-**Backend**: Python 3.11, FastAPI, LangGraph, Pydantic, SQLAlchemy  
-**Data**: PostgreSQL 15, Qdrant (vector DB), Redis, AWS S3  
-**ML/AI**: OpenAI GPT-4o, text-embedding-3-small, FinBERT  
-**Infrastructure**: AWS (ECS Fargate, RDS, ElastiCache, SQS, EventBridge)  
-**Workers**: Celery with SQS broker  
+For "what's actually built today," with file-path evidence, see [SHIPPED.md](./SHIPPED.md). For the active phased plan, see [07_round2_broker_grade_plan.md](./07_round2_broker_grade_plan.md).
 
 ---
 
-## System Design
+## System diagram
 
 ```
-User → FastAPI → LangGraph Agents → {PostgreSQL, Qdrant, S3}
-                       ↓
-              Background Workers (Celery)
-                       ↓
-         {NSE/BSE, IR Sites, News, Documents}
+                                    +----------------------+
+                                    |  Frontend (React 19) |
+                                    |        :5173         |
+                                    |  AuthContext +       |
+                                    |  RequireAuth +       |
+                                    |  TanStack Query      |
+                                    +----------+-----------+
+                                               |  REST + JWT (Bearer)
+                                               v
+                  +----------------------------+----------------------------+
+                  |                  FastAPI backend (:8001)                |
+                  |  argon2id + JWT (access 15m / refresh 30d, rotation)    |
+                  |                                                         |
+                  |   Public:                Authenticated:                 |
+                  |   /auth/*                /chat/* /portfolios/*          |
+                  |   /quotes/*              /watchlists/* /alerts/*        |
+                  |   /discovery/*           /screens/* /broker/*           |
+                  |   /timeline/             /home/personalized             |
+                  |   /companies/* (read)    /chat/upload                   |
+                  |   /health /ready /metrics                               |
+                  +----+----+----+----+--------+--------+--------+----------+
+                       |    |    |    |        |        |        |
+        +--------------v--+ |    |    |        |        |        |
+        | LangGraph (Minerva)| |    |    |        |        |        |
+        | 11 subagents    | |    |    |        |        |        |
+        | structured-out  | |    |    |        |        |        |
+        +--------+--------+ |    |    |        |        |        |
+                 |          |    |    |        |        |        |
+                 v          |    |    |        |        |        |
+            Tool layer  ----+    |    |        |        |        |
+            (17+ tools)          |    |        |        |        |
+                                 v    v        v        v        v
+                          +------+----+----+---+--+----+--+----+--+
+                          |  PostgreSQL  | Redis | Qdrant | S3  |
+                          |    :5432     | :6379 | :6333  |     |
+                          | 30+ tables   | cache | 5 col  | docs|
+                          | + alerts     | jwt   |        |     |
+                          +------+-------+-------+--------+-----+
+                                 ^
+                                 |
+                          Celery workers (offline)
+                          - NSE filing crawl (BSE: deferred)
+                          - IR site auto-discovery
+                          - News + social ingestion + FinBERT
+                          - Transcript ingestion
+                          - Theme tagging (two-pass: classify + asymmetric)
+                          - Filing one-liner summarisation
+                          - Macro / commodity sync
+                          - Alert evaluator + delivery
+                          - Stuck-run reaper + new-listing self-discovery
 ```
 
 ---
 
-## Key Components
+## Technology stack
 
-### 1. Database (PostgreSQL)
-
-**Core Tables**:
-- Companies, securities, indices (NSE/BSE mapping)
-- Financial statements (raw + ratios)
-- Filings, news articles (with sentiment)
-- Portfolios, holdings, transactions
-- Chat sessions, user uploads
-- Company themes (AI, defense, data centers, etc.)
-
-### 2. Ingestion Pipelines
-
-**Sources**:
-- NSE/BSE regulatory filings (daily)
-- Company investor relations sites (auto-discovered, weekly)
-- News (GNews, NewsAPI, RSS - hourly)
-
-**Processing**:
-- PDF/PPT parsing with table extraction
-- Chart extraction via vision LLM
-- Financial statement normalization
-- Sentiment analysis (FinBERT)
-- Embedding generation (OpenAI)
-
-### 3. Vector Store (Qdrant)
-
-**Collections**:
-- `company_filings`: All parsed filings, presentations, concalls
-- `news_articles`: News with sentiment metadata
-- `user_uploads`: Per-user document namespaces
-
-**Chunking**: 500-1000 tokens, 100-token overlap  
-**Embeddings**: OpenAI text-embedding-3-small (1536 dims)
-
-### 4. LangGraph Agents
-
-**Query Flow**:
-```
-Router → {CompanyAnalysis | Comparison | Portfolio | News | DocInsight} → Synthesis
-```
-
-**Agents**:
-- **Router**: Classify intent, extract entities
-- **CompanyAnalysis**: Financials, ratios, filings, news, themes, risk flags
-- **Comparison**: Multi-company comparison across growth, margins, valuation, risk
-- **Portfolio**: Holdings, concentration, sector allocation, risk analysis
-- **NewsSentiment**: Semantic news search, sentiment aggregation
-- **DocInsight**: User upload analysis
-- **Synthesis**: LLM reasoning + "Explained Simply" section
-
-**Tools** (non-LLM): All math, ratios, portfolio metrics, data access  
-**LLM**: Interpretation, reasoning, synthesis only
-
-### 5. Cloud Deployment (AWS)
-
-**Compute**:
-- FastAPI: ECS Fargate (2 tasks, auto-scaling)
-- Workers: ECS Fargate/EC2 Spot (cost-optimized)
-
-**Data**:
-- PostgreSQL: RDS (db.t3.medium, Multi-AZ)
-- Redis: ElastiCache (cache.t3.medium)
-- S3: Object storage with lifecycle policies
-- Qdrant: EC2 (t3.large) with daily S3 snapshots
-
-**Async Processing**:
-- Celery + SQS (separate queues: crawlers, parsers, embeddings, news)
-- EventBridge for scheduled jobs
-
-**Cost**: ~$400-500/month (MVP scale)
+- **Frontend:** React 19 / TypeScript / Vite / TanStack Query / Recharts (with `lightweight-charts` ready). Hand-rolled CSS variables in `frontend/src/index.css`. No Tailwind, no `assistant-ui`.
+- **Backend:** Python 3.11 / FastAPI / LangGraph (via `deepagents>=0.4.12`) / SQLAlchemy 2.x / Pydantic v2.
+- **Auth:** `passlib[argon2]` + `python-jose` + `slowapi` rate limiting. Refresh-rotation + JWT blacklist live in Redis.
+- **LLMs:** Groq / OpenAI / DeepSeek / Ollama, configurable via `LLM_PROVIDER`.
+- **Embeddings:** Ollama `nomic-embed-text` (768d default) or OpenAI `text-embedding-3-small` (1536d).
+- **Databases:** PostgreSQL 15 (relational) + Qdrant (vector, 5 collections) + Redis (cache + Celery broker). S3 (or local fallback) for raw docs and chart PNGs.
+- **Workers:** Celery; queues per pipeline.
+- **Observability:** structlog + request-id middleware; Prometheus counters via `prometheus-client`; `/health`, `/ready`, `/metrics`.
+- **DevOps:** Docker Compose locally; AWS-ready (ECS / RDS / SQS / EventBridge).
 
 ---
 
-## Key Features
+## Subagents (11)
 
-### 1. Autonomous Discovery
-- Auto-discovers investor relations URLs via sitemap parsing
-- No manual URL input required
+The orchestrator dispatches to one or more of these per query. Routing keywords are documented in `src/agents/prompts/orchestrator.py`.
 
-### 2. Complex Document Understanding
-- Tables: Extract and normalize P&L, BS, CF
-- Charts: Vision LLM extracts structured data from graphs
-- Mixed PDFs/PPTs with tables, charts, text
+| Subagent | When it fires |
+|---|---|
+| `company-analysis` | Single-company deep-dive: financials, ratios, risk + governance flags, filings, news |
+| `comparison` | 2–5 companies side-by-side on growth / profitability / leverage / valuation / risk |
+| **`discovery`** | **Hidden / asymmetric exposure (Castrol → Data Centres style) + 2-hop second-order effects** |
+| `portfolio` | Holdings, concentration, sector allocation, news for top holdings |
+| `news-sentiment` | Recent news + sentiment aggregation per company / sector |
+| `doc-insight` | User-uploaded PDFs / PPTs with page-level citations |
+| `policy-macro` | "Who benefits / suffers from policy X?" causal cross-industry analysis |
+| `theme-explorer` | Theme-first browsing — "show me companies most exposed to AI / EV / etc." |
+| `transcript-analyst` | Earnings call commentary, guidance, capex, supply-chain mentions |
+| `macro-commodity` | Macro / commodity / FX moves → Indian equity exposure |
+| `graph-reasoning` | Multi-hop relation-graph traversal (supplier-of-supplier, second-order policy impact) |
 
-### 3. Hidden Insights
-- Theme detection: AI, defense, renewables, EV, data centers
-- Second-order effects (e.g., Castrol → data center coolants)
-- Subdomain exposure analysis
+Every analytical response follows the platform-wide structured-output skeleton (Pydantic contract: `src/schemas/structured_analysis.py`):
 
-### 4. India-First
-- NSE/BSE tickers, INR currency, Cr/Lakh units
-- Indian sector classifications
-- RBI/SEBI/Budget as macro inputs
-
-### 5. Portfolio Intelligence
-- Broker integration (Zerodha, Kotak, Groww)
-- Concentration risk (Herfindahl index)
-- Sector allocation, beta vs Nifty
-- Red flag detection across holdings
-
-### 6. Layman Explanations
-- User expertise level (beginner/intermediate/advanced)
-- Adaptive explanation depth
-- Always includes "Explained Simply" section
-
-### 7. Real-Time News Sentiment
-- Hourly news fetch
-- FinBERT sentiment analysis
-- Impact classification (High/Med/Low)
-
----
-
-## Data Flow
-
-### Ingestion (Async)
 ```
-Scheduler → Crawler → Parser → {Table/Chart Extractor, Embedder} → DB/Vector Store
+## Business Overview            (required)
+## Domain & Subdomain Exposure
+## Hidden / Asymmetric Exposure
+## Growth Drivers / Cost Drivers
+## Financial Health
+## Risk Flags
+## Macro Sensitivity
+## Second-Order Effects
+## Valuation Commentary
+## Bull vs Bear
+## Explained Simply             (required, expertise-adapted)
+## Sources
+## Suggested follow-ups         (required, exactly 3)
 ```
 
-### Query (Sync)
+For details, see `/backend-ai/DEEP_AGENT_ARCHITECTURE.md`.
+
+---
+
+## Domain layout (current API surface)
+
+| Domain | Purpose | Source |
+|---|---|---|
+| `auth` | signup / login / refresh / logout / forgot / reset / verify-email / `/auth/me` | `backend-ai/src/domains/auth/` |
+| `home` | `GET /home/personalized` (60s cache) | `backend-ai/src/domains/home/` |
+| `quotes` | `GET /quotes/{ticker}`, `/quotes/{ticker}/candles`, `/quotes/{ticker}/peers` | `backend-ai/src/domains/quotes/` |
+| `discovery` | `/discovery/themes`, `/discovery/asymmetric`, theme→companies, company→themes | `backend-ai/src/domains/discovery/` |
+| `broker` | Zerodha Kite OAuth flow + holdings sync | `backend-ai/src/domains/broker/` |
+| `chat` | `POST /chat/query` + sessions + uploads | `backend-ai/src/domains/chat/` |
+| `companies` | `/companies/`, `/companies/search`, `/companies/{id}/financials|ratios|quote|refresh` | `backend-ai/src/domains/companies/` |
+| `portfolio` | CRUD + `/portfolios/me/holdings-count` | `backend-ai/src/domains/portfolio/` |
+| `compare` | Multi-company analysis | `backend-ai/src/domains/compare/` |
+| `alerts` | Rule CRUD; new `asymmetric_theme` condition | `backend-ai/src/domains/alerts/` |
+| `watchlists` | Watchlist CRUD | `backend-ai/src/domains/watchlists/` |
+| `screens` | `POST /screens/run` with theme + ratio filters | `backend-ai/src/domains/screens/` |
+| `timeline` | `GET /timeline/?company_id=&days=` (AI one-liners) | `backend-ai/src/domains/timeline/` |
+| `news` | `GET /get-news?query=&limit=` | `backend-ai/src/domains/news/` |
+| `users` | `/users/{user_id}` profile + KYC | `backend-ai/src/domains/users/` |
+| `insights` | Pre-computed Insight Engine cards | `backend-ai/src/domains/insights/` |
+
+Health: `/health`, `/ready`, `/metrics`.
+
+---
+
+## Database (PostgreSQL)
+
+30+ tables. Key clusters:
+
+- **Companies & securities:** companies, exchanges, securities, indices.
+- **Financials:** financial_statements_raw, financial_ratios, statement_items, chart_series.
+- **Filings & content:** filings, filing_pages, filing_summaries (AI one-liners), transcripts, transcript_segments, news_articles, social_posts.
+- **Discovery:** theme_taxonomy, company_themes (with `is_asymmetric`, `impact_direction`, `impact_horizon`, `evidence_quotes`), relation_edges, sector_commodity_links, macro_series, commodity_series.
+- **Portfolio:** users (with `email_verified_at`, `last_login_at`, `theme_preference`, `default_chart_range`, `sectors_of_interest`), portfolios, holdings, transactions.
+- **Insight engine:** events, policies, insights, insight_evidence, insight_outcomes, source_quality.
+- **Operational:** alert_rules, alert_events, watchlists, watchlist_companies, saved_screens, chat_sessions, chat_messages, user_uploads, etl_runs, system_config.
+
+Migrations are idempotent (`alembic upgrade head` is safe on existing DBs):
+1. `6da275df40da` — initial schema
+2. `a1b2c3d4e5f6` — insight engine tables
+3. `b7c2e1d34a01` — discovery extensions
+4. `c1d2e3f4a501` — auth user extensions
+
+---
+
+## Vector store (Qdrant)
+
+5 collections, each carrying full metadata on every chunk:
+
+- `company_filings` — parsed text from filings, presentations, concalls.
+- `news_articles` — news + sentiment / impact / dimension metadata.
+- `transcripts` — concall segments with speaker role + period.
+- `social_posts` — Reddit / X / StockTwits posts with topic clusters.
+- `user_uploads` — per-user namespace for ad-hoc document analysis.
+
+Chunking via `_chunk_text` in `services/vector_service.py` (512-token windows, 64-token overlap). Embeddings via Ollama or OpenAI per env config.
+
+---
+
+## Discovery vertical (the headline differentiator)
+
+Two parts working together:
+
+**Offline (Celery)** — the two-pass theme tagger in `src/agents/etl_agents/theme_agent.py`:
+1. *Classifier* LLM pass returns `exposure_type, impact, impact_direction, impact_horizon, evidence_quotes (≥2), reasoning`. Confidence ≥ 0.55 floor.
+2. *Asymmetric validator* LLM pass judges whether the exposure is non-obvious from the company's primary sector. The result lands in `company_themes.is_asymmetric` — that's what powers the Castrol-style surfacing.
+
+Stale tags are deactivated on each run; a denormalised summary lands on `companies.thematic_exposure_summary`. Theme→theme edges in `relation_edges` (seeded by `scripts/seed_themes.py`) drive the `find_second_order_effects` graph walk.
+
+**Online (chat)** — the `discovery` subagent (`src/agents/subagents/discovery.py`) reads the precomputed tags and walks the graph at query time. Tools: `get_company_themes`, `get_asymmetric_company_themes`, `get_companies_in_theme`, `find_second_order_effects`, `find_supply_chain_links`, `get_macro_sensitivity`, `get_relations`, `reverse_relations`. Lead-with-asymmetric prompt; cite evidence quotes verbatim.
+
+API surface: `GET /discovery/themes`, `/discovery/themes/{theme}/companies`, `/discovery/companies/{id}/themes`, `/discovery/asymmetric`, `/discovery/themes/{theme}/neighbors`. Discovery feed is the asymmetric-only stream surfaced on the frontend Home view.
+
+---
+
+## Frontend layout
+
 ```
-User Query → Router → Specialized Agent → Tools (DB/Vector queries) → Synthesis → Response
+src/
+├── main.tsx                 # AuthProvider + RequireAuth + QueryProvider wrap
+├── App.tsx                  # default view = "home"
+├── app/
+│   ├── components/          # AppContentRouter, SidebarShell
+│   ├── state/               # AuthContext, RequireAuth, QueryProvider
+│   ├── hooks/, constants.ts, types.ts
+├── features/
+│   ├── auth/                # SignUp, Login, Forgot, Reset, AuthGate
+│   ├── home/HomeView.tsx    # default landing surface
+│   ├── company/
+│   │   ├── CompanyWorkspaceView.tsx     (legacy)
+│   │   └── broker/                       (Round 2 broker-style stock page)
+│   │       ├── BrokerStockPage.tsx
+│   │       ├── StockChart.tsx           # candle/line, color-coded direction
+│   │       ├── QuoteHeader.tsx          # 10s polling via react-query
+│   │       ├── RangeToggle.tsx          # 1D/1W/1M/6M/1Y/5Y/MAX
+│   │       ├── PeersTab.tsx
+│   │       ├── BrokerActions.tsx        # Zerodha + Groww deep-links
+│   │       └── AskMinervaFAB.tsx
+│   ├── chat/, compare/, dashboard/, discovery/, filings/, news/,
+│   ├── portfolio/, profile/, settings/, timeline/
+├── components/OmniSearch.tsx           # default = your tracked companies
+├── shared/api/                          # core (auth interceptor) + auth + home + quotes + ...
+├── lib/api.ts                           # legacy compatibility surface
+└── index.css                            # CSS variables
 ```
 
-### Near-Time Queries
-- Pre-computed tables (financial_ratios, portfolio_metrics)
-- Redis caching (5-min TTL)
-- On-demand refresh API with task status polling
-- WebSocket streaming for real-time updates
+---
+
+## Locked architectural decisions
+
+(See `07_round2_broker_grade_plan.md` for the full table with rationale and reconsider triggers.)
+
+| # | Decision | Choice |
+|---|---|---|
+| D1 | ETL orchestrator | Stay on Celery + SQS + Redis (OSS, free) |
+| D2 | Auth | argon2id + JWT (15 min access / 30 d refresh, rotation in Redis) |
+| D3 | Stock chart data | yfinance → Upstox → FMP, aggressively cached |
+| D4 | Charting library | TradingView Lightweight Charts (Apache 2.0); Recharts in production today |
+| D5 | Real-time price | 10s polling; SSE in P2 |
+| D6 | Frontend server-state | TanStack Query |
+| D7 | Chat streaming | Deferred to P2 |
+| D8 | MCP exposure | Deferred to P2 |
+| D9 | Deployment | Docker Compose locally; AWS-ready (ECS/RDS/SQS/EventBridge) |
+| D10 | New SaaS spend ceiling P1 | ~$50/month |
+| D11 | Async / parallel tools | Light: `asyncio.gather` for independent reads inside subagents |
 
 ---
 
-## Implementation Phases
+## Non-functional targets
 
-**Phase 1 (Weeks 1-2)**: Core infrastructure (AWS, PostgreSQL, S3, Qdrant, Redis)  
-**Phase 2 (Weeks 3-4)**: Ingestion pipelines (crawlers, parsers, embeddings)  
-**Phase 3 (Week 5)**: Vector search & embeddings  
-**Phase 4 (Weeks 6-7)**: LangGraph agents  
-**Phase 5 (Week 8)**: FastAPI backend  
-**Phase 6 (Week 9)**: Monitoring & optimization  
-**Phase 7 (Week 10)**: Theme detection & discovery  
-**Phase 8 (Weeks 11-12)**: Production readiness  
-
----
-
-## Success Metrics
-
-**Technical**:
-- Query latency: p95 < 3s
-- Vector search: p95 < 100ms
-- Uptime: 99.5%+
-- Error rate: < 1%
-
-**Business**:
-- 5000+ Indian companies
-- 100k+ documents
-- 10k+ news articles/month
-- Hidden themes with >70% confidence
+- p95 `/quotes/{ticker}` < 250 ms cold / < 30 ms warm.
+- p95 `/quotes/{ticker}/candles` < 600 ms cold / < 80 ms warm.
+- p95 `/discovery/asymmetric` < 200 ms warm.
+- p95 chat-query end-to-end < 3 s (P1 polling); first-token < 500 ms after SSE in P2.
+- Frontend cold-start TTI for `/company/{id}` < 1.5 s on 4G.
+- Auth: argon2id (OWASP min cost params), HTTPS-only in prod, rate-limit 5 login + 3 signup/forgot per IP/min, refresh-token rotation, JWT blacklist on logout.
+- Every API response carries `X-Request-ID`; ETL runs are tracked in `etl_runs` and `etl_run_status_total{pipeline,status}`.
 
 ---
 
-## Architecture Decisions
+## Cost estimate (MVP scale, ~hundreds of users)
 
-| Decision | Choice | Reason |
-|----------|--------|--------|
-| **Agent Framework** | LangGraph | Deterministic, production-grade, explicit control |
-| **Vector DB** | Qdrant | Scale, performance, hybrid search |
-| **Cloud** | AWS | Mature ecosystem, S3, cost-effective |
-| **Workers** | Celery + SQS | Battle-tested, auto-scaling, managed queue |
-| **Database** | PostgreSQL | Relational integrity, mature, cloud-managed |
-| **Embeddings** | OpenAI | State-of-art quality, affordable |
-| **LLM** | GPT-4o | Best reasoning, synthesis quality |
+~$400–500/month all-in:
 
----
+- ECS Fargate (API + workers): $90
+- RDS PostgreSQL: $80
+- ElastiCache Redis: $50
+- Qdrant on EC2: $70
+- S3 + transfer: $25
+- SQS + CloudWatch: $25
+- LLM API: $50–150
 
-## Detailed Documentation
-
-1. **[Database Schema](./01_database_schema.md)** – Full PostgreSQL schema with India-specific fields
-2. **[Ingestion Pipelines](./02_ingestion_pipelines.md)** – Crawlers, parsers, ETL orchestration
-3. **[Vector Store Strategy](./03_vector_store_strategy.md)** – Qdrant setup, chunking, query patterns
-4. **[LangGraph Agent Design](./04_langgraph_agent_design.md)** – State model, nodes, tools, memory
-5. **[Cloud Deployment](./05_cloud_deployment_strategy.md)** – AWS architecture, cost, monitoring
+P1 ceiling for *new* SaaS spend: ~$50/month (no managed orchestrator yet; Auth0/Clerk deferred).
 
 ---
 
-## Next Steps
+## What's intentionally deferred (with triggers)
 
-1. Review and approve architecture
-2. Set up development environment (Docker Compose)
-3. Begin Phase 1: Core infrastructure
-4. Weekly progress reviews
+See `07_round2_broker_grade_plan.md` for the full P2 list. Headlines:
+
+- Streaming chat (SSE) — when chat p95 > 4s.
+- MCP server — when first external integration request arrives.
+- ETL platform migration (Airflow / Prefect / MWAA) — when sustained > 1k jobs/hour.
+- BSE filings crawler — needs a dedicated scraper or API contract.
+- Whisper concall audio transcription.
+- Auth0 / Clerk migration — > 1k MAU or enterprise SSO ask.
 
 ---
 
-**This architecture is production-ready, scalable to 50k+ companies, and designed to be VC-fundable.**
+## Onboarding path
+
+1. Read [SHIPPED.md](./SHIPPED.md) for what exists today.
+2. Read this file for the architecture snapshot.
+3. Read [`/GETTING_STARTED.md`](../GETTING_STARTED.md) and run the Quick Start.
+4. Read [`/AGENTS.md`](../AGENTS.md) for the coding rules.
+5. Pick a workstream from [07_round2_broker_grade_plan.md](./07_round2_broker_grade_plan.md) or the P2 deferred-list and add to it.

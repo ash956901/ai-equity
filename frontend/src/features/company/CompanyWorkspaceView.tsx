@@ -39,6 +39,7 @@ import {
 } from "../../lib/api";
 import { PageHeader } from "../../shared/ui/PageHeader";
 import { SourceBadges } from "../../shared/ui/SourceBadges";
+import { BrokerStockPage } from "./broker/BrokerStockPage";
 
 type DataMode = "live" | "demo";
 type ToastTone = "info" | "success" | "warning";
@@ -1110,6 +1111,27 @@ export function CompanyWorkspaceView(props: CompanyWorkspaceViewProps) {
 
       {companyLoading && <div className="notice"><Loader2 size={16} className="spin" /> Loading company data...</div>}
 
+      {activeSymbol ? (
+        <BrokerStockPage
+          ticker={activeSymbol}
+          onAskMinerva={(prompt) => {
+            props.setSearchSelection({
+              stamp: Date.now(),
+              chatPrompt: prompt,
+              companySymbol: activeSymbol,
+              companyId: activeCompanyId ?? undefined,
+            });
+            props.goToView("chat" as ViewKey);
+          }}
+          onPickPeer={(peerTicker) => {
+            const next = peerTicker.toUpperCase();
+            setActiveSymbol(next);
+            setSymbolInput(next);
+            setActiveCompanyId(null);
+          }}
+        />
+      ) : null}
+
       <div className="company-header-card">
         <div className="company-header-main">
           {nseOrBseTicker && <p className="discovery-symbol">{nseOrBseTicker}</p>}
@@ -1154,7 +1176,7 @@ export function CompanyWorkspaceView(props: CompanyWorkspaceViewProps) {
             }}
           >
             <ArrowUpRight size={14} />
-            Ask Iris
+            Ask Minerva
           </button>
         </div>
       </div>
@@ -1473,7 +1495,7 @@ export function CompanyWorkspaceView(props: CompanyWorkspaceViewProps) {
                 props.goToView("chat");
               }}
             >
-              Ask in Iris Chat
+              Ask in Minerva Chat
             </button>
           </div>
         </article>

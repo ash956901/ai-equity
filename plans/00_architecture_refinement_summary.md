@@ -1,5 +1,7 @@
 # AI Equity Research Platform – Architecture Refinement Summary
 
+> **Status (as of Round 2):** historical design document. The shipped system overlaps but has diverged in several places (e.g. DeepAgents wrapper instead of a hand-rolled LangGraph state machine, 11 subagents instead of 5, additional tables, Round 2 auth + quotes + home + broker + discovery domains). **For "what's actually there," see [SHIPPED.md](./SHIPPED.md).** Original design retained as reference.
+
 ## Overview
 
 This document provides a comprehensive summary of the refined backend-only, agent-centric architecture for the AI-native equity research platform, optimized for Indian equities with focus on autonomous data ingestion, complex document processing, portfolio analysis, and intelligent insights.

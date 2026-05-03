@@ -5,6 +5,7 @@ import {
   Sun,
 } from "lucide-react";
 
+import { OmniSearch } from "../../components/OmniSearch";
 import { navItems } from "../constants";
 import type { ViewKey } from "../types";
 
@@ -15,6 +16,7 @@ interface SidebarShellProps {
   onOpenNotifications: () => void;
   onToggleTheme: () => void;
   onGoToView: (view: ViewKey) => void;
+  onPickCompany?: (ticker: string, companyId?: string) => void;
 }
 
 export function SidebarShell(props: SidebarShellProps) {
@@ -29,6 +31,12 @@ export function SidebarShell(props: SidebarShellProps) {
           <p className="brand-subtitle">Research Console</p>
         </div>
       </div>
+
+      {props.onPickCompany ? (
+        <div className="side-panel__omnisearch">
+          <OmniSearch onPick={props.onPickCompany} />
+        </div>
+      ) : null}
 
       <button
         type="button"

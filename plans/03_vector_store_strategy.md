@@ -1,5 +1,7 @@
 # Vector Store Strategy – AI Equity Research Platform
 
+> **Status (as of Round 2):** historical design document. The shipped store has 5 Qdrant collections (filings, news, transcripts, social, user_uploads) and uses Ollama `nomic-embed-text` (768d) by default rather than OpenAI. Chunking is in `services/vector_service.py` (~512 token windows, 64-token overlap). **For current state, see [SHIPPED.md](./SHIPPED.md).** Original design retained as reference.
+
 ## Overview
 
 This document defines the **vector database strategy** for semantic search over filings, presentations, news, and user uploads, comparing standalone vector DBs vs pgvector, and specifying chunking, embedding, and querying patterns.

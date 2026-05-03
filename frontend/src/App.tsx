@@ -78,7 +78,7 @@ function getInitialDashboardPreferences(): DashboardPreferences {
 }
 
 export default function App() {
-  const [activeView, setActiveView] = useState<ViewKey>("dashboard");
+  const [activeView, setActiveView] = useState<ViewKey>("home");
   const [theme, setTheme] = useState<Theme>(getInitialTheme);
   const dataMode = "live";
   const [dashboardPreferences, setDashboardPreferences] =
@@ -418,6 +418,14 @@ export default function App() {
         onOpenNotifications={() => setNotificationsOpen(true)}
         onToggleTheme={toggleTheme}
         onGoToView={goToView}
+        onPickCompany={(ticker, companyId) => {
+          setSearchSelection({
+            stamp: Date.now(),
+            companySymbol: ticker,
+            companyId,
+          });
+          goToView("company");
+        }}
       />
 
       <main className="main-panel">{page}</main>

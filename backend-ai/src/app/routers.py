@@ -3,11 +3,17 @@
 from fastapi import FastAPI
 
 from src.domains.alerts import alerts_router
+from src.domains.auth import auth_router
+from src.domains.broker import broker_router
 from src.domains.chat import chat_router, upload_router
 from src.domains.companies import companies_router
 from src.domains.compare import compare_router
+from src.domains.discovery import discovery_router
+from src.domains.home import home_router
+from src.domains.insights import insights_router
 from src.domains.news import news_router
 from src.domains.portfolio import portfolio_router
+from src.domains.quotes import quotes_router
 from src.domains.screens import screens_router
 from src.domains.timeline import timeline_router
 from src.domains.users import user_router
@@ -27,3 +33,9 @@ def register_routers(app: FastAPI) -> None:
     app.include_router(timeline_router)
     app.include_router(screens_router)
     app.include_router(user_router)
+    app.include_router(insights_router)
+    app.include_router(discovery_router)
+    app.include_router(broker_router)
+    app.include_router(auth_router)
+    app.include_router(quotes_router)
+    app.include_router(home_router)

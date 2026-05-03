@@ -105,6 +105,47 @@ class Settings(BaseSettings):
     kite_api_secret: Optional[str] = None
     kite_access_token: Optional[str] = None
 
+    # Authentication / JWT
+    auth_jwt_secret: str = "dev-only-change-me-in-production-please-do-not-ship-this"
+    auth_jwt_algorithm: str = "HS256"
+    auth_access_token_minutes: int = 15
+    auth_refresh_token_days: int = 30
+    auth_email_verify_token_hours: int = 24
+    auth_password_reset_token_minutes: int = 30
+    auth_login_rate_limit: str = "5/minute"
+    auth_signup_rate_limit: str = "3/minute"
+    auth_forgot_rate_limit: str = "3/minute"
+    # When set, account creation requires email verification before login is allowed.
+    auth_require_email_verification: bool = False
+
+    # Email sender (stub-and-log in dev; SES/SMTP in prod)
+    email_sender: Literal["stub", "smtp", "ses"] = "stub"
+    email_from: str = "no-reply@equityai.local"
+    email_app_base_url: str = "http://localhost:5173"
+    smtp_host: Optional[str] = None
+    smtp_port: int = 587
+    smtp_username: Optional[str] = None
+    smtp_password: Optional[str] = None
+    ses_region: Optional[str] = None
+
+    # Feature flags
+    enable_chart_extraction: bool = False
+
+    # ETL guardrails / Insight Engine
+    # Comma-separated list of source names to mute without code changes.
+    etl_disabled_sources: str = ""
+    # Default lookback for theme tagging.
+    theme_tag_lookback_days: int = 30
+    # Default lookback for event extraction.
+    event_extract_lookback_days: int = 14
+    # Maximum insights produced per nightly run.
+    insight_max_per_run: int = 25
+    # Optional aggregator transcript API.
+    alphastreet_api_key: Optional[str] = None
+    # Social tokens (gated; sources stay disabled until set).
+    twitter_bearer_token: Optional[str] = None
+    telegram_bot_token: Optional[str] = None
+
     model_config = SettingsConfigDict(
         env_file=str(ROOT_ENV_FILE),
         env_file_encoding="utf-8",

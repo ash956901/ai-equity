@@ -3,7 +3,7 @@ import {
   type UserProfile,
   type UserProfileUpdate,
 } from "../types/api";
-import { AI_BACKEND_URL, aiGet, aiPost, ApiError } from "./core";
+import { aiGet, aiPost, aiPut, aiUpload } from "./core";
 
 export async function fetchProfileConfig(): Promise<ProfileConfigResponse> {
   return aiGet<ProfileConfigResponse>("/users/profile/config");
@@ -15,47 +15,27 @@ export async function fetchUserProfile(userId: string): Promise<UserProfile> {
 
 export async function updateUserProfile(
   userId: string,
-  data: UserProfileUpdate
+  data: UserProfileUpdate,
 ): Promise<UserProfile> {
-  const controller = new AbortController();
-  const timeoutId = window.setTimeout(() => controller.abort(), 30000);
-  try {
-    const response = await fetch(`${AI_BACKEND_URL}/users/${userId}`, {
-      method: "PUT",
-      signal: controller.signal,
-      headers: { "Content-Type": "application/json", Accept: "application/json" },
-      body: JSON.stringify(data),
-    });
-    if (!response.ok)
-      throw new ApiError(`Profile update failed with status ${response.status}`, response.status);
-    return (await response.json()) as UserProfile;
-  } catch (error) {
-    if (error instanceof ApiError) throw error;
-    throw new ApiError("Could not update profile");
-  } finally {
-    window.clearTimeout(timeoutId);
-  }
+  return aiPut<UserProfile>(`/users/${userId}`, data);
 }
 
 export async function uploadProfilePic(
   userId: string,
-  file: File
+  file: File,
 ): Promise<{ profile_pic_url: string }> {
   const formData = new FormData();
   formData.append("file", file);
-  const response = await fetch(`${AI_BACKEND_URL}/users/${userId}/profile-pic`, {
-    method: "POST",
-    body: formData,
-  });
-  if (!response.ok)
-    throw new ApiError(`Profile pic upload failed with status ${response.status}`, response.status);
-  return response.json();
+  return aiUpload<{ profile_pic_url: string }>(
+    `/users/${userId}/profile-pic`,
+    formData,
+  );
 }
 
 export async function submitKyc(
   userId: string,
   panCardNumber: string,
-  aadhaarNumber?: string
+  aadhaarNumber?: string,
 ): Promise<{ kyc_status: string; kyc_submitted_at: string; message: string }> {
   return aiPost(`/users/${userId}/kyc/submit`, {
     pan_card_number: panCardNumber,
@@ -64,13 +44,13 @@ export async function submitKyc(
 }
 
 export async function fetchKycStatus(
-  userId: string
+  userId: string,
 ): Promise<{ kyc_status: string; kyc_submitted_at: string | null; pan_card_number: string | null }> {
   return aiGet(`/users/${userId}/kyc/status`);
 }
 
 export async function verifyKyc(
-  userId: string
+  userId: string,
 ): Promise<{ kyc_status: string; message: string }> {
   return aiPost(`/users/${userId}/kyc/verify`, {});
 }

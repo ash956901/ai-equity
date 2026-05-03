@@ -1,0 +1,53 @@
+# Copy to terraform.tfvars and fill in. terraform.tfvars is gitignored.
+
+environment = "prod"
+region      = "ap-south-1"
+name_prefix = "ai-equity"
+
+# Networking
+vpc_cidr = "10.40.0.0/16"
+az_count = 2
+
+# Database
+db_instance_class        = "db.t4g.small"
+db_allocated_storage     = 20
+db_max_allocated_storage = 100
+db_username              = "equity_admin"
+
+# Cache
+redis_node_type = "cache.t4g.micro"
+
+# Vector DB
+qdrant_instance_type = "t4g.small"
+qdrant_volume_size   = 50
+
+# ECS sizing
+api_cpu                = 512
+api_memory             = 1024
+api_desired_count      = 2
+worker_cpu             = 1024
+worker_memory          = 2048
+worker_desired_count   = 1
+beat_cpu               = 256
+beat_memory            = 512
+frontend_cpu           = 256
+frontend_memory        = 512
+frontend_desired_count = 2
+
+# App config
+llm_provider       = "groq"
+embedding_provider = "ollama"
+embedding_model    = "nomic-embed-text"
+embedding_dim      = 768
+ollama_base_url    = "" # set if you operate an external Ollama service
+
+# Optional: serve traffic on a domain. Empty = HTTP only on the ALB DNS.
+domain_name = ""
+
+# GitHub OIDC integration. Leave empty to skip the GitHub Actions role.
+github_org               = ""
+github_repo              = ""
+github_oidc_provider_arn = "" # set if your account already has the provider
+
+# Initial image tag for first apply (CI overrides per deploy).
+image_tag = "latest"

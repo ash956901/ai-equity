@@ -34,6 +34,7 @@ import {
   uploadProfilePic,
   verifyKyc,
 } from "../../lib/api";
+import { useAuth } from "../../app/state/AuthContext";
 import { PageHeader } from "../../shared/ui/PageHeader";
 
 interface ProfileViewProps {
@@ -112,14 +113,18 @@ export function ProfileView(props: ProfileViewProps) {
   const [kycStep, setKycStep] = useState(0);
   const avatarInputRef = useRef<HTMLInputElement | null>(null);
 
+  const { user: authUser } = useAuth();
   const userId = useMemo(() => {
+    if (authUser?.id) return authUser.id;
+    // Fallback for views opened before auth rehydration completes; should be
+    // rare since RequireAuth gates the app, but kept defensive.
     let id = localStorage.getItem("equityai-user-id");
     if (!id) {
       id = crypto.randomUUID();
       localStorage.setItem("equityai-user-id", id);
     }
     return id;
-  }, []);
+  }, [authUser?.id]);
 
   useEffect(() => {
     if (props.dataMode !== "live") return;

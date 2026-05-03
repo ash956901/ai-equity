@@ -12,6 +12,7 @@ from src.agents.memory import get_memory_config
 from src.agents.prompts.orchestrator import ORCHESTRATOR_PROMPT
 from src.agents.subagents import get_all_subagents
 from src.agents.tools.company_resolver import resolve_company
+from src.agents.tools.insights import list_daily_insights
 from src.agents.tools.web_search import internet_search
 from src.config import get_settings
 
@@ -92,7 +93,7 @@ def build_research_agent():
 
     _agent = create_deep_agent(
         model=model,
-        tools=[resolve_company, internet_search],
+        tools=[resolve_company, list_daily_insights, internet_search],
         system_prompt=ORCHESTRATOR_PROMPT,
         subagents=get_all_subagents(),
         **memory_cfg,
@@ -101,7 +102,7 @@ def build_research_agent():
     logger.info(
         "Research orchestrator built (model=%s, subagents=%d, skills=%s, memory=on)",
         model,
-        5,
+        len(get_all_subagents()),
         memory_cfg.get("skills"),
     )
     return _agent

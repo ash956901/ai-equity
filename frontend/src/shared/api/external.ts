@@ -6,13 +6,8 @@ import {
   type NewsDataResponse,
   type SecFiling,
   type SentimentFeedResponse,
-  type UpstoxHolding,
 } from "../types/api";
-import { aiGet, aiPost, getJson } from "./core";
-
-interface UpstoxHoldingsResponse {
-  data?: UpstoxHolding[];
-}
+import { aiGet, getJson } from "./core";
 
 function mapEnrichedToArticle(item: EnrichedNewsItem, index: number) {
   return {
@@ -64,15 +59,14 @@ export async function fetchMarketHeadlines(limit = 20, symbolOrName?: string): P
 }
 
 export async function fetchHoldingsCount(): Promise<number> {
-  const payload = await getJson<UpstoxHoldingsResponse | UpstoxHolding[]>(
-    "/upstox/portfolio/holdings"
-  );
-
-  if (Array.isArray(payload)) {
-    return payload.length;
+  try {
+    const payload = await getJson<{ count?: number }>(
+      "/portfolios/me/holdings-count",
+    );
+    return typeof payload?.count === "number" ? payload.count : 0;
+  } catch {
+    return 0;
   }
-
-  return Array.isArray(payload.data) ? payload.data.length : 0;
 }
 
 export async function fetchTickerSentiment(

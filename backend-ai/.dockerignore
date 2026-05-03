@@ -1,0 +1,38 @@
+# Build context lives in backend-ai/. Anything we don't COPY in the Dockerfile
+# should be excluded so the build context stays small and reproducible.
+
+# Virtualenvs and Python caches
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Local SQLite + envs (never bake into an image)
+*.sqlite
+*.sqlite3
+.verify.sqlite3
+.env
+.env.*
+!.env.example
+
+# Tests, dev artifacts, runtime data
+tests/
+uploads/
+workflow_runs/
+output.log
+output.txt
+*.log
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/
+
+# Docker self-references
+Dockerfile
+.dockerignore

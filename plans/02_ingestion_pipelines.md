@@ -1,5 +1,7 @@
 # Ingestion & ETL Pipelines – AI Equity Research Platform
 
+> **Status (as of Round 2):** historical design document. The shipped ETL overlaps but adds the two-pass theme tagger, AI filing summariser, alert evaluator, stuck-run reaper, new-listing self-discovery, and gates vision-LLM chart extraction behind a config flag. BSE corporate-announcement crawl is still deferred. **For "what's actually scheduled today," see [SHIPPED.md](./SHIPPED.md) and `backend-ai/src/etl/tasks.py`.** Original design retained as reference.
+
 ## Overview
 
 This document specifies the **crawling and ETL pipelines** for autonomously ingesting Indian equity data from NSE/BSE, company investor relations sites, news sources, and complex documents (PDFs, PPTs with tables/charts).

@@ -1,7 +1,13 @@
-import { useCallback, useEffect, useState } from "react";
-import { ArrowUpRight, Bookmark, BookmarkCheck, Search } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { ArrowUpRight, Bookmark, BookmarkCheck, Lightbulb, Search } from "lucide-react";
 
-import { ApiError, fetchCompanies, type AICompany } from "../../lib/api";
+import {
+  ApiError,
+  fetchCompanies,
+  fetchInsights,
+  type AICompany,
+  type InsightCard,
+} from "../../lib/api";
 import { PageHeader } from "../../shared/ui/PageHeader";
 import { SourceBadges } from "../../shared/ui/SourceBadges";
 
@@ -30,6 +36,24 @@ interface DiscoveryViewProps {
   }) => void;
 }
 
+const INSIGHT_TYPE_LABELS: Record<string, string> = {
+  causal_cross_industry: "Causal cross-industry",
+  supply_chain_ripple: "Supply-chain ripple",
+  sentiment_driven: "Sentiment swing",
+  event_catalyst: "Event catalyst",
+  second_order: "Second-order",
+};
+
+function formatDirection(direction?: string | null): string {
+  if (!direction) return "neutral";
+  return direction;
+}
+
+function formatConfidence(value?: number | null): string {
+  if (value === null || value === undefined) return "n/a";
+  return `${Math.round(value * 100)}%`;
+}
+
 export function DiscoveryView(props: DiscoveryViewProps) {
   const [lastSelectionStamp, setLastSelectionStamp] = useState<number>(0);
   const [query, setQuery] = useState("");
@@ -39,6 +63,11 @@ export function DiscoveryView(props: DiscoveryViewProps) {
   const [error, setError] = useState<string | null>(null);
   const [totalCount, setTotalCount] = useState(0);
   const [sectors, setSectors] = useState<string[]>(["all"]);
+
+  const [insights, setInsights] = useState<InsightCard[]>([]);
+  const [insightLoading, setInsightLoading] = useState(true);
+  const [insightError, setInsightError] = useState<string | null>(null);
+  const [insightFilter, setInsightFilter] = useState<string>("all");
 
   const loadCompanies = useCallback(async (searchTerm?: string, sector?: string) => {
     setLoading(true);
@@ -58,9 +87,31 @@ export function DiscoveryView(props: DiscoveryViewProps) {
     }
   }, []);
 
+  const loadInsights = useCallback(async (filter: string) => {
+    setInsightLoading(true);
+    setInsightError(null);
+    try {
+      const resp = await fetchInsights({
+        insightType: filter === "all" ? undefined : filter,
+        limit: 12,
+        days: 7,
+      });
+      setInsights(resp.items);
+    } catch (err) {
+      setInsightError(err instanceof ApiError ? err.message : "Could not load insights.");
+      setInsights([]);
+    } finally {
+      setInsightLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     void loadCompanies();
   }, [loadCompanies]);
+
+  useEffect(() => {
+    void loadInsights(insightFilter);
+  }, [insightFilter, loadInsights]);
 
   useEffect(() => {
     if (!props.searchSelection) return;
@@ -79,11 +130,16 @@ export function DiscoveryView(props: DiscoveryViewProps) {
 
   const formatMarketCap = (mcInr?: number) => {
     if (!mcInr) return "N/A";
-    if (mcInr >= 1e12) return `₹${(mcInr / 1e12).toFixed(1)}T`;
-    if (mcInr >= 1e9) return `₹${(mcInr / 1e9).toFixed(1)}B`;
-    if (mcInr >= 1e7) return `₹${(mcInr / 1e7).toFixed(0)}Cr`;
-    return `₹${mcInr.toLocaleString()}`;
+    if (mcInr >= 1e12) return `\u20B9${(mcInr / 1e12).toFixed(1)}T`;
+    if (mcInr >= 1e9) return `\u20B9${(mcInr / 1e9).toFixed(1)}B`;
+    if (mcInr >= 1e7) return `\u20B9${(mcInr / 1e7).toFixed(0)}Cr`;
+    return `\u20B9${mcInr.toLocaleString()}`;
   };
+
+  const insightTypes = useMemo(
+    () => ["all", ...Object.keys(INSIGHT_TYPE_LABELS)],
+    []
+  );
 
   return (
     <section className="page-wrap">
@@ -92,6 +148,81 @@ export function DiscoveryView(props: DiscoveryViewProps) {
         subtitle={`Explore the full NSE+BSE universe - ${totalCount.toLocaleString()} companies available.`}
         dataMode={props.dataMode}
       />
+
+      <div className="discovery-panel" style={{ marginBottom: 24 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+          <Lightbulb size={16} />
+          <h3 style={{ margin: 0 }}>Daily insight feed</h3>
+          <span className="chip" style={{ marginLeft: "auto" }}>
+            {insightLoading ? "Loading..." : `${insights.length} active`}
+          </span>
+        </div>
+
+        <div className="discovery-controls" style={{ marginBottom: 12 }}>
+          <select
+            className="type-select"
+            value={insightFilter}
+            onChange={(e) => setInsightFilter(e.target.value)}
+          >
+            {insightTypes.map((t) => (
+              <option key={t} value={t}>
+                {t === "all" ? "All insight types" : INSIGHT_TYPE_LABELS[t] ?? t}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {insightError ? <div className="notice warning">{insightError}</div> : null}
+
+        <div className="discovery-grid">
+          {!insightLoading && insights.length ? (
+            insights.map((card) => (
+              <article
+                key={card.insight_id}
+                className="discovery-card"
+                style={{ borderLeft: "3px solid var(--accent, #6c8cff)" }}
+              >
+                <div className="discovery-card-head">
+                  <div>
+                    <p className="discovery-symbol" style={{ textTransform: "uppercase" }}>
+                      {INSIGHT_TYPE_LABELS[card.insight_type] ?? card.insight_type}
+                    </p>
+                    <h3 style={{ marginTop: 4 }}>{card.headline}</h3>
+                  </div>
+                  <div className="discovery-card-actions">
+                    <span className="chip">{formatDirection(card.predicted_direction)}</span>
+                    <span className="chip">conf {formatConfidence(card.confidence)}</span>
+                  </div>
+                </div>
+
+                <p className="discovery-insight" style={{ marginTop: 8 }}>
+                  {card.narrative ?? ""}
+                </p>
+
+                {card.related_themes && card.related_themes.length ? (
+                  <p className="discovery-sector" style={{ marginTop: 6 }}>
+                    Themes: {card.related_themes.join(", ")}
+                  </p>
+                ) : null}
+                {card.related_sectors && card.related_sectors.length ? (
+                  <p className="discovery-sector" style={{ marginTop: 2 }}>
+                    Sectors: {card.related_sectors.join(", ")}
+                  </p>
+                ) : null}
+                {card.horizon_days ? (
+                  <p className="discovery-sector" style={{ marginTop: 2 }}>
+                    Horizon: {card.horizon_days}d
+                  </p>
+                ) : null}
+              </article>
+            ))
+          ) : !insightLoading ? (
+            <div className="list-item single-line">
+              <p>No insight cards yet. Run the daily ETL to populate the feed.</p>
+            </div>
+          ) : null}
+        </div>
+      </div>
 
       <div className="discovery-panel">
         <form
@@ -154,14 +285,14 @@ export function DiscoveryView(props: DiscoveryViewProps) {
                       props.addFavorite({
                         type: "company",
                         symbol: company.ticker_nse ?? company.id,
-                        title: `${company.ticker_nse ?? ""} · ${company.name}`,
+                        title: `${company.ticker_nse ?? ""} \u00B7 ${company.name}`,
                         subtitle: company.sector ?? "",
                       })
                     }
                   >
                     {props.isFavorited({
                       type: "company",
-                      title: `${company.ticker_nse ?? ""} · ${company.name}`,
+                      title: `${company.ticker_nse ?? ""} \u00B7 ${company.name}`,
                       symbol: company.ticker_nse ?? company.id,
                     }) ? (
                       <BookmarkCheck size={14} />

@@ -6,7 +6,7 @@ from uuid import UUID
 
 from sqlalchemy.orm import Session
 
-from src.db.models import Company, Filing, NewsArticle
+from src.db.models import Company, Filing, FilingSummary, NewsArticle
 from src.utils.data_sources import timeline_sources
 
 
@@ -27,24 +27,57 @@ class TimelineService:
         events: list[dict[str, object]] = []
         cutoff = datetime.utcnow() - timedelta(days=90)
 
-        filing_query = self.db.query(Filing).filter(Filing.filing_date >= cutoff.date())
+        filing_query = (
+            self.db.query(Filing, FilingSummary)
+            .outerjoin(FilingSummary, FilingSummary.filing_id == Filing.id)
+            .filter(Filing.filing_date >= cutoff.date())
+        )
         if company_id:
             filing_query = filing_query.filter(Filing.company_id == company_id)
         filings = filing_query.order_by(Filing.filing_date.desc()).limit(limit).all()
 
-        for filing in filings:
+        for filing, summary in filings:
             company = self.db.query(Company).filter(Company.id == filing.company_id).first()
             source_url = filing.source_url
+            # Prefer the AI one-liner; fall back to the static template only
+            # when the offline summarizer hasn't run for this filing yet.
+            if summary and summary.summary_one_liner:
+                summary_text = summary.summary_one_liner
+                ev_type = summary.event_type or "filing"
+                materiality = (
+                    float(summary.materiality_score)
+                    if summary.materiality_score is not None
+                    else None
+                )
+                sentiment = summary.sentiment
+                affected_dim = summary.affected_dimension
+            else:
+                summary_text = (
+                    f"{filing.filing_type} filed on {filing.filing_date.isoformat()}"
+                )
+                ev_type = "filing"
+                materiality = None
+                sentiment = None
+                affected_dim = None
+
             events.append(
                 {
                     "id": str(filing.id),
-                    "event_type": "filing",
+                    "event_type": ev_type,
                     "title": filing.title,
-                    "summary": f"{filing.filing_type} filed on {filing.filing_date.isoformat()}",
-                    "timestamp": datetime.combine(filing.filing_date, datetime.min.time()).isoformat(),
+                    "summary": summary_text,
+                    "timestamp": datetime.combine(
+                        filing.filing_date, datetime.min.time()
+                    ).isoformat(),
                     "company_id": str(filing.company_id),
                     "company_name": company.name if company else None,
-                    "metadata": {"filing_type": filing.filing_type, "source_url": source_url},
+                    "metadata": {
+                        "filing_type": filing.filing_type,
+                        "source_url": source_url,
+                        "materiality_score": materiality,
+                        "sentiment": sentiment,
+                        "affected_dimension": affected_dim,
+                    },
                     "data_sources": timeline_sources("filing", source_url),
                 }
             )

@@ -46,7 +46,14 @@ or strategic pivots.
 (Extract key financial metrics in a table with page citations)
 
 ## Explained Simply
-Layman explanation—what does this document tell us in plain language?
+Layman explanation -- what does this document tell us in plain language?
+Adapt depth to the user's expertise level (beginner / intermediate / advanced).
+
+## Sources
+List every page / slide you cited with its document title.
+
+## Suggested follow-ups
+Exactly THREE follow-up questions tailored to the document's contents.
 
 Use INR, Cr (crore) for Indian context. Never make up numbers. Always cite \
 **[Page N]** or **[Slide N]**.

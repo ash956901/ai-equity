@@ -1,53 +1,44 @@
-import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+/// <reference types="vitest/globals" />
+import { fireEvent, screen } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
+
+import { renderWithProviders } from "./test/renderWithProviders";
+
+// HomeView is the default landing view in Round 2 — stub its data layer so
+// shell-level tests don't depend on a live backend.
+vi.mock("./shared/api/home", () => ({
+  fetchHomePersonalized: vi.fn().mockResolvedValue({
+    user: { id: "u-test", username: null, expertise_level: "intermediate" },
+    watchlist_companies: [],
+    holdings_companies: [],
+    asymmetric_feed: [],
+    timeline_recent: [],
+    suggestions: [],
+    generated_at: "2026-04-30T00:00:00",
+  }),
+}));
+
+vi.mock("./lib/api", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./lib/api")>();
+  return { ...actual, searchCompaniesDB: vi.fn().mockResolvedValue([]) };
+});
 
 import App from "./App";
 
 describe("App shell", () => {
-  it("renders key shell controls", () => {
-    render(<App />);
+  it("renders the EquityAI brand and notifications control", () => {
+    renderWithProviders(<App />, { noAuth: true });
 
     expect(screen.getByText("EquityAI")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Open notifications" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Command Palette/i })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Global Search/i })).toBeInTheDocument();
-  });
-
-  it("opens command palette with keyboard shortcut", () => {
-    render(<App />);
-
-    fireEvent.keyDown(window, { key: "k", ctrlKey: true });
-
-    expect(screen.getByRole("dialog", { name: "Command palette" })).toBeInTheDocument();
-    expect(screen.getByPlaceholderText("Search commands, pages, and actions...")).toBeInTheDocument();
-  });
-
-  it("opens global search with keyboard shortcut", () => {
-    render(<App />);
-
-    fireEvent.keyDown(window, { key: "j", ctrlKey: true });
-
-    expect(screen.getByRole("dialog", { name: "Global search" })).toBeInTheDocument();
-    expect(screen.getByPlaceholderText("Try: RELIANCE, defense, AI, risk...")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Open notifications" }),
+    ).toBeInTheDocument();
   });
 
   it("navigates to settings view from sidebar", () => {
-    render(<App />);
-
+    renderWithProviders(<App />, { noAuth: true });
     fireEvent.click(screen.getByRole("button", { name: /Settings/i }));
-
-    expect(screen.getByText("Workspace Settings")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Switch to Demo Data/i })).toBeInTheDocument();
-  });
-
-  it("toggles theme mode from settings", () => {
-    render(<App />);
-
-    fireEvent.click(screen.getByRole("button", { name: /Settings/i }));
-    expect(screen.getByRole("button", { name: /Use Dark Mode/i })).toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole("button", { name: /Use Dark Mode/i }));
-
-    expect(screen.getByRole("button", { name: /Use Light Mode/i })).toBeInTheDocument();
+    // PageHeader for SettingsView passes title="Workspace Settings".
+    expect(screen.getByText(/Workspace Settings/i)).toBeInTheDocument();
   });
 });

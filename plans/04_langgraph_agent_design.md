@@ -1,5 +1,7 @@
 # LangGraph Agent Design – AI Equity Research Platform
 
+> **Status (as of Round 2):** historical design document. The shipped system uses the **`deepagents>=0.4.12`** wrapper (LangGraph under the hood) instead of a hand-rolled `StateGraph`, has **11 subagents** (added `discovery`, `policy-macro`, `theme-explorer`, `transcript-analyst`, `macro-commodity`, `graph-reasoning`), enforces a 14-section structured-output Pydantic contract (`src/schemas/structured_analysis.py`), and runs Discovery's **two-pass asymmetric tagger** offline. **For the current topology, see [`/backend-ai/DEEP_AGENT_ARCHITECTURE.md`](../backend-ai/DEEP_AGENT_ARCHITECTURE.md) and [SHIPPED.md](./SHIPPED.md).** Original design retained as reference.
+
 ## Overview
 
 This document defines the **LangGraph-based agent architecture** for query-time processing, including the state model, agent graph structure, node implementations, tool definitions, and reasoning patterns for the AI equity research platform.

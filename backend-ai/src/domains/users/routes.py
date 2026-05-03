@@ -8,6 +8,8 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from src.db.database import get_db
+from src.db.models import User
+from src.domains.auth.dependencies import assert_self, get_current_user
 from src.domains.users.service import UsersService
 
 router = APIRouter(prefix="/users", tags=["users"])
@@ -80,8 +82,13 @@ def get_profile_config():
 
 
 @router.get("/{user_id}")
-def get_user_profile(user_id: UUID, db: Session = Depends(get_db)):
+def get_user_profile(
+    user_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     """Fetch user profile."""
+    assert_self(user_id, current_user)
     service = UsersService(db)
     return service.get_user_profile(user_id)
 
@@ -91,8 +98,10 @@ def update_user_profile(
     user_id: UUID,
     body: UserProfileUpdate,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     """Update user profile fields."""
+    assert_self(user_id, current_user)
     service = UsersService(db)
     update_data = body.model_dump(exclude_unset=True)
     return service.update_user_profile(user_id=user_id, update_data=update_data)
@@ -103,8 +112,10 @@ async def upload_profile_pic(
     user_id: UUID,
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     """Upload a profile picture."""
+    assert_self(user_id, current_user)
     service = UsersService(db)
     return await service.upload_profile_pic(user_id=user_id, file=file)
 
@@ -114,8 +125,10 @@ def submit_kyc(
     user_id: UUID,
     body: KycSubmitRequest,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     """Submit KYC verification request."""
+    assert_self(user_id, current_user)
     service = UsersService(db)
     return service.submit_kyc(
         user_id=user_id,
@@ -125,14 +138,24 @@ def submit_kyc(
 
 
 @router.get("/{user_id}/kyc/status")
-def get_kyc_status(user_id: UUID, db: Session = Depends(get_db)):
+def get_kyc_status(
+    user_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     """Get KYC verification status."""
+    assert_self(user_id, current_user)
     service = UsersService(db)
     return service.get_kyc_status(user_id)
 
 
 @router.post("/{user_id}/kyc/verify")
-def verify_kyc(user_id: UUID, db: Session = Depends(get_db)):
+def verify_kyc(
+    user_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     """Dummy KYC verification -- auto-approves for demo purposes."""
+    assert_self(user_id, current_user)
     service = UsersService(db)
     return service.verify_kyc(user_id)

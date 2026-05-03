@@ -1,0 +1,154 @@
+# ETL source registry. See ../docs/etl_source_map.md for narrative context.
+# Loaded at runtime by src.etl.source_registry.SourceRegistry.
+
+filings:
+  - name: nse_announcements
+    url: https://www.nseindia.com/api/corporate-announcements
+    frequency_cron: "30 9,11,13,15,17 * * *"
+    dedup: document_hash
+    storage_postgres: filings
+    storage_vector: company_filings
+    quota_rpm: 30
+    quota_burst: 60
+    enabled: true
+  - name: ir_pages
+    frequency_cron: "0 2 * * sat"
+    dedup: document_hash
+    storage_postgres: filings
+    storage_vector: company_filings
+    quota_rpm: 12
+    quota_burst: 24
+    enabled: true
+
+news:
+  - name: newsapi
+    url: https://newsapi.org/v2/everything
+    frequency_cron: "5 * * * *"
+    dedup: source_url
+    storage_postgres: news_articles
+    storage_vector: news_articles
+    quota_rpm: 30
+    enabled: true
+    requires_key: NEWS_API_KEY
+  - name: newsdata_io
+    url: https://newsdata.io/api/1/news
+    frequency_cron: "10 * * * *"
+    dedup: source_url
+    storage_postgres: news_articles
+    storage_vector: news_articles
+    quota_rpm: 20
+    enabled: true
+    requires_key: NEWSDATA_API_KEY
+  - name: google_news_rss
+    url: https://news.google.com/rss/search
+    frequency_cron: "15 * * * *"
+    dedup: source_url
+    storage_postgres: news_articles
+    storage_vector: news_articles
+    quota_rpm: 60
+    enabled: true
+
+transcripts:
+  - name: ir_concall_pages
+    frequency_cron: "30 3 * * sun"
+    dedup: document_hash
+    storage_postgres: transcripts,transcript_segments
+    storage_vector: transcripts
+    quota_rpm: 6
+    enabled: true
+  - name: alphastreet
+    frequency_cron: "30 3 * * sun"
+    dedup: document_hash
+    storage_postgres: transcripts,transcript_segments
+    storage_vector: transcripts
+    quota_rpm: 30
+    enabled: false
+    requires_key: ALPHASTREET_API_KEY
+
+social:
+  - name: reddit
+    url: https://www.reddit.com
+    frequency_cron: "20 * * * *"
+    dedup: source_post_id
+    storage_postgres: social_posts
+    storage_vector: social_posts
+    subreddits:
+      - IndianStockMarket
+      - IndianStreetBets
+      - StocksAndTrading
+      - DalalStreetTalks
+    quota_rpm: 60
+    enabled: true
+  - name: stocktwits
+    url: https://api.stocktwits.com
+    frequency_cron: "25 * * * *"
+    dedup: source_post_id
+    storage_postgres: social_posts
+    storage_vector: social_posts
+    quota_rpm: 30
+    enabled: true
+  - name: twitter
+    frequency_cron: "*/15 * * * *"
+    dedup: source_post_id
+    storage_postgres: social_posts
+    storage_vector: social_posts
+    quota_rpm: 60
+    enabled: false
+    requires_key: TWITTER_BEARER_TOKEN
+  - name: telegram
+    frequency_cron: "30 * * * *"
+    dedup: source_post_id
+    storage_postgres: social_posts
+    storage_vector: social_posts
+    quota_rpm: 30
+    enabled: false
+    requires_key: TELEGRAM_BOT_TOKEN
+
+macro:
+  - name: fred
+    url: https://api.stlouisfed.org/fred/series/observations
+    frequency_cron: "30 6 * * *"
+    dedup: code+observation_date
+    storage_postgres: macro_series
+    quota_rpm: 60
+    enabled: true
+    requires_key: FRED_API_KEY
+    series:
+      - { code: GDPC1, label: "US Real GDP" }
+      - { code: CPIAUCSL, label: "US CPI" }
+      - { code: DGS10, label: "US 10Y Treasury Yield" }
+      - { code: DEXINUS, label: "INR per USD" }
+      - { code: DCOILBRENTEU, label: "Brent crude" }
+      - { code: DCOILWTICO, label: "WTI crude" }
+  - name: rbi
+    url: https://www.rbi.org.in
+    frequency_cron: "35 6 * * *"
+    dedup: code+observation_date
+    storage_postgres: macro_series
+    quota_rpm: 30
+    enabled: true
+    series:
+      - { code: RBI_REPO, label: "RBI Repo Rate" }
+      - { code: RBI_REVERSE_REPO, label: "RBI Reverse Repo" }
+
+commodity:
+  - name: yfinance_commodities
+    frequency_cron: "0 * * * *"
+    dedup: code+observation_date
+    storage_postgres: commodity_series
+    quota_rpm: 60
+    enabled: true
+    series:
+      - { code: SUGAR_FUT, label: "ICE Sugar #11", yf_symbol: "SB=F" }
+      - { code: BRENT_FUT, label: "ICE Brent", yf_symbol: "BZ=F" }
+      - { code: WTI_FUT, label: "NYMEX WTI", yf_symbol: "CL=F" }
+      - { code: COPPER_FUT, label: "Copper", yf_symbol: "HG=F" }
+      - { code: NATGAS_FUT, label: "Natural Gas", yf_symbol: "NG=F" }
+      - { code: GOLD_FUT, label: "Gold", yf_symbol: "GC=F" }
+      - { code: USDINR, label: "USD/INR", yf_symbol: "INR=X" }
+
+confidence_weights:
+  source_quality: 0.5
+  recency: 0.3
+  corroboration: 0.2
+  recency_half_life_days: 7

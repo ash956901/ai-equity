@@ -1,0 +1,59 @@
+# Sector / industry / company -> commodity links.
+#
+# scope_type:  sector | industry | company
+# role:        input | output | substitute | hedge
+# weight:      0.0 - 1.0 (importance of this commodity to the scope)
+# commodity_code matches the codes in sources.yaml -> commodity series
+#
+# Used by the Insight + Theme agents to propagate commodity moves to companies
+# (e.g., sugar futures -> sugar mill output -> ethanol policy beneficiaries).
+
+links:
+  # --- Sugar / ethanol chain --------------------------------------------------
+  - { scope_type: industry, scope_value: "Sugar",         commodity_code: SUGAR_FUT, role: output,    weight: 0.95, source: bootstrap }
+  - { scope_type: industry, scope_value: "Sugar",         commodity_code: ETHANOL,   role: output,    weight: 0.70, source: bootstrap }
+  - { scope_type: industry, scope_value: "Distilleries",  commodity_code: ETHANOL,   role: output,    weight: 0.85, source: bootstrap }
+  - { scope_type: sector,   scope_value: "Oil & Gas",     commodity_code: ETHANOL,   role: input,     weight: 0.20, source: bootstrap, notes: "20% ethanol blending mandate" }
+
+  # --- Oil & gas / refining ---------------------------------------------------
+  - { scope_type: sector,   scope_value: "Oil & Gas",          commodity_code: BRENT_FUT, role: input,  weight: 0.85, source: bootstrap }
+  - { scope_type: sector,   scope_value: "Oil & Gas",          commodity_code: WTI_FUT,   role: input,  weight: 0.55, source: bootstrap }
+  - { scope_type: industry, scope_value: "Refineries",         commodity_code: BRENT_FUT, role: input,  weight: 0.90, source: bootstrap }
+  - { scope_type: industry, scope_value: "Lubricants",         commodity_code: BRENT_FUT, role: input,  weight: 0.75, source: bootstrap }
+  - { scope_type: industry, scope_value: "City Gas Distribution", commodity_code: NATGAS_FUT, role: input, weight: 0.80, source: bootstrap }
+
+  # --- AI / data centre exposure ---------------------------------------------
+  - { scope_type: industry, scope_value: "Lubricants",         commodity_code: AI_DATA_CENTRE_DEMAND, role: output, weight: 0.30, source: bootstrap, notes: "Specialty cooling fluids" }
+  - { scope_type: industry, scope_value: "Specialty Chemicals", commodity_code: AI_DATA_CENTRE_DEMAND, role: output, weight: 0.25, source: bootstrap }
+  - { scope_type: industry, scope_value: "Power Generation",   commodity_code: AI_DATA_CENTRE_DEMAND, role: output, weight: 0.40, source: bootstrap }
+  - { scope_type: industry, scope_value: "Capacitors",         commodity_code: AI_DATA_CENTRE_DEMAND, role: output, weight: 0.35, source: bootstrap }
+
+  # --- Auto / EV --------------------------------------------------------------
+  - { scope_type: sector,   scope_value: "Automobile",         commodity_code: COPPER_FUT, role: input, weight: 0.40, source: bootstrap }
+  - { scope_type: industry, scope_value: "Auto Components",    commodity_code: COPPER_FUT, role: input, weight: 0.55, source: bootstrap }
+  - { scope_type: industry, scope_value: "Electric Vehicles",  commodity_code: COPPER_FUT, role: input, weight: 0.70, source: bootstrap }
+  - { scope_type: industry, scope_value: "Battery",            commodity_code: LITHIUM,    role: input, weight: 0.85, source: bootstrap }
+  - { scope_type: industry, scope_value: "Tyres",              commodity_code: NATURAL_RUBBER, role: input, weight: 0.80, source: bootstrap }
+
+  # --- Metals -----------------------------------------------------------------
+  - { scope_type: industry, scope_value: "Steel",              commodity_code: IRON_ORE,   role: input,  weight: 0.85, source: bootstrap }
+  - { scope_type: industry, scope_value: "Steel",              commodity_code: COKING_COAL, role: input, weight: 0.70, source: bootstrap }
+  - { scope_type: industry, scope_value: "Aluminium",          commodity_code: BAUXITE,    role: input,  weight: 0.85, source: bootstrap }
+  - { scope_type: industry, scope_value: "Copper",             commodity_code: COPPER_FUT, role: output, weight: 0.95, source: bootstrap }
+
+  # --- FX-sensitive sectors --------------------------------------------------
+  - { scope_type: sector,   scope_value: "Information Technology", commodity_code: USDINR, role: hedge, weight: 0.85, source: bootstrap, notes: "Export earnings strengthen with weak INR" }
+  - { scope_type: sector,   scope_value: "Pharmaceuticals",        commodity_code: USDINR, role: hedge, weight: 0.65, source: bootstrap }
+  - { scope_type: sector,   scope_value: "Oil & Gas",              commodity_code: USDINR, role: input, weight: 0.50, source: bootstrap }
+
+  # --- Banks / NBFC (rate sensitivity uses macro series, not commodity) -----
+  # See macro_series for RBI_REPO and DGS10 - linked elsewhere via theme tagging
+
+  # --- Cement / construction --------------------------------------------------
+  - { scope_type: industry, scope_value: "Cement",             commodity_code: BRENT_FUT, role: input, weight: 0.50, source: bootstrap, notes: "Energy + logistics costs" }
+  - { scope_type: industry, scope_value: "Cement",             commodity_code: COAL,      role: input, weight: 0.65, source: bootstrap }
+
+  # --- Agriculture chemicals -------------------------------------------------
+  - { scope_type: industry, scope_value: "Fertilizers",        commodity_code: NATGAS_FUT, role: input, weight: 0.75, source: bootstrap }
+  - { scope_type: industry, scope_value: "Fertilizers",        commodity_code: USDINR,    role: input,  weight: 0.40, source: bootstrap }
+  - { scope_type: industry, scope_value: "Agro Chemicals",     commodity_code: BRENT_FUT, role: input, weight: 0.45, source: bootstrap }

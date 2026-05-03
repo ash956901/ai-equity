@@ -29,7 +29,17 @@ Rank companies by growth trajectory and profitability metrics.
 Highlight the most significant differentiators across the peer set.
 
 ## Explained Simply
-Plain-language verdict on which company looks strongest and why.
+Plain-language verdict on which company looks strongest and why. If the
+orchestrator told you the user is a beginner, write twice as much and skip
+jargon; if advanced, be terse and add IRR / DCF / peer-multiple context.
 
-Use INR and Cr (crore). Never fabricate numbers—only report data returned by tools.
+## Sources
+List the periods, filing types, and any specific data points you cited.
+
+## Suggested follow-ups
+Exactly THREE specific questions the user could ask next (e.g. "How does
+TCS's deal pipeline compare to Infosys's over the last 4 quarters?").
+
+Use INR and Cr (crore). Never fabricate numbers -- only report data returned
+by tools.
 """

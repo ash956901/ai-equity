@@ -24,7 +24,7 @@ This is a **ONE-DAY SPRINT** to complete EquityAI. Focus on:
 | **0:00-1:30** | Fix 3 broken API endpoints | Portfolio & News pages load |
 | **1:30-3:00** | Implement JWT auth | Login/register works, tokens issued |
 | **3:00-4:30** | Seed filings collection | RAG over earnings calls works |
-| **4:30-6:00** | Add tool execution logs | Chat shows "Iris searched..." |
+| **4:30-6:00** | Add tool execution logs | Chat shows "Minerva searched..." |
 | **6:00-7:00** | Portfolio performance | Shows returns, gainers/losers |
 | **7:00-8:00** | Alert evaluator | Alerts trigger and notify |
 | **8:00-8:30** | Integration test | All 11 views verified |
@@ -121,7 +121,7 @@ This is a **ONE-DAY SPRINT** to complete EquityAI. Focus on:
 
 ### Task 2.2: Add Agent Tool Execution Logs (90 min)
 
-**Problem:** Chat shows response but user cannot see what tools Iris used
+**Problem:** Chat shows response but user cannot see what tools Minerva used
 
 **Implementation:**
 
@@ -134,7 +134,7 @@ This is a **ONE-DAY SPRINT** to complete EquityAI. Focus on:
 
 3. Update frontend (frontend/src/pages/Chat/index.tsx)
    - Show expandable "Actions Taken" section
-   - Display: "Iris searched filings for revenue growth (3 results)"
+   - Display: "Minerva searched filings for revenue growth (3 results)"
 
 **Success Criteria:** Chat response includes visible tool execution logs
 

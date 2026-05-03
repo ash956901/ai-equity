@@ -8,6 +8,22 @@ from sqlalchemy.orm import Session
 logger = logging.getLogger(__name__)
 
 
+def emit_tool_metric(tool_name: str) -> None:
+    """One-line `record_tool_call` wrapper that swallows observability errors.
+
+    Tool functions can call this at entry to keep the
+    ``tool_calls_total{tool=...}`` Prometheus counter populated. Wrapped
+    here so each tool stays one import lighter and metric failures never
+    affect tool semantics.
+    """
+    try:
+        from src.observability import record_tool_call
+
+        record_tool_call(tool_name)
+    except Exception:
+        pass
+
+
 def resolve_company_id(company_id: str, db: Session) -> UUID:
     """Parse *company_id* as a UUID, falling back to a name/ticker lookup
     and FMP auto-registration.

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { ArrowUpRight, Bookmark, BookmarkCheck, Newspaper, Search, TrendingUp } from "lucide-react";
+import { ArrowUpRight, Bookmark, BookmarkCheck, Newspaper, Search } from "lucide-react";
 
 import {
   ApiError,

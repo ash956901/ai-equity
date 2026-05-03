@@ -15,7 +15,7 @@ function createInitialThread(promptText?: string): ChatThread {
     {
       id: `assistant-${Date.now()}-intro`,
       role: "assistant",
-      text: "Iris is ready. Start with filings, risk, sentiment, or a compare query.",
+      text: "Minerva is ready. Start with filings, risk, sentiment, or a compare query.",
       sources: ["Workspace context", "Timeline feed", "Discovery themes"],
     },
   ];

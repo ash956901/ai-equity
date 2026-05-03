@@ -1,272 +1,299 @@
 # Agent Coding Guidelines
 
-This document provides guidelines for AI agents working on the AI-Native Equity Research Platform (EquityAI).
+Conventions for AI agents (Claude / Cursor / Copilot) and humans working on the AI Equity Research Platform. Read this before opening a PR.
 
-## Project Overview
-
-- **Frontend**: React 19 + TypeScript + Vite + Tailwind CSS v4 + ESLint
-- **Backend**: FastAPI (Python) - Financial data APIs
-- **Backend-AI**: Python - AI agents, RAG pipeline, knowledge graphs
-- **AI Assistant**: "Iris" - Domain-specific chatbot powered by Sarvam AI
+For "what's actually built today," see [plans/SHIPPED.md](plans/SHIPPED.md). For end-to-end setup, see [GETTING_STARTED.md](GETTING_STARTED.md). For the active multi-phase plan, see [plans/07_round2_broker_grade_plan.md](plans/07_round2_broker_grade_plan.md).
 
 ---
 
-## Build/Lint/Test Commands
+## 1. What this repo is
 
-### Frontend (in `frontend/`)
+- **Backend:** Python 3.11 / FastAPI / LangGraph (via `deepagents` wrapper) / Postgres 15 / Qdrant / Redis / Celery / AWS-ready.
+- **Frontend:** React 19 / TypeScript / Vite / TanStack Query / Recharts (with `lightweight-charts` ready). **No Tailwind** — styling is hand-rolled CSS variables in [frontend/src/index.css](frontend/src/index.css).
+- **Auth:** mandatory on every user-keyed route. Argon2id passwords, JWT access + refresh with rotation in Redis, blacklist on logout.
+- **LLMs:** Groq / OpenAI / DeepSeek / Ollama, configurable via `LLM_PROVIDER`. **No Sarvam AI dependency.**
+- **Vector store:** Qdrant. **Not Pinecone.**
 
-```bash
-# Install dependencies
-npm install
+If a doc still mentions Sarvam AI, Pinecone, Tailwind, or a `backend/` + `ai_engine/` directory split, it predates the current code — update it.
 
-# Development server
-npm run dev
+---
 
-# Production build
-npm run build
+## 2. Build / lint / test
 
-# Type checking
-npx tsc --noEmit
-
-# Linting (ESLint)
-npm run lint
-
-# Preview production build
-npm run preview
-```
-
-### Backend-AI (in `backend-ai/`)
+### Backend (`backend-ai/`)
 
 ```bash
-# Install dependencies (if requirements.txt exists)
-python3 -m venv .venv
-source .venv/bin/activate
+python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-
-# Run the FastAPI server
-python -m uvicorn src.main:app --reload
+alembic upgrade head           # 4 idempotent migrations
+python -m uvicorn src.main:app --port 8001 --reload
+PYTHONPATH=. pytest tests -q   # CI baseline
+python -m py_compile $(find src -name '*.py')   # quick syntax sweep
 ```
 
-### Docker
+Celery worker (optional, for ETL):
+```bash
+celery -A src.celery_app worker --loglevel=info -Q crawlers,parsers,embeddings,news,default
+```
+
+### Frontend (`frontend/`)
 
 ```bash
-# Build and start all services
-docker-compose up --build
+npm install                    # incl. @tanstack/react-query, lightweight-charts
+npm run dev                    # http://localhost:5173
+npm run build                  # production build
+npm run lint                   # ESLint
+npx tsc --noEmit               # type-check
+```
 
-# Run in detached mode
-docker-compose up -d
+### Docker (infra)
+
+```bash
+docker compose up -d           # Postgres + Redis + Qdrant
+docker compose ps              # all Up?
+docker compose down -v         # reset (deletes data)
 ```
 
 ---
 
-## Code Style Guidelines
+## 3. Backend conventions (Python)
 
-### TypeScript/React (Frontend)
+### Imports
 
-#### Imports
-- Use absolute imports with `@/` alias for src directory
-- Group imports: external packages → internal packages → relative imports
-- Use `type` keyword for type-only imports
+- Standard library → third-party → local. Group separated by blank lines.
+- `from typing import Optional` over `X | None` when the file targets Python 3.11 (mixed style accepted).
+- Avoid wildcard imports.
 
-```typescript
-// Good
-import { useState } from "react";
-import { cn } from "@/lib/utils";
-import type { User } from "@/types";
-import { Button } from "./button";
+### Type hints
 
-// Avoid
-import React, { useState } from "react";
-```
+- **Mandatory** on public function signatures. Return type included.
+- Pydantic v2 `BaseModel` for any request/response or structured-output schema.
+- Decimal-typed money / ratios where the DB column is Numeric.
 
-#### Naming Conventions
-- **Components**: PascalCase (`DashboardPage`, `ThreadWelcome`)
-- **Functions/Hooks**: camelCase (`useLocalRuntime`, `getStockData`)
-- **Constants**: SCREAMING_SNAKE_CASE for config values
-- **Files**: kebab-case for utilities, PascalCase for components
-- **Types/Interfaces**: PascalCase with descriptive names
+### FastAPI routes
 
-#### Component Patterns
-- Use functional components with explicit return types for exported components
-- Prefer named exports for components
-- Use `FC<Props>` or inline props types for type safety
-- Keep components focused (single responsibility)
+- Use `APIRouter(prefix=..., tags=[...])`. Re-export the router from `src/domains/<feature>/__init__.py` and register in [src/app/routers.py](backend-ai/src/app/routers.py).
+- Inject the DB session via `db: Session = Depends(get_db)`.
+- **Auth gate every user-keyed route** — see §4.
 
-```typescript
-// Good
-export function ChatPage() {
-  return <div>...</div>;
-}
+### Auth conventions (the rule)
 
-// Avoid anonymous default exports
-export default () => <div>...</div>;
-```
-
-#### State Management
-- Use React 19 hooks (`use` prefix patterns)
-- Prefer `useState` for local state
-- Extract complex logic to custom hooks
-
-#### Styling
-- Use Tailwind CSS classes (no inline styles unless dynamic)
-- Use `cn()` utility for conditional classes
-- Follow design system tokens (see `index.css`)
-
-#### Error Handling
-- Handle API errors gracefully with fallback UI
-- Use TypeScript's type narrowing for null checks
-- Provide user-friendly error messages
-
----
-
-### Python (Backend/Backend-AI)
-
-#### Imports
-- Standard library imports first
-- Third-party imports second
-- Local imports last
-- Use explicit relative imports for packages
+Every route that reads / writes user-scoped data takes:
 
 ```python
-# Good
-import os
-from typing import Optional, List
-import httpx
-from pydantic import BaseModel, Field
-from .client import FMPClient
-```
+from src.db.models import User
+from src.domains.auth.dependencies import assert_self, get_current_user
 
-#### Naming Conventions
-- **Classes**: PascalCase (`FMPClient`, `StockQuote`)
-- **Functions/Methods**: snake_case (`get_company_profile`, `async def fetch_data`)
-- **Constants**: SCREAMING_SNAKE_CASE
-- **Variables**: snake_case
-
-#### Type Hints
-- Use type hints for all function parameters and return values
-- Use `Optional[X]` instead of `X | None`
-- Use `List[X]`, `Dict[X, Y]` from typing (not built-in generics)
-
-```python
-# Good
-async def get_stock_quote(symbol: str) -> List[StockQuote]:
-    ...
-
-# Avoid
-async def get_stock_quote(symbol) -> list:
-    ...
-```
-
-#### Pydantic Models
-- Use Pydantic v2 for data validation
-- Define optional fields with `Optional[X] = None`
-- Use `Field` for descriptions and validation
-
-```python
-class StockQuote(BaseModel):
-    symbol: str
-    price: Optional[float] = None
-    volume: Optional[int] = Field(None, description="Trading volume")
-```
-
-#### FastAPI Routes
-- Use `APIRouter` with prefix and tags
-- Define response models explicitly
-- Document endpoints with docstrings
-- Use `HTTPException` for error handling
-
-```python
-router = APIRouter(prefix="/fmp", tags=["FMP API"])
-
-@router.get("/quote/{symbol}", response_model=List[StockQuote])
-async def get_stock_quote(
-    symbol: str = Path(..., description="Stock ticker symbol")
+@router.get("/{user_id}")
+def get_thing(
+    user_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
-    """Get real-time stock quote with current price and metrics."""
-    try:
-        data = await fmp_client.get_quote(symbol.upper())
-        return data
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    assert_self(user_id, current_user)   # 403 if mismatch
+    ...
 ```
 
-#### Async Patterns
-- Use `async/await` consistently
-- Use `httpx.AsyncClient` for HTTP requests
-- Set appropriate timeouts (default 30s)
+For routes keyed by a resource id whose ownership is on a sibling table (portfolio, watchlist, alert, etc.), call the per-domain `assert_owns_*` helper after `get_current_user`. The canonical reference is [src/domains/auth/dependencies.py](backend-ai/src/domains/auth/dependencies.py).
 
-#### Logging
-- Use `logging.getLogger(__name__)` for module loggers
-- Log errors with appropriate levels
+Truly public routes (`/health`, `/ready`, `/metrics`, `/companies/...` reads, `/discovery/...` reads, `/timeline/`, `/auth/*`) skip the auth dep.
+
+### Async / sync
+
+- The router layer can be `def` or `async def`; pick whichever is natural for the underlying call.
+- Tools in [src/agents/tools/](backend-ai/src/agents/tools/) are sync because LangGraph's tool-use loop is sync.
+- Outbound HTTP uses `httpx` with explicit timeouts (`httpx.Client(timeout=15.0)` or `AsyncClient`).
+
+### Logging
 
 ```python
 import logging
 logger = logging.getLogger(__name__)
+```
 
-logger.error(f"HTTP error occurred: {e}")
+`logger.info("request-end request_id=%s ...", request_id, ...)`. `print()` is banned.
+
+The request middleware ([src/app/middleware.py](backend-ai/src/app/middleware.py)) attaches `request_id` to every log line inside a request scope.
+
+### Database
+
+- **Migrations are idempotent** — every column / index / table add is gated by an inspector check. Pattern in [alembic/versions/c1d2e3f4a501_auth_user_extensions.py](backend-ai/alembic/versions/c1d2e3f4a501_auth_user_extensions.py).
+- Don't drop tables or columns without an explicit user ask.
+- New tables get a SQLAlchemy model in [src/db/models.py](backend-ai/src/db/models.py) **and** an Alembic migration in the same change.
+
+### Caching
+
+- Reach for [src/services/cache_service.py](backend-ai/src/services/cache_service.py) — don't re-implement Redis. New TTLs go in `CacheTTL`. `get_user_profile_cached` / `invalidate_user_profile` are the canonical examples.
+- Cache keys are namespaced via `_key(namespace, identifier)` — never write raw `eq:user_profile:...` strings in code.
+
+### Observability
+
+When you add a new agent, tool, or ETL pipeline, hook the existing counters in [src/observability.py](backend-ai/src/observability.py):
+
+```python
+from src.observability import record_tool_call, record_agent_invocation
+record_tool_call("get_company_themes")
+```
+
+Don't introduce a parallel metrics library.
+
+### LangGraph subagents
+
+The 11 subagents live in [src/agents/subagents/](backend-ai/src/agents/subagents/). Each defines `name`, `description`, `system_prompt`, `tools`. Register new subagents in [src/agents/subagents/__init__.py](backend-ai/src/agents/subagents/__init__.py) and update the routing table in [src/agents/prompts/orchestrator.py](backend-ai/src/agents/prompts/orchestrator.py).
+
+Every subagent's response prompt **must** end with:
+- `## Sources` (cite filings, news, theme codes, edge labels)
+- `## Suggested follow-ups` (exactly three questions)
+- And whatever portion of the platform-wide skeleton applies (Domain → Asymmetric → Drivers → Risks → Macro → 2nd-order → Bull/Bear → Explained Simply).
+
+The Pydantic contract is [src/schemas/structured_analysis.py](backend-ai/src/schemas/structured_analysis.py).
+
+### LLM/tool separation rule
+
+LangGraph tools do all math, ratios, vector search, DB reads, regex. LLMs interpret + synthesise. Never let an LLM compute a ratio.
+
+---
+
+## 4. Frontend conventions (TypeScript / React)
+
+### Imports
+
+Relative paths. **No `@/` alias** — that was an old plan; the actual code uses relative imports throughout. Group: external → internal → relative.
+
+```typescript
+import { useQuery } from "@tanstack/react-query";
+import { Bot } from "lucide-react";
+
+import { useAuth } from "../../app/state/AuthContext";
+import { fetchQuote, type QuotePayload } from "../../shared/api/quotes";
+```
+
+### Components
+
+- Functional + hooks only. Named exports, no default exports.
+- Component file name matches export name, PascalCase: `BrokerStockPage.tsx` exports `BrokerStockPage`.
+- Props typed inline or as a `Props` interface above the component.
+
+### Server state
+
+**Use TanStack Query for any non-trivial fetch.** The provider is wired in [frontend/src/app/state/QueryProvider.tsx](frontend/src/app/state/QueryProvider.tsx). Defaults: 60s `staleTime`, retry once except on 4xx, no refetch-on-focus.
+
+Local fetches with `useEffect + useState` are tolerated only for one-shot effects that don't deserve cache (e.g. modal-triggered uploads). HomeView, BrokerStockPage candles, QuoteHeader polling are the canonical react-query examples.
+
+### Auth wiring
+
+Tokens live in `localStorage` under `eq.access_token` / `eq.refresh_token` (managed by [shared/api/core.ts](frontend/src/shared/api/core.ts)). Every fetch through `getJson` / `aiPost` / `aiGet` etc. attaches the bearer header automatically and silently retries once on 401 via `/auth/refresh`. **Don't read tokens directly** — use `useAuth()` for the user record.
+
+The whole app sits inside `<RequireAuth>` ([frontend/src/main.tsx](frontend/src/main.tsx)). New top-level routes don't need their own gate.
+
+### Styling
+
+- Hand-rolled CSS variables in [frontend/src/index.css](frontend/src/index.css). One stylesheet, namespaced class names (`.broker-stock-page`, `.quote-header__price`, `.auth-card__footer-row`).
+- Inline styles only for genuinely dynamic values (e.g. computed colour). Tailwind / styled-components are **not** in use.
+- For new components, append the styles to the same `index.css` under a clear section comment.
+
+### Charts
+
+Recharts is in production today. `lightweight-charts` is added as a dep for the future broker-grade upgrade. Don't introduce a third charting lib.
+
+### State management beyond server-state
+
+Local component `useState` is preferred. `useReducer` for non-trivial state machines. Context is for cross-cutting (`AuthContext`). No Redux / Zustand / Jotai.
+
+### Error handling
+
+`ApiError` from [shared/api/core.ts](frontend/src/shared/api/core.ts) carries `status`. Surface error text in-place; don't crash the view. Silent retries are owned by the auth interceptor and react-query, not by individual components.
+
+---
+
+## 5. Project structure
+
+### Backend (`backend-ai/src/`)
+
+```
+app/         FastAPI factory, lifespan, middleware, router registration
+agents/      Orchestrator, 11 subagents, prompts, tools, etl_agents, memory, skills
+domains/     API surface per feature (auth, home, quotes, broker, discovery, chat, etc.)
+services/    Business services (cache, financial, news, portfolio, vector, market_data/, visualization)
+integrations/  External provider adapters (FMP, FRED, Kite, Upstox, NewsAPI, NewsDataIO)
+etl/         Crawlers, parsers, sentiment, alert_evaluator, filing_summary, monitoring, tasks
+db/          SQLAlchemy session + 30+ models
+llm/         LLM + embedding factories
+schemas/     Pydantic (incl. structured_analysis.py)
+observability.py
+config.py
+main.py
+```
+
+### Frontend (`frontend/src/`)
+
+```
+main.tsx                # AuthProvider + RequireAuth + QueryProvider wrap
+App.tsx                 # Default view = "home"
+app/
+  components/           # AppContentRouter, SidebarShell, NotificationsPanel, ToastStack
+  state/                # AuthContext, RequireAuth, QueryProvider
+  hooks/                # useChatThreads, useNotifications, usePersistentState
+  constants.ts, types.ts
+features/
+  auth/                 # SignUpView, LoginView, ForgotPasswordView, ResetPasswordView, AuthGate
+  home/HomeView.tsx
+  company/
+    CompanyWorkspaceView.tsx                  (legacy)
+    broker/                                    (broker-style stock page)
+  chat/, compare/, dashboard/, discovery/,
+  filings/, news/, portfolio/, profile/, settings/, timeline/
+components/OmniSearch.tsx
+shared/
+  api/                  # core, auth, home, quotes, platform, external, user
+  ui/                   # Reusable headers, badges
+  types/
+lib/api.ts              # legacy compat surface
+index.css               # Hand-rolled CSS variables
 ```
 
 ---
 
-## Architecture Patterns
+## 6. Important rules
 
-### Frontend Structure
+### API keys & secrets
 
-```
-frontend/src/
-├── components/       # Reusable UI components
-│   ├── layout/       # Layout components (Sidebar, DashboardLayout)
-│   └── assistant-ui/ # AI chat components
-├── pages/            # Page components
-├── providers/        # Context providers
-├── lib/              # Utilities (cn, API helpers)
-├── App.tsx           # Root component
-└── main.tsx          # Entry point
-```
+- **Never commit** `AUTH_JWT_SECRET`, broker secrets, LLM keys. `.env` is gitignored.
+- Frontend env vars must be `VITE_*`-prefixed.
+- Backend env vars resolve via [src/config.py](backend-ai/src/config.py) (`get_settings()`), not `os.getenv()` ad-hoc.
 
-### Backend-AI Structure
+### Database safety
 
-```
-backend-ai/src/
-├── app/              # FastAPI app factory, middleware, router registration
-├── agents/           # Deep-agent orchestrator, prompts, subagents, tools
-├── domains/          # Domain routes + service layer (chat, companies, etc.)
-├── integrations/     # External provider integrations (market data)
-├── external_apis/    # Legacy compatibility wrappers to integrations
-├── api/              # Legacy route compatibility shims
-├── db/               # Database engine/session and SQLAlchemy models
-├── etl/              # Data extraction and refresh tasks
-├── services/         # Shared business services
-├── llm/              # LLM and embedding factory
-├── config.py         # Pydantic settings
-└── main.py           # Thin application entry point
-```
+- Don't write scripts that drop tables, truncate data, or alter schemas without an explicit user instruction.
+- All schema changes ship as Alembic migrations, idempotent (inspector-gated). See pattern in [alembic/versions/b7c2e1d34a01_discovery_extensions.py](backend-ai/alembic/versions/b7c2e1d34a01_discovery_extensions.py).
 
----
+### Discovery / RAG honesty
 
-## Important Notes
+- Discovery subagent claims must cite at least one `evidence_quote` per asymmetric tag — verbatim from filings / news / transcripts. The two-pass theme tagger enforces this offline; the prompt enforces it at synthesis time.
+- LLMs never invent numbers. If a tool returns nothing, say so and stop.
 
-### API Keys
-- Never commit API keys to version control
-- Use environment variables (`.env` files)
-- Frontend keys must be prefixed with `VITE_` for Vite
-- Backend keys are accessed via `os.getenv()` or `python-dotenv`
+### Cost awareness
 
-### Data Validation
-- Always validate user input at API boundaries
-- Use Pydantic models for request/response validation
-- Return appropriate HTTP status codes
+- Vision-LLM chart extraction is gated behind `ENABLE_CHART_EXTRACTION=true` because it's expensive.
+- Cache aggressively (Redis TTLs in [services/cache_service.py](backend-ai/src/services/cache_service.py)).
+- Expensive Discovery taggings run offline (Celery), not at query time.
 
-### Error Responses
-- Frontend: Show user-friendly error messages with fallback UI
-- Backend: Return structured error responses with `HTTPException`
+### Backwards compatibility
+
+- Existing route URLs and response shapes are stable. New fields are additive.
+- The `lib/api.ts` legacy compatibility surface in the frontend is kept until each consumer is migrated to `shared/api/*`.
 
 ### Performance
-- Use async/await for I/O-bound operations
-- Implement caching where appropriate (Redis for backend, React Query for frontend)
-- Lazy load routes/components in frontend
 
-### Security
-- Never expose sensitive data in error messages
-- Sanitize user input before database queries
-- Use parameterized queries for database operations
+- Async at the boundary; `asyncio.gather` for independent reads.
+- Use Redis cache helpers, not custom dicts.
+- Frontend code-split is route-based; long lists virtualise / paginate.
+
+---
+
+## 7. Git & PR conventions
+
+- Branches: `feature/<short>` / `fix/<short>` / `chore/<short>` / `docs/<short>`.
+- Conventional Commits: `feat:`, `fix:`, `docs:`, `refactor:`, `test:`, `chore:`.
+- Co-author tag for AI assistance: `Co-Authored-By: Claude <noreply@anthropic.com>`.
+- PRs reference an issue or plan section. The CI baseline runs `PYTHONPATH=. pytest tests -q` — keep it green.

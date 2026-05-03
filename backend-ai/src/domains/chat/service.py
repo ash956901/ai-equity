@@ -90,6 +90,7 @@ class ChatService:
 
         result: Optional[dict[str, Any]] = None
         last_err = None
+        outcome = "ok"
         for attempt in range(1, MAX_AGENT_RETRIES + 1):
             try:
                 result = agent.invoke(
@@ -97,9 +98,11 @@ class ChatService:
                     config={"configurable": {"thread_id": str(resolved_session_id)}},
                 )
                 last_err = None
+                outcome = "ok"
                 break
             except Exception as invoke_err:
                 last_err = invoke_err
+                outcome = "error"
                 err_msg = str(invoke_err)
                 if "output_parse_failed" in err_msg or "BadRequestError" in type(invoke_err).__name__:
                     logger.warning(
@@ -109,9 +112,17 @@ class ChatService:
                         err_msg[:200],
                     )
                     if attempt < MAX_AGENT_RETRIES:
+                        outcome = "retry"
                         time.sleep(RETRY_BACKOFF_SECONDS * attempt)
                         continue
                 raise
+
+        try:
+            from src.observability import record_agent_invocation
+
+            record_agent_invocation(subagent="orchestrator", outcome=outcome)
+        except Exception:
+            pass
 
         if last_err is not None:
             raise last_err

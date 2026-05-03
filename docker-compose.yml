@@ -21,6 +21,8 @@ services:
     image: redis:7-alpine
     ports:
       - "6379:6379"
+    volumes:
+      - redis_data:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -33,7 +35,17 @@ services:
       - "6333:6333"
     volumes:
       - qdrant_data:/qdrant/storage
+    # Qdrant images don't ship with curl; use bash's /dev/tcp to probe the
+    # API port. The backend's /ready endpoint also covers Qdrant, so this
+    # is a belt-and-braces check for compose stack readiness.
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c '</dev/tcp/127.0.0.1/6333'"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
 
 volumes:
   postgres_data: {}
+  redis_data: {}
   qdrant_data: {}

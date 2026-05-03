@@ -25,6 +25,13 @@ class CacheTTL:
     NEWS = timedelta(minutes=30)
     INSTRUMENT_MASTER = timedelta(hours=12)
     SCRAPED_DATA = timedelta(hours=4)
+    USER_PROFILE = timedelta(minutes=15)
+    DISCOVERY_FEED = timedelta(minutes=10)
+    HOME_PERSONALIZED = timedelta(seconds=60)
+    CANDLES_INTRADAY = timedelta(seconds=60)
+    CANDLES_SHORT = timedelta(minutes=5)
+    CANDLES_MEDIUM = timedelta(hours=1)
+    CANDLES_LONG = timedelta(hours=24)
 
 
 def get_redis() -> Optional[redis.Redis]:
@@ -66,13 +73,26 @@ class CacheService:
 
     def get(self, namespace: str, identifier: str) -> Optional[Any]:
         if not self.available:
+            self._record(namespace, hit=False)
             return None
         try:
             raw = self._r.get(self._key(namespace, identifier))
-            return json.loads(raw) if raw else None
+            value = json.loads(raw) if raw else None
+            self._record(namespace, hit=value is not None)
+            return value
         except Exception as e:
             logger.debug("Cache get error: %s", e)
+            self._record(namespace, hit=False)
             return None
+
+    @staticmethod
+    def _record(namespace: str, *, hit: bool) -> None:
+        try:
+            from src.observability import record_cache
+
+            record_cache(namespace, hit=hit)
+        except Exception:
+            pass
 
     def set(
         self,
@@ -112,3 +132,20 @@ class CacheService:
             return 0
         except Exception:
             return 0
+
+
+# ---------------------------------------------------------------------- #
+# Module-level helpers used by the auth deps + W6 user-profile cache.    #
+# ---------------------------------------------------------------------- #
+
+
+def get_user_profile_cached(user_id: str) -> Optional[dict]:
+    return CacheService().get("user_profile", str(user_id))
+
+
+def set_user_profile_cached(user_id: str, payload: dict) -> None:
+    CacheService().set("user_profile", str(user_id), payload, ttl=CacheTTL.USER_PROFILE)
+
+
+def invalidate_user_profile(user_id: str) -> None:
+    CacheService().delete("user_profile", str(user_id))

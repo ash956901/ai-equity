@@ -43,7 +43,7 @@ Status: [x] Completed
 
 ---
 
-### 2) Iris Chat Sessions + Thread History
+### 2) Minerva Chat Sessions + Thread History
 
 Status: [x] Completed
 

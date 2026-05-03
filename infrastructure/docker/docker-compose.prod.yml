@@ -1,0 +1,131 @@
+# Local smoke-test of the production images. Mirrors what runs on ECS:
+#   api      <-> ECS service "api"
+#   worker   <-> ECS service "worker"
+#   beat     <-> ECS service "beat"
+#   frontend <-> ECS service "frontend"
+# Plus the same postgres/redis/qdrant data plane the dev compose ships.
+#
+# Run from the repo root:
+#   docker compose -f infrastructure/docker/docker-compose.prod.yml up --build
+#
+# This is NOT used in cloud — ECS owns prod. It exists so we can verify a
+# Dockerfile change before pushing it.
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: equity_research
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    volumes:
+      - qdrant_data:/qdrant/storage
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c '</dev/tcp/127.0.0.1/6333'"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  # One-shot migration runner. Exits 0 once `alembic upgrade head` succeeds.
+  # `api` waits for it to complete before starting.
+  migrate:
+    build:
+      context: ../../backend-ai
+      dockerfile: ../infrastructure/docker/backend.Dockerfile
+    image: ai-equity-backend:local
+    command: ["alembic", "upgrade", "head"]
+    env_file: ../../backend-ai/.env
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/equity_research
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  api:
+    image: ai-equity-backend:local
+    # Default CMD is uvicorn — no override needed.
+    env_file: ../../backend-ai/.env
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/equity_research
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/0
+      QDRANT_URL: http://qdrant:6333
+    ports:
+      - "8001:8001"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
+
+  worker:
+    image: ai-equity-backend:local
+    command: ["celery", "-A", "src.celery_app", "worker", "-l", "INFO"]
+    env_file: ../../backend-ai/.env
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/equity_research
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/0
+      QDRANT_URL: http://qdrant:6333
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+
+  beat:
+    image: ai-equity-backend:local
+    command: ["celery", "-A", "src.celery_app", "beat", "-l", "INFO"]
+    env_file: ../../backend-ai/.env
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/equity_research
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/0
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: ../../frontend
+      dockerfile: ../infrastructure/docker/frontend.Dockerfile
+      additional_contexts:
+        infra: ../../infrastructure/docker
+      args:
+        VITE_BACKEND_URL: http://localhost:8001
+    image: ai-equity-frontend:local
+    ports:
+      - "8080:80"
+    depends_on:
+      - api
+
+volumes:
+  postgres_data: {}
+  redis_data: {}
+  qdrant_data: {}

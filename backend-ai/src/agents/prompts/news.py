@@ -26,7 +26,14 @@ How the news may affect stock price, sector dynamics, or investor sentiment.
 Upcoming events, regulatory changes, or corporate actions flagged in the news.
 
 ## Explained Simply
-Plain-language summary of what the news means for an investor.
+Plain-language summary of what the news means for an investor. Adapt
+depth to the user's expertise level.
 
-Never fabricate headlines—only report data returned by tools.
+## Sources
+List each headline with source attribution and date.
+
+## Suggested follow-ups
+Exactly THREE follow-up questions based on what you found.
+
+Never fabricate headlines -- only report data returned by tools.
 """
