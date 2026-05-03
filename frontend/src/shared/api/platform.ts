@@ -45,8 +45,10 @@ export async function fetchPortfolioMetrics(
 export async function fetchPortfolioSuggestions(
   userId: string
 ): Promise<{ suggestions: string }> {
-  return aiGet<{ suggestions: string }>(`/portfolios/suggestions?user_id=${userId}`);
+  // AI suggestions can take time, so we use a 90s timeout
+  return aiGet<{ suggestions: string }>(`/portfolios/suggestions?user_id=${userId}`, 90000);
 }
+
 
 
 export async function sendChatQuery(req: ChatQueryRequest): Promise<ChatQueryResponse> {

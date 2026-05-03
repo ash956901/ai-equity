@@ -253,7 +253,9 @@ def seed():
                     company_id=company.id,
                     quantity=Decimal(str(qty)),
                     average_price=Decimal(str(avg_price)),
+                    current_price=Decimal(str(avg_price * 1.15)), # Mock 15% gain for dashboard
                 )
+
                 db.add(holding)
 
         db.commit()

@@ -129,8 +129,10 @@ class PortfolioService:
             
             # Simple mock return pct
             avg_price = h.get("average_price") or 0
-            curr_price = h.get("current_price") or 0
+            # Fallback to avg_price if current_price is missing to avoid -100% returns
+            curr_price = h.get("current_price") or avg_price or 0
             return_pct = ((curr_price - avg_price) / avg_price * 100) if avg_price > 0 else 0
+
             
             enriched_holdings.append({
                 **h,

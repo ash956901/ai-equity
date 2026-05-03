@@ -73,7 +73,7 @@ export async function aiGet<T>(path: string, timeoutMs = 30000): Promise<T> {
   }
 }
 
-export async function aiPost<T>(path: string, body: unknown, timeoutMs = 60000): Promise<T> {
+export async function aiPost<T>(path: string, body: unknown, timeoutMs = 120000): Promise<T> {
   const controller = new AbortController();
   const timeoutId = window.setTimeout(() => controller.abort(), timeoutMs);
 
