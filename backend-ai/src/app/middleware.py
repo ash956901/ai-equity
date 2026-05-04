@@ -2,6 +2,7 @@
 
 import logging
 import time
+import os
 from uuid import uuid4
 
 from fastapi import FastAPI, Request
@@ -9,6 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from src.utils.request_context import clear_request_context, set_request_id
+from src.config import get_settings
 
 logger = logging.getLogger(__name__)
 
@@ -42,10 +44,22 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
 def register_middleware(app: FastAPI) -> None:
     """Attach middleware stack to the FastAPI app."""
     app.add_middleware(RequestContextMiddleware)
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=["*"],
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
-    )
+    
+    allowed_origins = os.getenv("ALLOWED_ORIGINS", "*").split(",")
+    
+    if os.getenv("APP_ENV") == "development":
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=["http://localhost:3000", "http://localhost:5173"],
+            allow_credentials=True,
+            allow_methods=["*"],
+            allow_headers=["*"],
+        )
+    else:
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=allowed_origins,
+            allow_credentials=True,
+            allow_methods=["*"],
+            allow_headers=["*"],
+        )

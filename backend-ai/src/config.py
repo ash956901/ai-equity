@@ -50,8 +50,6 @@ class Settings(BaseSettings):
     # DeepSeek API (when llm_provider=deepseek)
     deepseek_api_key: Optional[str] = None
     deepseek_base_url: str = "https://api.deepseek.com"
-
-    # OpenAI (when llm_provider=openai)
     openai_api_key: Optional[str] = None
 
     # Groq API (when llm_provider=groq)
@@ -105,6 +103,9 @@ class Settings(BaseSettings):
     kite_api_secret: Optional[str] = None
     kite_access_token: Optional[str] = None
 
+    # Additional CORS configuration for allowed origins
+    allowed_origins: Optional[str] = None
+
     model_config = SettingsConfigDict(
         env_file=str(ROOT_ENV_FILE),
         env_file_encoding="utf-8",
@@ -126,6 +127,13 @@ class Settings(BaseSettings):
         if self.llm_provider == "groq":
             return self.groq_model
         return self.ollama_model
+
+    @property
+    def cors_origins(self):
+        """Get allowed CORS origins from environment variable or default to localhost."""
+        if self.allowed_origins:
+            return self.allowed_origins.split(",")
+        return ["*"]  # Default to allow all in development
 
 
 @lru_cache

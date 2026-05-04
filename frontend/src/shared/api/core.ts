@@ -17,6 +17,8 @@ export class ApiError extends Error {
   }
 }
 
+const NGROK_SKIP_HEADER = { "ngrok-skip-browser-warning": "true" };
+
 export async function getJson<T>(path: string, timeoutMs = 12000): Promise<T> {
   const controller = new AbortController();
   const timeoutId = window.setTimeout(() => controller.abort(), timeoutMs);
@@ -26,6 +28,7 @@ export async function getJson<T>(path: string, timeoutMs = 12000): Promise<T> {
       signal: controller.signal,
       headers: {
         Accept: "application/json",
+        ...NGROK_SKIP_HEADER,
       },
     });
 
@@ -54,7 +57,7 @@ export async function aiGet<T>(path: string, timeoutMs = 30000): Promise<T> {
   try {
     const response = await fetch(`${AI_BACKEND_URL}${path}`, {
       signal: controller.signal,
-      headers: { Accept: "application/json" },
+      headers: { Accept: "application/json", ...NGROK_SKIP_HEADER },
     });
 
     if (!response.ok) {
@@ -84,6 +87,7 @@ export async function aiPost<T>(path: string, body: unknown, timeoutMs = 120000)
       headers: {
         "Content-Type": "application/json",
         Accept: "application/json",
+        ...NGROK_SKIP_HEADER,
       },
       body: JSON.stringify(body),
     });
@@ -107,7 +111,7 @@ export async function aiPost<T>(path: string, body: unknown, timeoutMs = 120000)
 export async function aiDelete(path: string): Promise<void> {
   const response = await fetch(`${AI_BACKEND_URL}${path}`, {
     method: "DELETE",
-    headers: { Accept: "application/json" },
+    headers: { Accept: "application/json", ...NGROK_SKIP_HEADER },
   });
   if (!response.ok) {
     throw new ApiError(`Delete failed with status ${response.status}`, response.status);

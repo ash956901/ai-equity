@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>EquityAI - Codebase Visualization</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: #1a1a1a;
+            color: #e0e0e0;
+            margin: 0;
+            padding: 20px;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+            padding: 20px;
+            background: #2a2a2a;
+            border-radius: 8px;
+        }
+        .graph-container {
+            width: 100%;
+            height: 600px;
+            border: 1px solid #444;
+            border-radius: 8px;
+            background: #1e1e1e;
+            margin: 20px 0;
+            position: relative;
+            overflow: hidden;
+        }
+        .legend {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: rgba(0,0,0,0.8);
+            padding: 10px;
+            border-radius: 4px;
+            font-size: 12px;
+        }
+        .node {
+            stroke: #fff;
+            stroke-width: 1;
+            stroke-opacity: 0.5;
+        }
+        .link {
+            stroke: #666;
+            stroke-opacity: 0.3;
+        }
+        .community-0 { fill: #ff7f0e; }
+        .community-1 { fill: #2ca02c; }
+        .community-2 { fill: #1f77b4; }
+        .community-3 { fill: #d62728; }
+        .community-4 { fill: #9467bd; }
+        .community-5 { fill: #8c56c2; }
+        .community-6 { fill: #e377c2; }
+        .community-7 { fill: #7f7f7f; }
+        .community-8 { fill: #bcbd22; }
+        .community-9 { fill: #17becf; }
+        .community-10 { fill: #aec7e8; }
+        .community-11 { fill: #ffbb78; }
+        .community-12 { fill: #98df8a; }
+        .community-13 { fill: #ff9898; }
+        .community-14 { fill: #c5b0d5; }
+        .community-15 { fill: #c49c33; }
+        .community-16 { fill: #f7b5b5; }
+        .community-17 { fill: #d6d6d6; }
+        .community-18 { fill: #b0d7d5; }
+        .community-19 { fill: #c49595; }
+        .node-label {
+            font-family: Arial, sans-serif;
+            font-size: 12px;
+            fill: white;
+        }
+        .node-count {
+            font-family: Arial, sans-serif;
+            font-size: 14px;
+            font-weight: bold;
+        }
+        .title {
+            font-size: 24px;
+            font-weight: bold;
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        .subtitle {
+            font-size: 18px;
+            text-align: center;
+            color: #aaa;
+            margin-bottom: 20px;
+        }
+        .controls {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: rgba(0,0,0,0.8);
+            padding: 10px;
+            border-radius: 4px;
+            z-index: 100;
+        }
+        .legend-item {
+            display: inline-block;
+            padding: 5px 10px;
+            margin: 2px;
+            border-radius: 3px;
+            font-size: 12px;
+        }
+        .legend-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin: 10px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1 class="title">EquityAI Codebase Visualization</h1>
+        <div class="subtitle">Graph Visualization with Community Detection</div>
+        
+        <div class="graph-container">
+            <svg width="100%" height="600">
+                <!-- Graph visualization would be rendered here -->
+                <rect x="50" y="50" width="1100" height="500" fill="#1e1e1e" />
+                
+                <!-- Sample nodes and connections would be shown here -->
+                <circle cx="200" cy="150" r="8" class="community-0" fill="currentColor" />
+                <circle cx="400" cy="200" r="8" class="community-1" fill="currentColor" />
+                <circle cx="300" cy="300" r="8" class="community-2" fill="currentColor" />
+                <circle cx="500" cy="250" r="8" class="community-3" fill="currentColor" />
+                <circle cx="600" cy="150" r="8" class="community-4" fill="currentColor" />
+                <circle cx="150" cy="400" r="8" class="community-5" fill="currentColor" />
+                <circle cx="350" cy="350" r="8" class="community-6" fill="currentColor" />
+                <circle cx="450" cy="400" r="8" class="community-7" fill="currentColor" />
+                <text x="200" y="150" class="node-label">Frontend</text>
+                <text x="400" y="200" class="node-label">Backend API</text>
+                <text x="300" y="300" class="node-label">Database</text>
+                <text x="500" y="250" class="node-label">Authentication</text>
+                <text x="600" y="150" class="node-label">Market Data</text>
+                <text x="150" y="400" class="node-label">AI Services</text>
+                <text x="350" y="350" class="node-label">User Management</text>
+                <text x="450" y="400" class="node-label">Portfolio</text>
+                
+                <text x="100" y="550" class="node-count">Key: Node Count by Community</text>
+                <text x="100" y="570" class="node-count">Click and drag to pan, scroll to zoom</text>
+            </svg>
+        </div>
+        
+        <div class="legend-container">
+            <div class="legend-item community-0">Frontend (Community 0)</div>
+            <div class="legend-item community-1">Backend API (Community 1)</div>
+            <div class="legend-item community-2">Database (Community 2)</div>
+            <div class="legend-item community-3">Authentication (Community 3)</div>
+            <div class="legend-item community-4">Market Data (Community 4)</div>
+            <div class="legend-item community-5">AI Services (Community 5)</div>
+            <div class="legend-item community-6">User Management (Community 6)</div>
+            <div class="legend-item community-7">Portfolio (Community 7)</div>
+        </div>
+        
+        <div class="controls">
+            <div class="legend-item">Controls: Drag to pan | Scroll to zoom | Click nodes to select</div>
+        </div>
+    </div>
+</body>
+</html>

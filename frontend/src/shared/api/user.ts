@@ -5,6 +5,8 @@ import {
 } from "../types/api";
 import { AI_BACKEND_URL, aiGet, aiPost, ApiError } from "./core";
 
+const NGROK_SKIP_HEADER = { "ngrok-skip-browser-warning": "true" };
+
 export async function fetchProfileConfig(): Promise<ProfileConfigResponse> {
   return aiGet<ProfileConfigResponse>("/users/profile/config");
 }
@@ -23,7 +25,7 @@ export async function updateUserProfile(
     const response = await fetch(`${AI_BACKEND_URL}/users/${userId}`, {
       method: "PUT",
       signal: controller.signal,
-      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      headers: { "Content-Type": "application/json", Accept: "application/json", ...NGROK_SKIP_HEADER },
       body: JSON.stringify(data),
     });
     if (!response.ok)
@@ -45,6 +47,7 @@ export async function uploadProfilePic(
   formData.append("file", file);
   const response = await fetch(`${AI_BACKEND_URL}/users/${userId}/profile-pic`, {
     method: "POST",
+    headers: NGROK_SKIP_HEADER,
     body: formData,
   });
   if (!response.ok)

@@ -1,13 +1,46 @@
 """FastAPI application factory."""
 
+import os
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Response
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.base import BaseHTTPMiddleware
 
 from src.app.lifespan import app_lifespan
 from src.app.middleware import register_middleware
 from src.app.routers import register_routers
+
+
+class ForceCORSHeadersMiddleware(BaseHTTPMiddleware):
+    """Force CORS headers on all responses - runs AFTER other middleware."""
+
+    async def dispatch(self, request, call_next):
+        origin = request.headers.get("origin", "")
+        allowed_origins = os.getenv("ALLOWED_ORIGINS", "https://frontend-six-lac-70.vercel.app").split(",")
+        
+        # Handle preflight OPTIONS request directly
+        if request.method == "OPTIONS":
+            if origin in allowed_origins or "*" in allowed_origins:
+                return Response(
+                    status_code=200,
+                    headers={
+                        "Access-Control-Allow-Origin": origin if origin else allowed_origins[0],
+                        "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+                        "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Request-ID, ngrok-skip-browser-warning",
+                        "Access-Control-Allow-Credentials": "true",
+                        "Access-Control-Max-Age": "3600",
+                    },
+                )
+        
+        response = await call_next(request)
+        
+        if origin in allowed_origins or "*" in allowed_origins:
+            response.headers["Access-Control-Allow-Origin"] = origin if origin else allowed_origins[0]
+            response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
+            response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, X-Request-ID, ngrok-skip-browser-warning"
+            response.headers["Access-Control-Allow-Credentials"] = "true"
+        return response
 
 
 def create_app() -> FastAPI:
@@ -20,6 +53,7 @@ def create_app() -> FastAPI:
     )
 
     register_middleware(app)
+    app.add_middleware(ForceCORSHeadersMiddleware)
     register_routers(app)
 
     uploads_dir = Path("uploads")
