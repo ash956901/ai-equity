@@ -77,7 +77,7 @@ class NSECrawler(BaseCrawler):
             data = resp.json()
             items = data if isinstance(data, list) else data.get("data", data.get("results", []))
             results = []
-            for item in items[:50]:
+            for item in items[:100]:
                 results.append({
                     "symbol": item.get("symbol", ""),
                     "subject": item.get("desc", item.get("subject", "")),

@@ -225,11 +225,13 @@ def crawl_nse_filings(
     try:
         crawler = NSECrawler()
         cid = UUID(company_id) if company_id else None
-        results = crawler.crawl(company_id=cid, since_date=since_date)
         
         # Integrate with ingestion service to download filings
         ingestion_service = DocumentIngestionService(db)
         company = db.query(Company).filter(Company.id == cid).first() if cid else None
+        
+        symbol = company.ticker_nse if company else None
+        results = crawler.crawl(company_id=cid, symbol=symbol, since_date=since_date)
         
         # If we have a specific company, use its ID; otherwise, we'll need to map symbols to companies
         if company:
@@ -287,11 +289,13 @@ def crawl_bse_filings(
     try:
         crawler = BSECrawler()
         cid = UUID(company_id) if company_id else None
-        results = crawler.crawl(company_id=cid, since_date=since_date)
         
         # Integrate with ingestion service to download filings
         ingestion_service = DocumentIngestionService(db)
         company = db.query(Company).filter(Company.id == cid).first() if cid else None
+        
+        symbol = company.ticker_bse if company else None
+        results = crawler.crawl(company_id=cid, symbol=symbol, since_date=since_date)
         
         # If we have a specific company, use its ID; otherwise, we'll need to map symbols to companies
         if company:

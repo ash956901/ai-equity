@@ -104,6 +104,6 @@ class IRCrawler(BaseCrawler):
                 except Exception:
                     continue
 
-            return results[:50]  # Limit per run
+            return results[:100]  # Limit per run
         finally:
             db.close()

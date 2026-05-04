@@ -97,7 +97,7 @@ class BSECrawler(BaseCrawler):
                 items = []
                 
             results = []
-            for item in items[:50]:  # Limit to first 50
+            for item in items[:100]:  # Limit to first 500
                 # Extract filing metadata
                 filing_data = {
                     "symbol": item.get("scrip_cd", ""),
