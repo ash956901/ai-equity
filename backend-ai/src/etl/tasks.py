@@ -10,6 +10,15 @@ from src.db.database import SessionLocal
 from src.db.models import Company, ETLRun
 from src.etl.crawler_nse import NSECrawler
 from src.etl.crawler_ir import IRCrawler
+from src.etl.crawler_bse import BSECrawler
+from src.etl.crawler_sebi import SEBICrawler
+from src.etl.crawler_screener import ScreenerCrawler
+from src.etl.crawler_amfi import AMFICrawler
+from src.etl.crawler_mfapi import MFApiCrawler
+from src.etl.crawler_datagov import DataGovCrawler
+from src.etl.crawler_rbi import RBICrawler
+from src.etl.crawler_nse_bhavcopy import NSEBhavcopycrawler
+from src.etl.crawler_news_rss import NewsRSSCrawler
 
 logger = logging.getLogger(__name__)
 
@@ -344,24 +353,6 @@ def crawl_ir_pages(
         db.close()
 
 
-# ------------------------------------------------------------------ #
-#  Full company refresh (on-demand)                                    #
-# ------------------------------------------------------------------ #
-
-
-@app.task(bind=True, name="etl.refresh_company")
-def refresh_company(self, company_id: str):
-    """Full refresh for a single company: enrich + financials + filings."""
-    import importlib
-
-    celery_mod = importlib.import_module("celery")
-    chain_fn = getattr(celery_mod, "chain")
-
-    enrich_sig: Any = enrich_single_company.s(company_id)
-    nse_sig: Any = crawl_nse_filings.s(company_id=company_id)
-    ir_sig: Any = crawl_ir_pages.s(company_id=company_id)
-    workflow: Any = chain_fn(enrich_sig, nse_sig, ir_sig)
-    workflow.apply_async()
 
 
 # ------------------------------------------------------------------ #
@@ -432,3 +423,408 @@ def process_filing(self, filing_id: str):
         raise
     finally:
         db.close()
+
+
+# ------------------------------------------------------------------ #
+#  SEBI / NSE+BSE filings (via SEBICrawler)                           #
+# ------------------------------------------------------------------ #
+
+
+@app.task(bind=True, name="etl.crawl_sebi")
+def crawl_sebi_filings(
+    self,
+    symbol: Optional[str] = None,
+    bse_code: Optional[str] = None,
+    since_date: Optional[str] = None,
+):
+    """Crawl SEBI-curated filings from NSE+BSE endpoints.
+
+    Uses SEBICrawler which hits the actual NSE/BSE JSON APIs that
+    SEBI's curation page links to.
+    """
+    from src.etl.ingestion_service import DocumentIngestionService
+
+    db = SessionLocal()
+    run = _log_etl_run(db, "sebi_filings")
+    try:
+        crawler = SEBICrawler()
+        results = crawler.crawl(
+            symbol=symbol,
+            bse_code=bse_code,
+            since_date=since_date,
+        )
+
+        ingestion = DocumentIngestionService(db)
+        downloaded = 0
+        for result in results:
+            sym = result.get("symbol", symbol)
+            if not sym:
+                continue
+
+            company = db.query(Company).filter(
+                (Company.ticker_nse == sym) | (Company.ticker_bse == sym)
+            ).first()
+
+            if company:
+                filing = ingestion.ingest_filing(company.id, result)
+                if filing:
+                    downloaded += 1
+                    process_filing.delay(str(filing.id))
+
+        _finish_etl_run(db, run, records=downloaded)
+        return {"source": "SEBI", "fetched": len(results), "ingested": downloaded}
+    except Exception as e:
+        _finish_etl_run(db, run, status="failed", error=str(e))
+        logger.exception("SEBI crawl failed")
+        raise
+    finally:
+        db.close()
+
+
+# ------------------------------------------------------------------ #
+#  Screener.in financial snapshots                                     #
+# ------------------------------------------------------------------ #
+
+
+@app.task(bind=True, name="etl.crawl_screener")
+def crawl_screener(
+    self,
+    symbol: Optional[str] = None,
+    symbols: Optional[list] = None,
+    consolidated: bool = True,
+):
+    """Crawl screener.in for 10-year financials, ratios, documents.
+
+    If symbol is given, crawls just that company.
+    If symbols list is given, crawls all.
+    If neither, crawls active companies in the DB that lack screener data.
+    """
+    from src.etl.ingestion_service import DocumentIngestionService
+
+    db = SessionLocal()
+    run = _log_etl_run(db, "screener_financials")
+    try:
+        crawler = ScreenerCrawler()
+        ingestion = DocumentIngestionService(db)
+        total = 0
+
+        target_symbols = []
+        if symbol:
+            target_symbols = [symbol]
+        elif symbols:
+            target_symbols = symbols
+        else:
+            # Crawl first 10 active companies that don't have screener data yet
+            companies = (
+                db.query(Company)
+                .filter(Company.listing_status == "active", Company.ticker_nse.isnot(None))
+                .limit(10)
+                .all()
+            )
+            target_symbols = [c.ticker_nse for c in companies if c.ticker_nse]
+
+        for sym in target_symbols:
+            data = crawler.crawl(sym, consolidated=consolidated)
+            if not data.get("profit_loss", {}).get("data"):
+                logger.warning("Empty screener data for %s", sym)
+                continue
+
+            company = db.query(Company).filter(
+                (Company.ticker_nse == sym.upper()) | (Company.ticker_bse == sym.upper())
+            ).first()
+
+            if company:
+                total += ingestion.ingest_screener_data(company.id, data)
+
+                # Also ingest document links (annual reports, concalls)
+                for doc_type in ["annual_reports", "concalls", "credit_ratings"]:
+                    for doc in data.get("documents", {}).get(doc_type, []):
+                        link = doc.get("link") or doc.get("transcript") or doc.get("ppt")
+                        if link:
+                            ingestion.ingest_filing(company.id, {
+                                "attachment_url": link,
+                                "subject": f"{doc_type}: {doc.get('year', doc.get('month', ''))}",
+                                "filing_type": doc_type,
+                                "source": "screener.in",
+                            })
+
+        _finish_etl_run(db, run, records=total)
+        return {"source": "screener.in", "symbols": len(target_symbols), "ingested": total}
+    except Exception as e:
+        _finish_etl_run(db, run, status="failed", error=str(e))
+        logger.exception("Screener crawl failed")
+        raise
+    finally:
+        db.close()
+
+
+# ------------------------------------------------------------------ #
+#  AMFI NAV                                                            #
+# ------------------------------------------------------------------ #
+
+
+@app.task(bind=True, name="etl.crawl_amfi")
+def crawl_amfi_nav(self, fund_house: Optional[str] = None):
+    """Fetch daily mutual fund NAVs from AMFI (~14,000+ schemes)."""
+    from src.etl.ingestion_service import DocumentIngestionService
+
+    db = SessionLocal()
+    run = _log_etl_run(db, "amfi_nav")
+    try:
+        crawler = AMFICrawler()
+        data = crawler.crawl(fund_house=fund_house)
+
+        ingestion = DocumentIngestionService(db)
+        count = ingestion.ingest_structured_data("amfi_nav", data)
+
+        _finish_etl_run(db, run, records=count)
+        return {"source": "AMFI", "schemes": count}
+    except Exception as e:
+        _finish_etl_run(db, run, status="failed", error=str(e))
+        logger.exception("AMFI crawl failed")
+        raise
+    finally:
+        db.close()
+
+
+# ------------------------------------------------------------------ #
+#  mfapi.in                                                            #
+# ------------------------------------------------------------------ #
+
+
+@app.task(bind=True, name="etl.crawl_mfapi")
+def crawl_mfapi(self, scheme_codes: Optional[list] = None, limit: int = 10):
+    """Fetch MF NAV history from mfapi.in."""
+    from src.etl.ingestion_service import DocumentIngestionService
+
+    db = SessionLocal()
+    run = _log_etl_run(db, "mfapi")
+    try:
+        crawler = MFApiCrawler()
+        data = crawler.crawl(scheme_codes=scheme_codes, limit=limit)
+
+        ingestion = DocumentIngestionService(db)
+        count = ingestion.ingest_structured_data("mfapi", data)
+
+        _finish_etl_run(db, run, records=count)
+        return {"source": "mfapi.in", "schemes": count}
+    except Exception as e:
+        _finish_etl_run(db, run, status="failed", error=str(e))
+        logger.exception("mfapi crawl failed")
+        raise
+    finally:
+        db.close()
+
+
+# ------------------------------------------------------------------ #
+#  data.gov.in MCA                                                     #
+# ------------------------------------------------------------------ #
+
+
+@app.task(bind=True, name="etl.crawl_datagov")
+def crawl_datagov(self, search: str = "company master", limit: int = 20):
+    """Discover MCA datasets on data.gov.in."""
+    from src.etl.ingestion_service import DocumentIngestionService
+
+    db = SessionLocal()
+    run = _log_etl_run(db, "datagov_mca")
+    try:
+        crawler = DataGovCrawler()
+        data = crawler.discover_datasets(search=search, limit=limit)
+
+        ingestion = DocumentIngestionService(db)
+        count = ingestion.ingest_structured_data("datagov_mca", data)
+
+        _finish_etl_run(db, run, records=count)
+        return {"source": "data.gov.in", "datasets": count}
+    except Exception as e:
+        _finish_etl_run(db, run, status="failed", error=str(e))
+        logger.exception("data.gov.in crawl failed")
+        raise
+    finally:
+        db.close()
+
+
+# ------------------------------------------------------------------ #
+#  RBI macro data                                                      #
+# ------------------------------------------------------------------ #
+
+
+@app.task(bind=True, name="etl.crawl_rbi")
+def crawl_rbi_macro(self):
+    """Fetch RBI macro indicators (policy rates, M3, reserves, etc.)."""
+    from src.etl.ingestion_service import DocumentIngestionService
+
+    db = SessionLocal()
+    run = _log_etl_run(db, "rbi_macro")
+    try:
+        crawler = RBICrawler()
+        data = crawler.crawl()
+
+        ingestion = DocumentIngestionService(db)
+        count = ingestion.ingest_structured_data("rbi_macro", data)
+
+        _finish_etl_run(db, run, records=count)
+        return {
+            "source": "RBI",
+            "indicators": len(data.get("policy_rates", {})),
+            "table_rows": len(data.get("key_rates_table", [])),
+        }
+    except Exception as e:
+        _finish_etl_run(db, run, status="failed", error=str(e))
+        logger.exception("RBI crawl failed")
+        raise
+    finally:
+        db.close()
+
+
+# ------------------------------------------------------------------ #
+#  NSE Bhavcopy (daily OHLCV)                                         #
+# ------------------------------------------------------------------ #
+
+
+@app.task(bind=True, name="etl.crawl_bhavcopy")
+def crawl_nse_bhavcopy(self, symbol: Optional[str] = None):
+    """Fetch daily NSE bhavcopy (OHLCV + delivery data)."""
+    from src.etl.ingestion_service import DocumentIngestionService
+
+    db = SessionLocal()
+    run = _log_etl_run(db, "nse_bhavcopy")
+    try:
+        crawler = NSEBhavcopycrawler()
+        data = crawler.crawl(symbol=symbol)
+
+        ingestion = DocumentIngestionService(db)
+        count = ingestion.ingest_structured_data("nse_bhavcopy", data)
+
+        _finish_etl_run(db, run, records=count)
+        return {
+            "source": "NSE_Bhavcopy",
+            "records": count,
+            "date": data[0].get("date") if data else "N/A",
+        }
+    except Exception as e:
+        _finish_etl_run(db, run, status="failed", error=str(e))
+        logger.exception("NSE Bhavcopy crawl failed")
+        raise
+    finally:
+        db.close()
+
+
+# ------------------------------------------------------------------ #
+#  News RSS (ET Markets + LiveMint)                                    #
+# ------------------------------------------------------------------ #
+
+
+@app.task(bind=True, name="etl.crawl_news_rss")
+def crawl_news_rss(self, feeds: Optional[list] = None):
+    """Fetch financial news from ET Markets + LiveMint RSS feeds.
+
+    Articles are persisted to the news_articles DB table with dedup.
+    """
+    from src.etl.ingestion_service import DocumentIngestionService
+
+    db = SessionLocal()
+    run = _log_etl_run(db, "news_rss")
+    try:
+        crawler = NewsRSSCrawler()
+        articles = crawler.crawl(feeds=feeds)
+
+        ingestion = DocumentIngestionService(db)
+        created = ingestion.ingest_news_articles(articles)
+
+        _finish_etl_run(db, run, records=created)
+        return {"source": "RSS", "fetched": len(articles), "new": created}
+    except Exception as e:
+        _finish_etl_run(db, run, status="failed", error=str(e))
+        logger.exception("News RSS crawl failed")
+        raise
+    finally:
+        db.close()
+
+
+# ------------------------------------------------------------------ #
+#  Full company refresh (updated with all sources)                     #
+# ------------------------------------------------------------------ #
+
+
+@app.task(bind=True, name="etl.refresh_company")
+def refresh_company(self, company_id: str):
+    """Full refresh for a single company: enrich + financials + all filing sources."""
+    import importlib
+
+    celery_mod = importlib.import_module("celery")
+    chain_fn = getattr(celery_mod, "chain")
+
+    enrich_sig: Any = enrich_single_company.s(company_id)
+    nse_sig: Any = crawl_nse_filings.s(company_id=company_id)
+    bse_sig: Any = crawl_bse_filings.s(company_id=company_id)
+    ir_sig: Any = crawl_ir_pages.s(company_id=company_id)
+    workflow: Any = chain_fn(enrich_sig, nse_sig, bse_sig, ir_sig)
+    workflow.apply_async()
+
+
+# ------------------------------------------------------------------ #
+#  Full pipeline orchestrator                                          #
+# ------------------------------------------------------------------ #
+
+
+@app.task(bind=True, name="etl.run_full_pipeline")
+def run_full_pipeline(self):
+    """Run the complete ETL pipeline — all crawlers in sequence.
+
+    Intended for daily scheduled execution (e.g., 7 PM IST after market close).
+
+    Pipeline order:
+      1. NSE Bhavcopy (daily OHLCV)
+      2. AMFI NAV (daily MF NAVs)
+      3. News RSS (ET + Mint articles)
+      4. NSE + BSE filings
+      5. SEBI filings
+      6. RBI macro indicators
+      7. data.gov.in MCA datasets
+    """
+    results = {}
+
+    try:
+        results["bhavcopy"] = crawl_nse_bhavcopy()
+    except Exception as e:
+        results["bhavcopy"] = {"error": str(e)}
+
+    try:
+        results["amfi"] = crawl_amfi_nav()
+    except Exception as e:
+        results["amfi"] = {"error": str(e)}
+
+    try:
+        results["news_rss"] = crawl_news_rss()
+    except Exception as e:
+        results["news_rss"] = {"error": str(e)}
+
+    try:
+        results["nse"] = crawl_nse_filings()
+    except Exception as e:
+        results["nse"] = {"error": str(e)}
+
+    try:
+        results["bse"] = crawl_bse_filings()
+    except Exception as e:
+        results["bse"] = {"error": str(e)}
+
+    try:
+        results["sebi"] = crawl_sebi_filings()
+    except Exception as e:
+        results["sebi"] = {"error": str(e)}
+
+    try:
+        results["rbi"] = crawl_rbi_macro()
+    except Exception as e:
+        results["rbi"] = {"error": str(e)}
+
+    try:
+        results["datagov"] = crawl_datagov()
+    except Exception as e:
+        results["datagov"] = {"error": str(e)}
+
+    logger.info("Full pipeline complete: %s", results)
+    return results

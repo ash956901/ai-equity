@@ -1,0 +1,276 @@
+============================= test session starts ==============================
+platform darwin -- Python 3.12.0, pytest-9.0.3, pluggy-1.6.0 -- /Users/sanchitvijay/working/ai-equity/backend-ai/.venv/bin/python3.12
+cachedir: .pytest_cache
+rootdir: /Users/sanchitvijay/working/ai-equity/backend-ai
+plugins: langsmith-0.8.0, asyncio-1.3.0, anyio-4.13.0
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 61 items
+
+tests/app/test_routers_registration.py::test_app_registers_core_routes PASSED [  1%]
+tests/domains/auth/test_auth_routes.py::test_signup_returns_user_and_tokens FAILED [  3%]
+tests/domains/auth/test_auth_routes.py::test_login_accepts_email_or_username PASSED [  4%]
+tests/domains/auth/test_auth_routes.py::test_refresh_returns_new_pair PASSED [  6%]
+tests/domains/auth/test_auth_routes.py::test_logout_blacklists_jti PASSED [  8%]
+tests/domains/auth/test_auth_routes.py::test_forgot_password_always_returns_202 FAILED [  9%]
+tests/domains/auth/test_auth_routes.py::test_reset_password_consumes_token PASSED [ 11%]
+tests/domains/auth/test_auth_routes.py::test_verify_email_consumes_token PASSED [ 13%]
+tests/domains/auth/test_auth_routes.py::test_me_returns_current_user PASSED [ 14%]
+tests/domains/auth/test_security.py::test_password_hash_and_verify_roundtrip PASSED [ 16%]
+tests/domains/auth/test_security.py::test_verify_password_handles_garbage_hash PASSED [ 18%]
+tests/domains/auth/test_security.py::test_create_and_decode_access_token PASSED [ 19%]
+tests/domains/auth/test_security.py::test_decode_rejects_garbage PASSED  [ 21%]
+tests/domains/auth/test_security.py::test_blacklist_round_trip PASSED    [ 22%]
+tests/domains/auth/test_security.py::test_refresh_rotation_consume_returns_user_id PASSED [ 24%]
+tests/domains/auth/test_security.py::test_one_time_token_round_trip PASSED [ 26%]
+tests/domains/auth/test_security.py::test_token_claims_dataclass_immutable PASSED [ 27%]
+tests/domains/broker/test_broker_routes.py::test_zerodha_login_url PASSED [ 29%]
+tests/domains/broker/test_broker_routes.py::test_zerodha_callback_post_self_only PASSED [ 31%]
+tests/domains/broker/test_broker_routes.py::test_sync_portfolio_owner_only FAILED [ 32%]
+tests/domains/broker/test_broker_routes.py::test_sync_portfolio_blocks_non_owner FAILED [ 34%]
+tests/domains/broker/test_broker_routes.py::test_sync_portfolio_404_when_missing FAILED [ 36%]
+tests/domains/chat/test_upload_service.py::test_upload_rejects_invalid_file_type PASSED [ 37%]
+tests/domains/chat/test_upload_service.py::test_upload_rejects_invalid_user_uuid PASSED [ 39%]
+tests/domains/chat/test_upload_service.py::test_upload_rejects_file_size_limit PASSED [ 40%]
+tests/domains/chat/test_upload_service.py::test_upload_success_returns_metadata_and_indexes PASSED [ 42%]
+tests/domains/chat/test_upload_service.py::test_upload_indexing_failure_keeps_uploaded_status PASSED [ 44%]
+tests/domains/companies/test_companies_service.py::test_get_universe_stats_delegates_to_stock_universe_service PASSED [ 45%]
+tests/domains/compare/test_compare_routes_integration.py::test_compare_api_exact_contract_and_clear_winner FAILED [ 47%]
+tests/domains/compare/test_compare_routes_integration.py::test_compare_api_split_verdict PASSED [ 49%]
+tests/domains/compare/test_compare_routes_integration.py::test_compare_api_works_without_query PASSED [ 50%]
+tests/domains/compare/test_compare_service_logic.py::test_scorecard_counts_wins PASSED [ 52%]
+tests/domains/compare/test_compare_service_logic.py::test_valuation_label_overvalued_when_pe_high_and_growth_low PASSED [ 54%]
+tests/domains/compare/test_compare_service_logic.py::test_winner_returns_tie_for_close_values PASSED [ 55%]
+tests/domains/compare/test_compare_service_logic.py::test_build_company_labels_fast_growth_high_profitability PASSED [ 57%]
+tests/domains/discovery/test_discovery_routes.py::test_list_themes PASSED [ 59%]
+tests/domains/discovery/test_discovery_routes.py::test_companies_in_theme_asymmetric_only PASSED [ 60%]
+tests/domains/discovery/test_discovery_routes.py::test_themes_for_company PASSED [ 62%]
+tests/domains/discovery/test_discovery_routes.py::test_asymmetric_feed PASSED [ 63%]
+tests/domains/discovery/test_discovery_routes.py::test_theme_neighbours_404_when_empty PASSED [ 65%]
+tests/domains/discovery/test_discovery_routes.py::test_theme_neighbours_returns_edges PASSED [ 67%]
+tests/domains/home/test_home_routes.py::test_home_personalized_returns_all_sections PASSED [ 68%]
+tests/domains/home/test_home_routes.py::test_home_requires_auth PASSED   [ 70%]
+tests/domains/quotes/test_quotes_routes.py::test_get_quote_known_ticker PASSED [ 72%]
+tests/domains/quotes/test_quotes_routes.py::test_get_quote_unknown_ticker PASSED [ 73%]
+tests/domains/quotes/test_quotes_routes.py::test_get_candles_default_range PASSED [ 75%]
+tests/domains/quotes/test_quotes_routes.py::test_get_candles_explicit_range PASSED [ 77%]
+tests/domains/quotes/test_quotes_routes.py::test_get_peers PASSED        [ 78%]
+tests/domains/users/test_users_routes.py::test_update_user_profile_route PASSED [ 80%]
+tests/domains/users/test_users_routes.py::test_submit_kyc_route PASSED   [ 81%]
+tests/domains/users/test_users_routes.py::test_verify_kyc_route PASSED   [ 83%]
+tests/domains/users/test_users_routes.py::test_assert_self_blocks_cross_account PASSED [ 85%]
+tests/market_data/test_financial_service.py::test_financial_service_delegates_to_statement_service PASSED [ 86%]
+tests/market_data/test_financial_service.py::test_financial_service_delegates_to_ratio_service PASSED [ 88%]
+tests/market_data/test_free_first_ordering.py::test_financials_free_first_prefers_yfinance PASSED [ 90%]
+tests/market_data/test_free_first_ordering.py::test_ratios_free_first_falls_back_to_scraper_before_fmp PASSED [ 91%]
+tests/market_data/test_helpers.py::test_get_fmp_symbol_prefers_nse_then_bse PASSED [ 93%]
+tests/market_data/test_helpers.py::test_parse_period_label_supports_month_year_and_iso PASSED [ 95%]
+tests/market_data/test_helpers.py::test_guess_statement_type_heuristics PASSED [ 96%]
+tests/market_data/test_market_data_context.py::test_context_owns_and_closes_session_when_created_internally PASSED [ 98%]
+tests/market_data/test_market_data_context.py::test_context_does_not_close_external_session PASSED [100%]
+
+=================================== FAILURES ===================================
+_____________________ test_signup_returns_user_and_tokens ______________________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x1595dc1a0>
+
+    def test_signup_returns_user_and_tokens(monkeypatch):
+        client = _make_client(monkeypatch)
+        resp = client.post(
+            "/auth/signup",
+            json={
+                "email": "newbie@equityai.local",
+                "password": "password1234",
+                "full_name": "Newbie",
+            },
+        )
+>       assert resp.status_code == 201, resp.text
+E       AssertionError: {"detail":[{"type":"value_error","loc":["body","email"],"msg":"value is not a valid email address: The part after the @-sign is a special-use or reserved name that cannot be used with email.","input":"newbie@equityai.local","ctx":{"reason":"The part after the @-sign is a special-use or reserved name that cannot be used with email."}}]}
+E       assert 422 == 201
+E        +  where 422 = <Response [422 Unprocessable Entity]>.status_code
+
+tests/domains/auth/test_auth_routes.py:137: AssertionError
+___________________ test_forgot_password_always_returns_202 ____________________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x15980d3d0>
+
+    def test_forgot_password_always_returns_202(monkeypatch):
+        client = _make_client(monkeypatch)
+        resp = client.post(
+            "/auth/forgot-password", json={"email": "ghost@equityai.local"}
+        )
+>       assert resp.status_code == 202
+E       assert 422 == 202
+E        +  where 422 = <Response [422 Unprocessable Entity]>.status_code
+
+tests/domains/auth/test_auth_routes.py:182: AssertionError
+________________________ test_sync_portfolio_owner_only ________________________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x159c3d820>
+make_authed_client = <function make_authed_client.<locals>._factory at 0x159c0f2e0>
+fake_user = <conftest.FakeUser object at 0x159c3ccb0>
+
+    def test_sync_portfolio_owner_only(monkeypatch, make_authed_client, fake_user):
+        monkeypatch.setattr(broker_routes, "BrokerService", _StubBrokerService)
+        portfolio = _StubPortfolio(id="p-1", user_id=fake_user.id)
+        db = _StubDB(portfolio=portfolio)
+    
+        client = make_authed_client(
+            router=broker_routes.router, user=fake_user, db=db
+        )
+        resp = client.post(f"/broker/portfolios/{portfolio.id}/sync")
+>       assert resp.status_code == 200
+E       assert 422 == 200
+E        +  where 422 = <Response [422 Unprocessable Entity]>.status_code
+
+tests/domains/broker/test_broker_routes.py:109: AssertionError
+_____________________ test_sync_portfolio_blocks_non_owner _____________________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x159c1fd10>
+make_authed_client = <function make_authed_client.<locals>._factory at 0x159c0e700>
+fake_user = <conftest.FakeUser object at 0x159c61850>
+
+    def test_sync_portfolio_blocks_non_owner(monkeypatch, make_authed_client, fake_user):
+        monkeypatch.setattr(broker_routes, "BrokerService", _StubBrokerService)
+        other_user_id = uuid4()
+        portfolio = _StubPortfolio(id="p-2", user_id=other_user_id)
+        db = _StubDB(portfolio=portfolio)
+    
+        client = make_authed_client(
+            router=broker_routes.router, user=fake_user, db=db
+        )
+        resp = client.post(f"/broker/portfolios/{portfolio.id}/sync")
+>       assert resp.status_code == 403
+E       assert 422 == 403
+E        +  where 422 = <Response [422 Unprocessable Entity]>.status_code
+
+tests/domains/broker/test_broker_routes.py:125: AssertionError
+_____________________ test_sync_portfolio_404_when_missing _____________________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x159c1faa0>
+make_authed_client = <function make_authed_client.<locals>._factory at 0x159c0fa60>
+fake_user = <conftest.FakeUser object at 0x159c1d130>
+
+    def test_sync_portfolio_404_when_missing(monkeypatch, make_authed_client, fake_user):
+        monkeypatch.setattr(broker_routes, "BrokerService", _StubBrokerService)
+        db = _StubDB(portfolio=None)
+        client = make_authed_client(router=broker_routes.router, user=fake_user, db=db)
+        resp = client.post("/broker/portfolios/nonexistent/sync")
+>       assert resp.status_code == 404
+E       assert 422 == 404
+E        +  where 422 = <Response [422 Unprocessable Entity]>.status_code
+
+tests/domains/broker/test_broker_routes.py:134: AssertionError
+_______________ test_compare_api_exact_contract_and_clear_winner _______________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x15b4fa810>
+
+    def test_compare_api_exact_contract_and_clear_winner(monkeypatch):
+        company_a = str(uuid4())
+        company_b = str(uuid4())
+        user_id = str(uuid4())
+        request_ids = []
+    
+        fixtures = {
+            company_a: {
+                "company_name": "Alpha Industries",
+                "ticker_nse": "ALPHA",
+                "growth_score": 20.0,
+                "quarterly_consistency": 0.8,
+                "profit_margin": 18.0,
+                "roe": 20.0,
+                "roce": 18.0,
+                "debt_to_equity": 1.1,
+                "earnings_volatility": 0.2,
+                "pe_ratio": 18.0,
+                "margin_trend": "stable",
+            },
+            company_b: {
+                "company_name": "Beta Manufacturing",
+                "ticker_nse": "BETA",
+                "growth_score": 9.0,
+                "quarterly_consistency": 0.4,
+                "profit_margin": 10.0,
+                "roe": 12.0,
+                "roce": 11.0,
+                "debt_to_equity": 0.3,
+                "earnings_volatility": 0.2,
+                "pe_ratio": 20.0,
+                "margin_trend": "stable",
+            },
+        }
+        client = _make_client(monkeypatch, fixtures, request_ids)
+    
+        response = client.post(
+            "/compare/",
+            json={
+                "user_id": user_id,
+                "company_names": ["Alpha Industries", "Beta Manufacturing"],
+                "query": "Compare both companies",
+                "expertise_level": "intermediate",
+            },
+        )
+    
+        assert response.status_code == 200
+        body = response.json()
+>       assert set(body.keys()) == {
+            "companyA_summary",
+            "companyB_summary",
+            "comparison",
+            "insights",
+            "final_verdict",
+            "companyA_stock_data",
+            "companyB_stock_data",
+            "detailed_comparison",
+        }
+E       AssertionError: assert {'companyA_st...parison', ...} == {'companyA_st...parison', ...}
+E         
+E         Extra items in the left set:
+E         'local_summary'
+E         
+E         Full diff:
+E           {
+E               'companyA_stock_data',...
+E         
+E         ...Full output truncated (9 lines hidden), use '-vv' to show
+
+tests/domains/compare/test_compare_routes_integration.py:102: AssertionError
+=============================== warnings summary ===============================
+.venv/lib/python3.12/site-packages/passlib/utils/__init__.py:854
+  /Users/sanchitvijay/working/ai-equity/backend-ai/.venv/lib/python3.12/site-packages/passlib/utils/__init__.py:854: DeprecationWarning: 'crypt' is deprecated and slated for removal in Python 3.13
+    from crypt import crypt as _crypt
+
+tests/domains/auth/test_auth_routes.py: 2 warnings
+tests/domains/broker/test_broker_routes.py: 5 warnings
+tests/domains/home/test_home_routes.py: 1 warning
+tests/domains/users/test_users_routes.py: 4 warnings
+  /Users/sanchitvijay/working/ai-equity/backend-ai/tests/conftest.py:45: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    self.created_at = datetime.utcnow()
+
+tests/domains/auth/test_auth_routes.py: 2 warnings
+tests/domains/broker/test_broker_routes.py: 5 warnings
+tests/domains/home/test_home_routes.py: 1 warning
+tests/domains/users/test_users_routes.py: 4 warnings
+  /Users/sanchitvijay/working/ai-equity/backend-ai/tests/conftest.py:46: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    self.updated_at = datetime.utcnow()
+
+tests/domains/auth/test_auth_routes.py::test_verify_email_consumes_token
+  /Users/sanchitvijay/working/ai-equity/backend-ai/tests/domains/auth/test_auth_routes.py:29: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    created_at=datetime.utcnow(),
+
+tests/domains/auth/test_security.py::test_password_hash_and_verify_roundtrip
+  /Users/sanchitvijay/working/ai-equity/backend-ai/.venv/lib/python3.12/site-packages/passlib/handlers/argon2.py:716: DeprecationWarning: Accessing argon2.__version__ is deprecated and will be removed in a future release. Use importlib.metadata directly to query for argon2-cffi's packaging metadata.
+    _argon2_cffi.__version__, max_version)
+
+tests/domains/home/test_home_routes.py::test_home_personalized_returns_all_sections
+  /Users/sanchitvijay/working/ai-equity/backend-ai/tests/domains/home/test_home_routes.py:72: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    "generated_at": datetime.utcnow().isoformat(),
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED tests/domains/auth/test_auth_routes.py::test_signup_returns_user_and_tokens
+FAILED tests/domains/auth/test_auth_routes.py::test_forgot_password_always_returns_202
+FAILED tests/domains/broker/test_broker_routes.py::test_sync_portfolio_owner_only
+FAILED tests/domains/broker/test_broker_routes.py::test_sync_portfolio_blocks_non_owner
+FAILED tests/domains/broker/test_broker_routes.py::test_sync_portfolio_404_when_missing
+FAILED tests/domains/compare/test_compare_routes_integration.py::test_compare_api_exact_contract_and_clear_winner
+================== 6 failed, 55 passed, 28 warnings in 3.13s ===================

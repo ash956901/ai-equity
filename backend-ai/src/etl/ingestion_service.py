@@ -1,23 +1,32 @@
-"""Service for ingesting and downloading documents from crawlers."""
+"""Service for ingesting and downloading documents from crawlers.
+
+Handles two ingestion modes:
+  1. Document-based (NSE/BSE/SEBI/Screener) — download file, persist to disk, create Filing record
+  2. Structured-data (AMFI, mfapi, RBI, Bhavcopy, News RSS) — persist JSON directly to DB tables
+"""
 
 import hashlib
+import json
 import logging
 import os
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 from uuid import UUID
 
 import requests
 from sqlalchemy.orm import Session
 
-from src.db.models import Company, Filing
+from src.db.models import Company, Filing, NewsArticle
 from src.config import get_settings
 
 logger = logging.getLogger(__name__)
 
 FILINGS_DIR = Path("uploads/filings")
 FILINGS_DIR.mkdir(parents=True, exist_ok=True)
+
+DATA_DIR = Path("uploads/data")
+DATA_DIR.mkdir(parents=True, exist_ok=True)
 
 
 class DocumentIngestionService:
@@ -131,3 +140,130 @@ class DocumentIngestionService:
         except Exception as e:
             logger.error("Error ingesting filing from %s: %s", source_url, e)
             return None
+
+    # ------------------------------------------------------------------
+    # Structured data ingestion (no file download)
+    # ------------------------------------------------------------------
+
+    def ingest_screener_data(
+        self,
+        company_id: UUID,
+        screener_data: Dict[str, Any],
+    ) -> int:
+        """Persist screener.in financials as Filing + JSON blob.
+
+        Stores the full screener result (P&L, BS, CF, ratios, etc.) as a
+        single Filing record with filing_type='screener_snapshot' and the
+        JSON data in metadata_.
+
+        Returns number of records created (0 or 1).
+        """
+        symbol = screener_data.get("symbol", "")
+        content_hash = hashlib.sha256(
+            json.dumps(screener_data, sort_keys=True, default=str).encode()
+        ).hexdigest()
+
+        existing = (
+            self.db.query(Filing)
+            .filter(Filing.document_hash == content_hash)
+            .first()
+        )
+        if existing:
+            return 0
+
+        # Save JSON to disk as well for the document processor
+        json_path = DATA_DIR / f"screener_{symbol}_{content_hash[:12]}.json"
+        with open(json_path, "w") as f:
+            json.dump(screener_data, f, indent=2, default=str)
+
+        filing = Filing(
+            company_id=company_id,
+            filing_type="screener_snapshot",
+            title=f"Screener.in snapshot — {symbol}",
+            filing_date=datetime.utcnow().date(),
+            source_url=screener_data.get("url", ""),
+            raw_uri=str(json_path),
+            document_hash=content_hash,
+            status="downloaded",
+            metadata_=screener_data.get("meta", {}),
+        )
+        self.db.add(filing)
+        self.db.commit()
+        logger.info("Ingested screener snapshot for %s", symbol)
+        return 1
+
+    def ingest_news_articles(
+        self,
+        articles: List[Dict[str, Any]],
+    ) -> int:
+        """Persist news RSS articles to the news_articles table.
+
+        Deduplicates by source_url.
+        Returns number of new articles created.
+        """
+        created = 0
+        for article in articles:
+            link = article.get("link", "")
+            if not link:
+                continue
+
+            existing = (
+                self.db.query(NewsArticle)
+                .filter(NewsArticle.source_url == link)
+                .first()
+            )
+            if existing:
+                continue
+
+            pub_date_str = article.get("pub_date") or article.get("pub_date_raw", "")
+            try:
+                pub_dt = datetime.fromisoformat(pub_date_str) if pub_date_str else datetime.utcnow()
+            except (ValueError, TypeError):
+                pub_dt = datetime.utcnow()
+
+            news = NewsArticle(
+                headline=article.get("title", ""),
+                body=article.get("description", ""),
+                source=article.get("feed_name", article.get("source", "")),
+                source_url=link,
+                published_at=pub_dt,
+            )
+            self.db.add(news)
+            created += 1
+
+        if created:
+            self.db.commit()
+        logger.info("Ingested %d new news articles (skipped %d dupes)", created, len(articles) - created)
+        return created
+
+    def ingest_structured_data(
+        self,
+        pipeline_name: str,
+        data: Any,
+    ) -> int:
+        """Persist arbitrary structured data as a JSON file on disk.
+
+        Used for AMFI NAVs, mfapi results, RBI macro, bhavcopy, data.gov
+        datasets — data that doesn't map to a single company Filing.
+
+        Returns number of records in the saved blob.
+        """
+        if not data:
+            return 0
+
+        records = data if isinstance(data, list) else [data]
+        content_hash = hashlib.sha256(
+            json.dumps(records[:5], sort_keys=True, default=str).encode()
+        ).hexdigest()[:12]
+
+        timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+        json_path = DATA_DIR / f"{pipeline_name}_{timestamp}_{content_hash}.json"
+
+        with open(json_path, "w") as f:
+            json.dump(records, f, indent=2, default=str)
+
+        logger.info(
+            "Saved %d %s records to %s",
+            len(records), pipeline_name, json_path,
+        )
+        return len(records)
