@@ -25,6 +25,7 @@ def get_latest_financials(company_id: str, periods: int = 4) -> Dict[str, Any]:
             uid = resolve_company_id(company_id, db)
         except ValueError as e:
             return {"error": str(e)}
+        service = FinancialService(db)
         try:
             result = service.get_latest_financials(uid, periods)
             if not result or not result.get("periods"):
