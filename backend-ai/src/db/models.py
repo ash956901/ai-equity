@@ -588,3 +588,168 @@ class CompareFlowLog(Base):
     __table_args__ = (
         Index("ix_compare_flow_logs_user_created", "user_id", "created_at"),
     )
+
+
+class CommodityPrice(Base):
+    """Real-time commodity prices from external APIs."""
+
+    __tablename__ = "commodity_prices"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    symbol: Mapped[str] = mapped_column(String(30), nullable=False, index=True)
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    price: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    change: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    change_pct: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    currency: Mapped[str] = mapped_column(String(10), default="USD")
+    unit: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    timestamp: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    source: Mapped[str] = mapped_column(String(30), nullable=False)
+
+    __table_args__ = (
+        Index("ix_commodity_prices_symbol_timestamp", "symbol", "timestamp"),
+        Index("ix_commodity_prices_source", "source"),
+    )
+
+
+class GeopoliticalEvent(Base):
+    """Geopolitical events from GDELT and other sources."""
+
+    __tablename__ = "geopolitical_events"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    event_id: Mapped[str] = mapped_column(String(100), nullable=True, index=True)
+    title: Mapped[str] = mapped_column(String(500), nullable=False)
+    summary: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    event_date: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    country: Mapped[Optional[str]] = mapped_column(String(100), nullable=True, index=True)
+    region: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    category: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    subcategory: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    goldstein_scale: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    confidence: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    fatalities: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    source: Mapped[str] = mapped_column(String(50), nullable=False)
+    raw_data: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    __table_args__ = (
+        Index("ix_geopolitical_events_date_country", "event_date", "country"),
+        Index("ix_geopolitical_events_category", "category"),
+    )
+
+
+class CausalChain(Base):
+    """Pre-defined causal chains for event → commodity → sector → company."""
+
+    __tablename__ = "causal_chains"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    trigger_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    trigger_value: Mapped[str] = mapped_column(String(200), nullable=False)
+    hop1_type: Mapped[str] = mapped_column(String(30), nullable=True)
+    hop1_target: Mapped[str] = mapped_column(String(100), nullable=True)
+    hop1_relationship: Mapped[str] = mapped_column(String(50), nullable=True)
+    hop2_type: Mapped[str] = mapped_column(String(30), nullable=True)
+    hop2_target: Mapped[str] = mapped_column(String(100), nullable=True)
+    hop2_relationship: Mapped[str] = mapped_column(String(50), nullable=True)
+    hop3_type: Mapped[str] = mapped_column(String(30), nullable=True)
+    hop3_target: Mapped[str] = mapped_column(String(100), nullable=True)
+    hop3_relationship: Mapped[str] = mapped_column(String(50), nullable=True)
+    confidence: Mapped[float] = mapped_column(Float, default=0.7)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class SectorExposure(Base):
+    """Sector to commodity exposure mapping for Indian market."""
+
+    __tablename__ = "sector_exposures"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    sector: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+    industry: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    commodity: Mapped[str] = mapped_column(String(50), nullable=False)
+    dependency_type: Mapped[str] = mapped_column(String(30), nullable=False)
+    impact_direction: Mapped[str] = mapped_column(String(20), nullable=False)
+    impact_magnitude: Mapped[str] = mapped_column(String(20), default="medium")
+    affected_companies: Mapped[Optional[list]] = mapped_column(ARRAY(String), nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    __table_args__ = (
+        Index("ix_sector_exposures_sector_commodity", "sector", "commodity"),
+    )
+
+
+class CausalInsight(Base):
+    """Generated causal insights for portfolios and companies."""
+
+    __tablename__ = "causal_insights"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    portfolio_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("portfolios.id", ondelete="CASCADE"), nullable=True
+    )
+    company_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("companies.id", ondelete="CASCADE"), nullable=True
+    )
+    title: Mapped[str] = mapped_column(String(300), nullable=False)
+    trigger_event: Mapped[str] = mapped_column(String(500), nullable=False)
+    commodity: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    sector: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    impact_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    impact_direction: Mapped[str] = mapped_column(String(20), nullable=False)
+    explanation: Mapped[str] = mapped_column(Text, nullable=False)
+    recommendation: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    confidence: Mapped[float] = mapped_column(Float, nullable=False)
+    generated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    expires_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+    __table_args__ = (
+        Index("ix_causal_insights_portfolio_generated", "portfolio_id", "generated_at"),
+        Index("ix_causal_insights_company_generated", "company_id", "generated_at"),
+    )
+
+
+class ClassifiedNews(Base):
+    """Classified news articles for market intelligence."""
+
+    __tablename__ = "classified_news"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    title: Mapped[str] = mapped_column(String(500), nullable=False)
+    summary: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    url: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    source: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    published_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    topics: Mapped[Optional[list]] = mapped_column(ARRAY(String), nullable=True)
+    location: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    importance_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    
+    # Impact classification
+    commodity: Mapped[Optional[str]] = mapped_column(String(50), nullable=True, index=True)
+    sector: Mapped[Optional[str]] = mapped_column(String(100), nullable=True, index=True)
+    impact_type: Mapped[Optional[str]] = mapped_column(String(30), nullable=True)
+    impact_direction: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    classification_confidence: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    __table_args__ = (
+        Index("ix_classified_news_published", "published_at"),
+        Index("ix_classified_news_commodity_impact", "commodity", "impact_direction"),
+    )

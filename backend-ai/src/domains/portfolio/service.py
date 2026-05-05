@@ -26,12 +26,25 @@ class PortfoliosService:
         if not portfolio_id:
             return {"suggestions": "No primary portfolio found. Add one to get AI insights."}
 
+        # Get causal insights first
+        causal_context = self._get_causal_context(portfolio_id)
+
         # We use the research agent to generate a summary/suggestion
         agent = build_research_agent()
+        
+        # Enhanced task with causal context
         task = (
             f"Analyse the portfolio {portfolio_id} and recent market news. "
-            "Provide 3-4 specific 'Hidden Insights' and 'Investment Suggestions' "
-            "(Buy/Sell/Hold) for this user. "
+            "Also consider the following commodity price trends and market signals:\n\n"
+            f"{causal_context}\n\n"
+            "Provide 3-4 specific 'Hidden Insights' that connect world events and commodity prices "
+            "to specific companies in this portfolio. Format each insight as:\n"
+            "- **Trigger**: What happened (e.g., 'Oil up 5%')\n"
+            "- **Chain**: How it propagates (e.g., 'Oil → Transport costs → Margins')\n"
+            "- **Impact**: Which holdings are affected and how\n"
+            "- **Confidence**: How certain (High/Medium/Low)\n"
+            "- **Recommendation**: What to consider (Buy more/Hold/Reduce)\n\n"
+            "Also provide Investment Suggestions (Buy/Sell/Hold) for this user. "
             "Return the response as a clean, professional markdown block with headers and bullet points. "
             "Do NOT return JSON or structured lists, just formatted text."
         )
@@ -48,6 +61,45 @@ class PortfoliosService:
             import logging
             logging.getLogger(__name__).error(f"Failed to generate AI suggestions: {e}")
             return {"suggestions": "AI insights are temporarily unavailable. Please try again later."}
+
+    def _get_causal_context(self, portfolio_id: UUID) -> str:
+        """Get causal context for portfolio analysis."""
+        try:
+            from src.services.causal_service import CausalService
+            
+            causal_service = CausalService(self.db)
+            insights = causal_service.analyze_portfolio(portfolio_id)
+            
+            if not insights:
+                # Get commodity changes as fallback using CausalService method
+                changes = causal_service.get_commodity_changes(days=7)
+                volatile = [
+                    f"- {k}: {v.get('change_pct', 0):+.1f}%" 
+                    for k, v in changes.items() 
+                    if abs(v.get('change_pct', 0)) >= 3
+                ]
+                if volatile:
+                    return "## Commodity Price Changes (7-day)\n" + "\n".join(volatile[:5])
+                return "No significant commodity price changes detected in the past week."
+            
+            # Format insights as context for agent
+            context_lines = ["## Current Market Signals Affecting Your Portfolio\n"]
+            
+            for i, insight in enumerate(insights[:5], 1):
+                direction = "↑" if insight.get("price_change_pct", 0) > 0 else "↓"
+                context_lines.append(
+                    f"{i}. **{insight.get('ticker', 'Company')}** ({insight.get('sector', 'N/A')}): "
+                    f"{insight.get('commodity_name', insight.get('commodity'))} {direction} "
+                    f"{abs(insight.get('price_change_pct', 0)):.1f}% - "
+                    f"{insight.get('impact_direction', 'neutral').title()} impact"
+                )
+            
+            return "\n".join(context_lines)
+            
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning(f"Could not get causal context: {e}")
+            return "No causal data available at this time."
 
 
     def list_portfolios(self, user_id: UUID) -> list[dict[str, Any]]:

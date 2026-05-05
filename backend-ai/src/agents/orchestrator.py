@@ -101,7 +101,7 @@ def build_research_agent():
     logger.info(
         "Research orchestrator built (model=%s, subagents=%d, skills=%s, memory=on)",
         model,
-        5,
+        6,
         memory_cfg.get("skills"),
     )
     return _agent

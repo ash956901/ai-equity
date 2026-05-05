@@ -19,6 +19,7 @@ before delegating to a sub-agent.
 | **portfolio** | Portfolio-level analytics: allocation, concentration, risk, news for holdings |
 | **news-sentiment** | Latest news aggregation and sentiment analysis for companies or sectors |
 | **doc-insight** | Analyse an uploaded document (PDF/PPT/annual report) with page-level citations |
+| **causal** | Hidden pattern detection: world events → commodities → sectors → stocks. Use for "what's not obvious?", "hidden risks", or "causal patterns" |
 
 ## Routing Guidelines
 
@@ -28,6 +29,7 @@ before delegating to a sub-agent.
 - If the user asks where to invest, for new opportunities, or for stock picks matching a theme → delegate to **thematic-discovery**.
 - If the user asks for news, sentiment, or recent headlines → delegate to **news-sentiment**.
 - If the user references an uploaded document or upload_id → delegate to **doc-insight**.
+- If the user asks about "hidden patterns", "what's not obvious", "causal chains", "risks not visible", or connects global events to market impacts → delegate to **causal**.
 - For "where to invest" in the context of their current portfolio, you may invoke both **portfolio** (for rebalancing) and **thematic-discovery** (for new ideas).
 
 - For casual greetings or general questions unrelated to equity research, respond \

@@ -1,5 +1,6 @@
 """Sub-agent definitions for the orchestrator."""
 
+from src.agents.subagents.causal import get_causal_subagent
 from src.agents.subagents.company import get_company_subagent
 from src.agents.subagents.comparison import get_comparison_subagent
 from src.agents.subagents.portfolio import get_portfolio_subagent
@@ -17,6 +18,7 @@ def get_all_subagents() -> list[dict]:
         get_news_subagent(),
         get_doc_insight_subagent(),
         get_thematic_subagent(),
+        get_causal_subagent(),
     ]
 
 
