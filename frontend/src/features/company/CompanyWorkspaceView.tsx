@@ -23,11 +23,39 @@ import {
 } from "recharts";
 
 import {
+  Chart as ChartJS,
+  CategoryScale,
+  LinearScale,
+  BarElement,
+  LineElement,
+  PointElement,
+  Filler,
+  Title as ChartTitle,
+  Tooltip as ChartTooltip,
+  Legend as ChartLegend,
+} from 'chart.js';
+import { Bar, Line as ChartLine } from 'react-chartjs-2';
+
+ChartJS.register(
+  CategoryScale,
+  LinearScale,
+  BarElement,
+  LineElement,
+  PointElement,
+  Filler,
+  ChartTitle,
+  ChartTooltip,
+  ChartLegend
+);
+
+import {
   compareCompanies,
   fetchSecFilings,
   fetchCompanyDetail,
   fetchCompanyRatios,
   fetchCompanyQuote,
+  fetchCompanyFinancials,
+  fetchHistoricalPrices,
   searchCompaniesDB,
   fetchTimeline,
   enrichCompany,
@@ -35,6 +63,8 @@ import {
   type AICompany,
   type AIRatios,
   type AIQuote,
+  type AIFinancials,
+  type AIHistoricalPrices,
   type TimelineEvent as BackendTimelineEvent,
 } from "../../lib/api";
 import { PageHeader } from "../../shared/ui/PageHeader";
@@ -407,15 +437,18 @@ export function CompanyWorkspaceView(props: CompanyWorkspaceViewProps) {
   const [companyDetail, setCompanyDetail] = useState<AICompany | null>(null);
   const [companyQuote, setCompanyQuote] = useState<AIQuote | null>(null);
   const [companyRatios, setCompanyRatios] = useState<AIRatios | null>(null);
+  const [companyFinancials, setCompanyFinancials] = useState<AIFinancials | null>(null);
+  const [historicalPrices, setHistoricalPrices] = useState<AIHistoricalPrices | null>(null);
   const [companyLoading, setCompanyLoading] = useState(false);
   const [companyTimeline, setCompanyTimeline] = useState<BackendTimelineEvent[]>([]);
 
   const loadCompanyById = useCallback(async (companyId: string) => {
     setCompanyLoading(true);
     try {
-      const [detail, ratios] = await Promise.allSettled([
+      const [detail, ratios, financials] = await Promise.allSettled([
         fetchCompanyDetail(companyId),
         fetchCompanyRatios(companyId),
+        fetchCompanyFinancials(companyId, 4),
       ]);
       let detailData: AICompany | null = null;
       if (detail.status === "fulfilled") {
@@ -423,8 +456,10 @@ export function CompanyWorkspaceView(props: CompanyWorkspaceViewProps) {
         setCompanyDetail(detailData);
       }
       if (ratios.status === "fulfilled") setCompanyRatios(ratios.value);
+      if (financials.status === "fulfilled") setCompanyFinancials(financials.value);
       fetchCompanyQuote(companyId).then(setCompanyQuote).catch(() => {});
       fetchTimeline(undefined, companyId, 10).then(setCompanyTimeline).catch(() => {});
+      fetchHistoricalPrices(companyId, 30).then(setHistoricalPrices).catch(() => {});
 
       if (detailData && !detailData.sector) {
         enrichCompany(companyId).then(async (res) => {
@@ -447,9 +482,10 @@ export function CompanyWorkspaceView(props: CompanyWorkspaceViewProps) {
       const results = await searchCompaniesDB(symbol, 5);
       if (results.length > 0) {
         const matched = results[0];
-        const [detail, ratios] = await Promise.allSettled([
+        const [detail, ratios, financials] = await Promise.allSettled([
           fetchCompanyDetail(matched.id),
           fetchCompanyRatios(matched.id),
+          fetchCompanyFinancials(matched.id, 4),
         ]);
         let detailData: AICompany | null = null;
         if (detail.status === "fulfilled") {
@@ -457,8 +493,10 @@ export function CompanyWorkspaceView(props: CompanyWorkspaceViewProps) {
           setCompanyDetail(detailData);
         }
         if (ratios.status === "fulfilled") setCompanyRatios(ratios.value);
+        if (financials.status === "fulfilled") setCompanyFinancials(financials.value);
         fetchCompanyQuote(matched.id).then(setCompanyQuote).catch(() => {});
         fetchTimeline(undefined, matched.id, 10).then(setCompanyTimeline).catch(() => {});
+        fetchHistoricalPrices(matched.id, 30).then(setHistoricalPrices).catch(() => {});
 
         if (detailData && !detailData.sector) {
           enrichCompany(matched.id).then(async (res) => {
@@ -692,6 +730,72 @@ export function CompanyWorkspaceView(props: CompanyWorkspaceViewProps) {
       })));
     }).catch(() => setCompanyFilings([]));
   }, [filingsTicker, dataMode]);
+
+  const companyChartData = useMemo(() => {
+    if (!companyFinancials || companyFinancials.periods.length === 0) return null;
+    
+    const sortedPeriods = [...companyFinancials.periods].sort(
+      (a, b) => new Date(a.period_end).getTime() - new Date(b.period_end).getTime()
+    );
+    
+    const labels = sortedPeriods.map(p => p.period_end);
+    const revenueData = sortedPeriods.map(p => {
+      const item = p.items.find(i => i.line_item === 'Revenue' || i.line_item === 'Sales');
+      return item?.value ?? 0;
+    });
+    
+    const profitData = sortedPeriods.map(p => {
+      const item = p.items.find(i => i.line_item === 'Net Profit' || i.line_item === 'Net Profit+');
+      return item?.value ?? 0;
+    });
+
+    return {
+      labels,
+      datasets: [
+        {
+          label: 'Revenue',
+          data: revenueData,
+          backgroundColor: 'rgba(53, 162, 235, 0.7)',
+        },
+        {
+          label: 'Net Profit',
+          data: profitData,
+          backgroundColor: 'rgba(75, 192, 192, 0.7)',
+        },
+      ],
+    };
+  }, [companyFinancials]);
+
+  const priceChartData = useMemo(() => {
+    if (!historicalPrices || historicalPrices.prices.length === 0) return null;
+
+    const prices = historicalPrices.prices;
+    const labels = prices.map(p => {
+      const d = new Date(p.date);
+      return `${d.getDate()}/${d.getMonth() + 1}`;
+    });
+    const closeData = prices.map(p => p.close);
+    const firstClose = closeData[0] ?? 0;
+    const lastClose = closeData[closeData.length - 1] ?? 0;
+    const isPositive = lastClose >= firstClose;
+
+    return {
+      labels,
+      datasets: [
+        {
+          label: 'Close Price (₹)',
+          data: closeData,
+          borderColor: isPositive ? 'rgba(34, 197, 94, 1)' : 'rgba(239, 68, 68, 1)',
+          backgroundColor: isPositive ? 'rgba(34, 197, 94, 0.1)' : 'rgba(239, 68, 68, 0.1)',
+          fill: true,
+          tension: 0.3,
+          pointRadius: 1.5,
+          pointHoverRadius: 5,
+          borderWidth: 2,
+        },
+      ],
+    };
+  }, [historicalPrices]);
 
   const companyRatioSnapshot = useMemo(() => {
     if (companyRatios?.ratios) {
@@ -1298,6 +1402,81 @@ export function CompanyWorkspaceView(props: CompanyWorkspaceViewProps) {
               <ul style={{ margin: 0, paddingLeft: "18px", fontSize: "0.85rem", lineHeight: 1.6, color: "var(--ink)" }}>
                 {companyDetail.gemini_extra.management_notes.map((item, i) => <li key={i} style={{ marginBottom: "6px" }}>{item}</li>)}
               </ul>
+            </article>
+          )}
+          {priceChartData && (
+            <article className="feature-card">
+              <div className="feature-head">
+                <TrendingUp size={18} />
+                <h3>Daily Stock Price — 30 Day Trend ({companyLabel})</h3>
+              </div>
+              <div style={{ height: '280px', marginTop: '16px' }}>
+                <ChartLine
+                  options={{
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: {
+                      mode: 'index' as const,
+                      intersect: false,
+                    },
+                    plugins: {
+                      legend: { display: false },
+                      tooltip: {
+                        callbacks: {
+                          label: (ctx) => `₹${ctx.parsed.y.toLocaleString()}`,
+                        },
+                      },
+                    },
+                    scales: {
+                      x: {
+                        grid: { display: false },
+                        ticks: { maxTicksLimit: 10 },
+                      },
+                      y: {
+                        ticks: {
+                          callback: (val) => `₹${Number(val).toLocaleString()}`,
+                        },
+                      },
+                    },
+                  }}
+                  data={priceChartData}
+                />
+              </div>
+              {historicalPrices && (
+                <div className="chip-row" style={{ marginTop: '8px' }}>
+                  <span className="chip">Source: {historicalPrices.source ?? 'API'}</span>
+                  <span className="chip">{historicalPrices.prices.length} days</span>
+                  {historicalPrices.prices.length > 0 && (
+                    <span className={`chip ${
+                      historicalPrices.prices[historicalPrices.prices.length - 1].close >= historicalPrices.prices[0].close
+                        ? 'positive' : 'warning'
+                    }`}>
+                      {(((historicalPrices.prices[historicalPrices.prices.length - 1].close - historicalPrices.prices[0].close) / historicalPrices.prices[0].close) * 100).toFixed(2)}% in period
+                    </span>
+                  )}
+                </div>
+              )}
+            </article>
+          )}
+          {companyChartData && (
+            <article className="feature-card">
+              <div className="feature-head">
+                <BarChart3 size={18} />
+                <h3>Financial Performance ({companyLabel})</h3>
+              </div>
+              <div style={{ height: '300px', marginTop: '16px' }}>
+                <Bar 
+                  options={{
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                      legend: { position: 'top' as const },
+                      title: { display: false }
+                    }
+                  }} 
+                  data={companyChartData} 
+                />
+              </div>
             </article>
           )}
         </div>

@@ -236,3 +236,98 @@ class CompaniesService:
             self.db.commit()
         except Exception:
             self.db.rollback()
+
+    async def get_historical_prices(self, company_id: UUID, days: int = 30) -> dict[str, Any]:
+        """Return daily OHLCV price history from Alpha Vantage."""
+        import os
+        import httpx
+
+        cache_source = f"hist_prices_{days}"
+        cached = self._get_cache_snapshot(company_id, cache_source)
+        if cached:
+            return cached
+
+        company = self.db.query(Company).filter(Company.id == company_id).first()
+        if not company:
+            raise HTTPException(status_code=404, detail="Company not found")
+
+        api_key = os.getenv("ALPHA_VANTAGE_API_KEY", "").strip()
+        if not api_key:
+            return {
+                "company_id": str(company_id),
+                "prices": [],
+                "error": "Alpha Vantage API key not configured",
+            }
+
+        # Build candidate symbols — Alpha Vantage works with name-based symbols
+        # Try ticker_nse with BSE suffix first (e.g., RELIANCE.BSE), then NSE suffix
+        symbols: list[str] = []
+        if company.ticker_nse:
+            symbols.append(f"{company.ticker_nse}.BSE")  # e.g., RELIANCE.BSE
+            symbols.append(f"{company.ticker_nse}.NSE")  # e.g., RELIANCE.NSE
+        if company.ticker_bse and company.ticker_nse != company.ticker_bse:
+            symbols.append(f"{company.ticker_bse}.BSE")  # numeric BSE code fallback
+
+        outputsize = "full" if days > 100 else "compact"
+
+        for symbol in symbols:
+            try:
+                async with httpx.AsyncClient(timeout=30.0) as client:
+                    response = await client.get(
+                        "https://www.alphavantage.co/query",
+                        params={
+                            "function": "TIME_SERIES_DAILY",
+                            "symbol": symbol,
+                            "outputsize": outputsize,
+                            "apikey": api_key,
+                        },
+                    )
+                    response.raise_for_status()
+
+                data = response.json()
+                ts = data.get("Time Series (Daily)", {})
+                if not ts:
+                    continue
+
+                # Parse and sort by date, take latest N days
+                prices = []
+                for dt_str, values in sorted(ts.items(), reverse=True)[:days]:
+                    prices.append({
+                        "date": dt_str,
+                        "open": float(values.get("1. open", 0)),
+                        "high": float(values.get("2. high", 0)),
+                        "low": float(values.get("3. low", 0)),
+                        "close": float(values.get("4. close", 0)),
+                        "volume": int(values.get("5. volume", 0)),
+                    })
+
+                # Reverse so oldest first for charting
+                prices.reverse()
+
+                payload = {
+                    "company_id": str(company_id),
+                    "company_name": company.name,
+                    "symbol": symbol,
+                    "source": "AlphaVantage",
+                    "days_requested": days,
+                    "prices": prices,
+                    "data_sources": [
+                        {
+                            "name": "Alpha Vantage",
+                            "url": f"https://www.alphavantage.co/query?function=TIME_SERIES_DAILY&symbol={symbol}",
+                            "data_type": "historical_prices",
+                        }
+                    ],
+                }
+                self._save_cache_snapshot(company_id, cache_source, payload)
+                return payload
+
+            except Exception:
+                continue
+
+        return {
+            "company_id": str(company_id),
+            "company_name": company.name,
+            "prices": [],
+            "error": "Could not fetch historical prices from any source",
+        }

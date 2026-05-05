@@ -160,6 +160,26 @@ export interface AIFinancials {
   data_sources?: DataSourceInfo[];
 }
 
+export interface AIHistoricalPrice {
+  date: string;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+}
+
+export interface AIHistoricalPrices {
+  company_id: string;
+  company_name: string;
+  symbol?: string;
+  source?: string;
+  days_requested: number;
+  prices: AIHistoricalPrice[];
+  data_sources?: DataSourceInfo[];
+  error?: string;
+}
+
 export interface AIRatios {
   company_id: string;
   company_name: string;

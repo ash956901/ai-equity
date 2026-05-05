@@ -2,6 +2,7 @@ import {
   type AICompany,
   type AICompanyListResponse,
   type AIFinancials,
+  type AIHistoricalPrices,
   type AIHolding,
   type AIPortfolio,
   type AIPortfolioDetail,
@@ -87,6 +88,10 @@ export async function fetchCompanyRatios(id: string): Promise<AIRatios> {
 
 export async function fetchCompanyQuote(id: string): Promise<AIQuote> {
   return aiGet<AIQuote>(`/companies/${id}/quote`);
+}
+
+export async function fetchHistoricalPrices(id: string, days = 30): Promise<AIHistoricalPrices> {
+  return aiGet<AIHistoricalPrices>(`/companies/${id}/historical-prices?days=${days}`);
 }
 
 export async function enrichCompany(

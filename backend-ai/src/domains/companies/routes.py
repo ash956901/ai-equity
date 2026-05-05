@@ -112,3 +112,14 @@ def refresh_company(
     """Trigger full background refresh: enrich + financials + filings."""
     service = CompaniesService(db)
     return service.refresh_company(company_id)
+
+
+@router.get("/{company_id}/historical-prices")
+async def get_historical_prices(
+    company_id: UUID,
+    days: int = Query(default=30, ge=7, le=365, description="Number of days of history"),
+    db: Session = Depends(get_db),
+) -> Dict[str, Any]:
+    """Get daily historical stock prices (OHLCV) via Alpha Vantage."""
+    service = CompaniesService(db)
+    return await service.get_historical_prices(company_id, days)
