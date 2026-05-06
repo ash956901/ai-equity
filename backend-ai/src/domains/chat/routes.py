@@ -6,6 +6,7 @@ from typing import Any, Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -28,6 +29,7 @@ class QueryRequest(BaseModel):
     upload_id: Optional[UUID] = Field(
         None, description="Attached document upload ID for doc analysis"
     )
+    stream: bool = Field(default=False, description="Enable streaming response")
 
 
 class QueryResponse(BaseModel):
@@ -41,10 +43,10 @@ class QueryResponse(BaseModel):
     data_sources: list[dict[str, Any]] = []
 
 
-@router.post("/query", response_model=QueryResponse)
-def process_query(request: QueryRequest, db: Session = Depends(get_db)) -> QueryResponse:
+@router.post("/query")
+async def process_query(request: QueryRequest, db: Session = Depends(get_db)):
     """Process a research query through the deep agent orchestrator."""
-    print(f"[STAGE 1: ROUTES] Received: user_id={request.user_id}, session_id={request.session_id}, query='{request.query[:50]}...', expertise={request.expertise_level}, upload_id={request.upload_id}")
+    print(f"[STAGE 1: ROUTES] Received: user_id={request.user_id}, session_id={request.session_id}, query='{request.query[:50]}...', expertise={request.expertise_level}, stream={request.stream}")
     
     service = ChatService(db)
     try:
@@ -60,7 +62,14 @@ def process_query(request: QueryRequest, db: Session = Depends(get_db)) -> Query
         
         print(f"[STAGE 5: RESPONSE] Got response: session_id={result.get('session_id')}, tokens_used={result.get('tokens_used')}")
         
-        # Print response text for debugging
+        if request.stream:
+            # Stream the response
+            async def generate():
+                response_text = result.get("response", "")
+                yield f"data: {response_text}\n\n"
+            
+            return StreamingResponse(generate(), media_type="text/event-stream")
+        
         print(f"[STAGE 5: FINAL_RESPONSE] response = {result.get('response')[:500] if result.get('response') else 'None'}...")
         
         return QueryResponse(**result)

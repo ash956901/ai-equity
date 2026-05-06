@@ -100,45 +100,55 @@ def sync_commodity_prices(self):
             logger.info(f"Synced {len(results['oil_prices'])} oil commodity prices")
         
         # Sync from CommodityPriceAPI (Metals + Agriculture)
+        # API endpoint: https://api.commoditypriceapi.com/v2/rates/latest?symbols=XAU,XAG,...
         if settings.commodity_price_api_key:
             import httpx
             
             headers = {"x-api-key": settings.commodity_price_api_key}
             base_url = "https://api.commoditypriceapi.com/v2"
             
-            commodities = ["XAU", "XAG", "wheat", "sugar_11", "copper", "corn", "coffee", "cotton"]
+            # Use batch endpoint - only symbols that return data from this API
+            symbols = ["XAU", "XAG", "CORN", "WTIOIL-FUT"]
             
-            for symbol in commodities:
-                try:
-                    response = httpx.get(
-                        f"{base_url}/commodities/{symbol}/price",
-                        headers=headers,
-                        timeout=30.0
-                    )
-                    response.raise_for_status()
-                    data = response.json()
+            try:
+                response = httpx.get(
+                    f"{base_url}/rates/latest",
+                    params={"symbols": ",".join(symbols)},
+                    headers=headers,
+                    timeout=30.0
+                )
+                response.raise_for_status()
+                data = response.json()
+                
+                if data.get("success") and data.get("rates"):
+                    rates = data.get("rates", {})
+                    meta = data.get("metaData", {})
                     
-                    if data.get("result") == "success":
-                        price_data = data.get("data", {})
+                    for symbol, price in rates.items():
+                        # Get metadata for this symbol
+                        symbol_meta = meta.get(symbol, {})
+                        
                         commodity = CommodityPrice(
                             symbol=symbol,
-                            name=price_data.get("name", symbol),
-                            price=price_data.get("price"),
-                            change=price_data.get("change"),
-                            change_pct=price_data.get("changePct"),
-                            currency="USD",
-                            timestamp=datetime.fromisoformat(
-                                price_data.get("timestamp", "").replace("Z", "+00:00")
-                            ) if price_data.get("timestamp") else datetime.utcnow(),
+                            name=symbol,
+                            price=price,
+                            currency=symbol_meta.get("quote", "USD"),
+                            unit=symbol_meta.get("unit"),
+                            timestamp=datetime.fromtimestamp(
+                                data.get("timestamp", 0)
+                            ) if data.get("timestamp") else datetime.utcnow(),
                             source="commoditypriceapi",
                         )
                         db.add(commodity)
                         results["commodity_prices"].append(symbol)
-                except Exception as e:
-                    logger.error(f"Error syncing {symbol}: {e}")
-                    results["errors"].append(f"comm:{symbol}:{str(e)}")
-            
-            logger.info(f"Synced {len(results['commodity_prices'])} commodity prices")
+                        
+                    logger.info(f"Synced {len(results['commodity_prices'])} commodity prices from batch API")
+                else:
+                    logger.warning(f"CommodityPriceAPI returned no rates: {data}")
+                    
+            except Exception as e:
+                logger.error(f"Error syncing commodities: {e}")
+                results["errors"].append(f"comm:batch:{str(e)}")
         
         db.commit()
         _finish_etl_run(

@@ -52,6 +52,26 @@ def get_llm(model: str | None = None, temperature: float = 0.3) -> Any:
             temperature=temp,
         )
 
+    if s.llm_provider == "cerebras":
+        from langchain_openai import ChatOpenAI
+
+        return ChatOpenAI(
+            model=model,
+            api_key=s.cerebras_api_key or "",
+            base_url=s.cerebras_base_url,
+            temperature=temp,
+        )
+
+    if s.llm_provider == "nvidia":
+        from langchain_openai import ChatOpenAI
+
+        return ChatOpenAI(
+            model=model,
+            api_key=s.deepseek_api_key or "",
+            base_url=s.deepseek_base_url,
+            temperature=temp,
+        )
+
     raise ValueError(f"Unknown llm_provider: {s.llm_provider}")
 
 

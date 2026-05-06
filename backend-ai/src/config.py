@@ -31,7 +31,7 @@ class Settings(BaseSettings):
     qdrant_api_key: Optional[str] = None
 
     # LLM
-    llm_provider: Literal["ollama", "deepseek", "openai", "groq"] = "groq"
+    llm_provider: Literal["ollama", "deepseek", "openai", "groq", "cerebras", "nvidia"] = "nvidia"
     # Optional global override model from .env (takes priority if set)
     llm_model: Optional[str] = None
     # Optional documented list for UI/ops discoverability, comma-separated in .env
@@ -55,6 +55,14 @@ class Settings(BaseSettings):
     # Groq API (when llm_provider=groq)
     groq_api_key: Optional[str] = "dkdkvm"
     groq_base_url: str = "https://api.groq.com/openai/v1"
+
+    # Cerebras API (when llm_provider=cerebras)
+    cerebras_api_key: Optional[str] = None
+    cerebras_base_url: str = "https://api.cerebras.ai/v1"
+    cerebras_model: str = "llama3.1-8b"
+
+    # NVIDIA API (when llm_provider=nvidia)
+    nvidia_model: str = "meta/llama-3.1-8b-instruct"
 
     # Gemini API (for supplemental company enrichment)
     gemini_api_key: Optional[str] = None
@@ -131,6 +139,10 @@ class Settings(BaseSettings):
             return self.openai_model
         if self.llm_provider == "groq":
             return self.groq_model
+        if self.llm_provider == "cerebras":
+            return self.cerebras_model
+        if self.llm_provider == "nvidia":
+            return self.nvidia_model
         return self.ollama_model
 
     @property

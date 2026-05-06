@@ -7,13 +7,13 @@ from uuid import UUID
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
-from src.agents import build_research_agent
+from src.agents.router import route_query, QueryRoute
+from src.agents.handlers.comparison_handler import handle_comparison
+from src.agents.handlers.portfolio_handler import handle_portfolio
+from src.agents.handlers.causal_handler import handle_causal
+from src.agents.handlers.general_handler import handle_analysis, handle_news, handle_general
 from src.db.models import ChatMessage, ChatSession, User, Portfolio
 from src.utils.data_sources import DataSource
-
-
-MAX_AGENT_RETRIES = 2
-RETRY_BACKOFF_SECONDS = 1.0
 
 
 class ChatService:
@@ -21,24 +21,6 @@ class ChatService:
 
     def __init__(self, db: Session):
         self.db = db
-
-    def _build_user_message(
-        self,
-        query: str,
-        user_id: UUID,
-        expertise_level: str,
-        upload_id: Optional[UUID],
-        primary_portfolio_id: Optional[UUID],
-    ) -> str:
-        parts = [query]
-        context_lines = [f"user_id={user_id}"]
-        if upload_id:
-            context_lines.append(f"upload_id={upload_id}")
-        if primary_portfolio_id:
-            context_lines.append(f"primary_portfolio_id={primary_portfolio_id}")
-        context_lines.append(f"expertise_level={expertise_level}")
-        parts.append(f"\n\n[Context: {', '.join(context_lines)}]")
-        return "".join(parts)
 
     def process_query(
         self,
@@ -88,77 +70,27 @@ class ChatService:
                 raise HTTPException(status_code=404, detail="Session not found")
             print(f"[STAGE 2b: SESSION] Using existing session: {resolved_session_id}")
 
-        print(f"[STAGE 3: AGENT] Building research agent...")
-        agent = build_research_agent()
-        print(f"[STAGE 3: AGENT] Research agent built")
+        route = route_query(query)
+        print(f"[ROUTER] Query classified as: {route}")
         
-        primary_portfolio = (
-            self.db.query(Portfolio)
-            .filter(Portfolio.user_id == user_id, Portfolio.is_primary == True)
-            .first()
-        )
-        primary_portfolio_id = primary_portfolio.id if primary_portfolio else None
-        if primary_portfolio_id:
-            print(f"[STAGE 3: PORTFOLIO] Primary portfolio: {primary_portfolio_id}")
-
-        user_message = self._build_user_message(
-            query=query,
-            user_id=user_id,
-            expertise_level=expertise_level,
-            upload_id=upload_id,
-            primary_portfolio_id=primary_portfolio_id,
-        )
+        start_time = time.time()
         
-        print(f"[STAGE 3: USER_MESSAGE] Built message (full): {user_message}")
+        if route == QueryRoute.COMPARE:
+            response_text = handle_comparison(query, self.db, str(user_id), expertise_level)
+        elif route == QueryRoute.PORTFOLIO:
+            response_text = handle_portfolio(query, self.db, str(user_id), expertise_level)
+        elif route == QueryRoute.CAUSAL:
+            response_text = handle_causal(query, self.db, str(user_id), expertise_level)
+        elif route == QueryRoute.ANALYZE:
+            response_text = handle_analysis(query, self.db, str(user_id), expertise_level)
+        elif route == QueryRoute.NEWS:
+            response_text = handle_news(query, self.db, str(user_id), expertise_level)
+        else:
+            response_text = handle_general(query, self.db, str(user_id), expertise_level)
 
-        print(f"[STAGE 4: AGENT_INVOKE] Invoking agent with session_id={resolved_session_id}")
-        print(f"[STAGE 4: INPUT_TO_LLM] messages = [{{'role': 'user', 'content': '{user_message}'}}]")
-        result: Optional[dict[str, Any]] = None
-        last_err = None
-        for attempt in range(1, MAX_AGENT_RETRIES + 1):
-            try:
-                print(f"[STAGE 4: ATTEMPT {attempt}/{MAX_AGENT_RETRIES}] Invoking agent...")
-                
-                result = agent.invoke(
-                    {"messages": [{"role": "user", "content": user_message}]},
-                    config={"configurable": {"thread_id": str(resolved_session_id)}},
-                )
-                
-                print(f"[STAGE 4: ATTEMPT {attempt}] Agent invoke succeeded")
-                
-                last_err = None
-                break
-            except Exception as invoke_err:
-                last_err = invoke_err
-                err_msg = str(invoke_err)
-                print(f"[STAGE 4: ATTEMPT {attempt}] Agent invoke failed: {err_msg[:200]}")
-                
-                if "output_parse_failed" in err_msg or "BadRequestError" in type(invoke_err).__name__:
-                    print(f"[STAGE 4: RETRY] Retrying after {RETRY_BACKOFF_SECONDS * attempt}s...")
-                    if attempt < MAX_AGENT_RETRIES:
-                        time.sleep(RETRY_BACKOFF_SECONDS * attempt)
-                        continue
-                raise
-
-        if last_err is not None:
-            raise last_err
-        if result is None:
-            raise RuntimeError("Agent returned no result")
-
-        print(f"[STAGE 4: RESULT_FULL] result keys = {list(result.keys())}")
-        
-        response_text = result["messages"][-1].content
-        print(f"[STAGE 4: LLM_RESPONSE_FULL] response_text = {response_text}")
-
-        tokens_used = 0
-        if hasattr(result["messages"][-1], "response_metadata"):
-            tokens_used = (
-                result["messages"][-1]
-                .response_metadata.get("token_usage", {})
-                .get("total_tokens", 0)
-            )
-            print(f"[STAGE 4: TOKENS_USED] tokens_used = {tokens_used}")
-            print(f"[STAGE 4: METADATA_FULL] response_metadata = {result['messages'][-1].response_metadata}")
+        tokens_used = 0 # Handlers natively abstract tokens
+        duration = time.time() - start_time
+        print(f"[STAGE 4: LLM_RESPONSE] Response generated in {duration:.2f}s: {response_text[:100]}...")
 
         self.db.add(
             ChatMessage(

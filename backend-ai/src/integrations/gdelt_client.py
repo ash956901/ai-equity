@@ -86,7 +86,8 @@ class GDELTClient:
             response.raise_for_status()
             data = response.json()
 
-            events = data.get("events", [])
+            # API returns data under "data" key, not "events"
+            events = data.get("data", [])
             return [self._transform_event(e) for e in events]
 
         except httpx.HTTPStatusError as e:
@@ -182,12 +183,12 @@ class GDELTClient:
 
     def get_middle_east_events(self, hours: int = 48) -> list[dict[str, Any]]:
         """Get Middle East conflict events (highest priority for oil prices)."""
-        middle_east_countries = ["IL", "IR", "SA", "AE", "IQ", "SY", "YE", "PS"]
+        middle_east_countries = ["Israel", "Iran", "Saudi Arabia", "United Arab Emirates", "Iraq", "Syria", "Yemen", "Palestine"]
         return self.get_events_by_countries(middle_east_countries, hours)
 
     def get_europe_events(self, hours: int = 48) -> list[dict[str, Any]]:
         """Get Europe-related events."""
-        europe_countries = ["RU", "UA", "GB", "DE", "FR", "IT", "PL"]
+        europe_countries = ["Russia", "Ukraine", "United Kingdom", "Germany", "France", "Italy", "Poland"]
         return self.get_events_by_countries(europe_countries, hours)
 
 

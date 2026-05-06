@@ -26,39 +26,89 @@ class PortfoliosService:
         if not portfolio_id:
             return {"suggestions": "No primary portfolio found. Add one to get AI insights."}
 
-        # Get causal insights first
+        # Get holdings
+        holdings = self._portfolio_service.get_holdings(portfolio_id)
+        if not holdings:
+            return {"suggestions": "Your primary portfolio is empty. Add holdings to get AI insights."}
+            
+        enriched_holdings = []
+        for h in holdings:
+            c = self.db.query(Company).filter(Company.id == h['company_id']).first()
+            name = c.name if c else "Unknown Company"
+            ticker = c.ticker_nse or c.ticker_bse if c else "Unknown"
+            enriched_holdings.append(f"- {name} ({ticker}) - Quantity: {h.get('quantity')}")
+            h['company_name'] = name
+            
+        holdings_text = "\\n".join(enriched_holdings)
+
+        # Get recent news for top 3 holdings
+        from src.services.news_service import NewsService
+        news_svc = NewsService(self.db)
+        news_context = []
+        for h in holdings[:3]:
+            cid = h.get('company_id')
+            if cid:
+                import uuid
+                try:
+                    news_items = news_svc.get_recent_news(uuid.UUID(str(cid)), days=30, limit=2)
+                    if news_items:
+                        news_context.append(f"**{h.get('company_name')} News:**")
+                        for n in news_items:
+                            news_context.append(f"- {n.get('title')} ({n.get('sentiment', 'neutral')})")
+                except Exception:
+                    pass
+        news_text = "\\n".join(news_context) if news_context else "No recent news for top holdings."
+
+        # Get causal insights
         causal_context = self._get_causal_context(portfolio_id)
 
-        # We use the research agent to generate a summary/suggestion
-        agent = build_research_agent()
+        # Use a direct, fast LLM call without tools to avoid binding crashes
+        from src.agents.handlers.synthesis import get_synthesis_llm
+        from langchain_core.messages import HumanMessage
+        llm = get_synthesis_llm()
         
-        # Enhanced task with causal context
         task = (
-            f"Analyse the portfolio {portfolio_id} and recent market news. "
-            "Also consider the following commodity price trends and market signals:\n\n"
-            f"{causal_context}\n\n"
-            "Provide 3-4 specific 'Hidden Insights' that connect world events and commodity prices "
-            "to specific companies in this portfolio. Format each insight as:\n"
-            "- **Trigger**: What happened (e.g., 'Oil up 5%')\n"
-            "- **Chain**: How it propagates (e.g., 'Oil → Transport costs → Margins')\n"
-            "- **Impact**: Which holdings are affected and how\n"
-            "- **Confidence**: How certain (High/Medium/Low)\n"
-            "- **Recommendation**: What to consider (Buy more/Hold/Reduce)\n\n"
-            "Also provide Investment Suggestions (Buy/Sell/Hold) for this user. "
-            "Return the response as a clean, professional markdown block with headers and bullet points. "
-            "Do NOT return JSON or structured lists, just formatted text."
+            "You are Iris, a highly intelligent senior equity research analyst specializing in Indian markets.\n"
+            "You are reviewing a user's portfolio to provide top-tier, actionable investment suggestions.\n\n"
+            f"**Portfolio Holdings:**\n{holdings_text}\n\n"
+            f"**Recent News for Top Holdings:**\n{news_text}\n\n"
+            f"**Market & Commodity Signals:**\n{causal_context}\n\n"
+            "Synthesize this data into a brilliant, highly readable report. Do not be generic; provide specific, thesis-driven analysis.\n"
+            "You MUST output EXACTLY this markdown structure:\n\n"
+            "## AI Investment Suggestions\n\n"
+            "## Recent News for Top Holdings\n"
+            "(Provide a brief, insightful summary of the recent news affecting the top holdings. Do not just list headlines; explain the sentiment and meaning.)\n\n"
+            "## Hidden Insights (Alpha Signals)\n"
+            "(Identify 3-4 deep, non-obvious causal links connecting the macro/commodity signals to specific portfolio holdings.)\n"
+            "### 1\n"
+            "* **Trigger:** [What macroeconomic event or commodity shift occurred?]\n"
+            "* **Chain:** [How does it flow through the economy? e.g. Event → Input Cost → Margin → Company]\n"
+            "* **Impact:** [Which specific holding is affected and how?]\n"
+            "* **Confidence:** [High / Medium / Low]\n"
+            "* **Recommendation:** [Specific actionable advice]\n"
+            "(Repeat for insights 2, 3, etc.)\n\n"
+            "---\n\n"
+            "# Investment Suggestions (Buy / Sell / Hold)\n"
+            "(List every major holding. Be decisive. Provide a 1-sentence analytical reason for the rating based on the data.)\n"
+            "* **[Company Name]:** [Buy / Sell / Hold] — [Reasoning]\n\n"
+            "---\n\n"
+            "# Explained Simply\n"
+            "(Provide a plain-English summary for a retail investor.)\n"
+            "* **Why you own it:** [Summary of portfolio composition]\n"
+            "* **How it's doing:** [Overall health/performance based on news & signals]\n"
+            "* **Risk:** [Key risks identified in causal analysis]\n"
+            "* **Good news:** [Key tailwinds]\n"
+            "* **Caution:** [What to watch out for]\n\n"
+            "Ensure the response is extremely high quality, readable, and directly ties the causal data to the holdings."
         )
 
-
         try:
-            result = agent.invoke(
-                {"messages": [{"role": "user", "content": task}]},
-                config={"configurable": {"thread_id": f"suggestions-{user_id}"}},
-            )
-            response_text = result["messages"][-1].content
+            result = llm.invoke([HumanMessage(content=task)])
+            response_text = getattr(result, "content", str(result))
             return {"suggestions": response_text}
         except Exception as e:
             import logging
+            print(f"DEBUG: Exception in get_ai_suggestions: {e}")
             logging.getLogger(__name__).error(f"Failed to generate AI suggestions: {e}")
             return {"suggestions": "AI insights are temporarily unavailable. Please try again later."}
 

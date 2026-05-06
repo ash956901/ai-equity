@@ -1,5 +1,4 @@
-"""Orchestrator: builds the main deep agent with sub-agents, skills, and
-long-term memory for equity research."""
+"""Orchestrator: builds the main deep agent with tools and memory."""
 
 from __future__ import annotations
 
@@ -9,12 +8,12 @@ from deepagents import create_deep_agent
 
 from src.agents.memory import get_memory_config
 from src.agents.prompts.orchestrator import ORCHESTRATOR_PROMPT
-from src.agents.subagents import get_all_subagents
 from src.agents.tools.company_resolver import resolve_company
 from src.agents.tools.web_search import internet_search
+from src.agents.tools.financial import get_latest_financials, calculate_ratios
+from src.agents.tools.news import get_recent_news
+from src.agents.tools.causal_tools import get_causal_tools
 from src.config import get_settings
-
-_agent = None
 
 
 def _get_model_string() -> str:
@@ -31,12 +30,16 @@ def _get_model_string() -> str:
         return f"openai:{model}"
     if s.llm_provider == "deepseek":
         return f"openai:{model}"
+    if s.llm_provider == "cerebras":
+        return f"openai:{model}"
+    if s.llm_provider == "nvidia":
+        return f"openai:{model}"
     return f"ollama:{model}"
 
 
 def _get_model_kwargs() -> dict[str, Any]:
     """Return extra keyword arguments needed for providers that require custom
-    base URLs or API keys (Groq, DeepSeek) beyond what the ``provider:model``
+    base URLs or API keys (Groq, DeepSeek, Cerebras) beyond what the ``provider:model``
     string provides."""
     s = get_settings()
     kwargs: dict[str, Any] = {}
@@ -59,58 +62,65 @@ def _get_model_kwargs() -> dict[str, Any]:
             base_url=s.deepseek_base_url,
             temperature=s.llm_temperature,
         )
+    elif s.llm_provider == "cerebras":
+        from langchain_openai import ChatOpenAI
+
+        kwargs["model"] = ChatOpenAI(
+            model=s.get_llm_model(),
+            api_key=s.cerebras_api_key or "",
+            base_url=s.cerebras_base_url,
+            temperature=s.llm_temperature,
+        )
+    elif s.llm_provider == "nvidia":
+        from langchain_openai import ChatOpenAI
+
+        kwargs["model"] = ChatOpenAI(
+            model=s.get_llm_model(),
+            api_key=s.deepseek_api_key or "",
+            base_url=s.deepseek_base_url,
+            temperature=s.llm_temperature,
+        )
 
     return kwargs
 
 
 def build_research_agent():
-    """Build and return the compiled orchestrator deep agent.
-
-    The orchestrator has two lightweight tools (``resolve_company`` and
-    ``internet_search``), delegates heavy analysis to five specialist
-    sub-agents, and is equipped with:
-    - **Long-term memory** via CompositeBackend (/memories/ persists across sessions)
-    - **Skills** (progressive disclosure) for Indian equity, annual-report,
-      and portfolio-strategy domain knowledge
-    - **Checkpointer** for conversation continuity within a session
-    """
-    print(f"[ORCHESTRATOR] build_research_agent() called")
-    
-    global _agent
-    if _agent is not None:
-        print(f"[ORCHESTRATOR] Returning cached agent instance")
-        return _agent
-
+    """Build and return the compiled orchestrator deep agent without sub-agents."""
     print(f"[ORCHESTRATOR] Building new research agent...")
-    print(f"[ORCHESTRATOR] Model string: {_get_model_string()}")
+    
+    model_str = _get_model_string()
+    print(f"[ORCHESTRATOR] Model string: {model_str}")
 
     extra = _get_model_kwargs()
 
     if "model" in extra:
         model = extra.pop("model")
     else:
-        model = _get_model_string()
+        model = model_str
 
     print(f"[ORCHESTRATOR] Model configured: {model}")
         
     memory_cfg = get_memory_config()
     
-    print(f"[ORCHESTRATOR] Memory config keys: {list(memory_cfg.keys())}")
-    print(f"[ORCHESTRATOR] System prompt (first 500 chars): {ORCHESTRATOR_PROMPT[:500]}...")
+    causal_tools = get_causal_tools()
+    all_tools = [
+        resolve_company,
+        internet_search,
+        get_latest_financials,
+        calculate_ratios,
+        get_recent_news
+    ] + causal_tools
     
-    subagents = get_all_subagents()
-    print(f"[ORCHESTRATOR] Subagents: {list(subagents.keys()) if hasattr(subagents, 'keys') else subagents}")
-    print(f"[ORCHESTRATOR] Tools: resolve_company, internet_search")
+    print(f"[ORCHESTRATOR] Tools configured: {[getattr(t, 'name', getattr(t, '__name__', str(t))) for t in all_tools]}")
 
-    print(f"[ORCHESTRATOR] Calling create_deep_agent...")
-    _agent = create_deep_agent(
+    agent = create_deep_agent(
         model=model,
-        tools=[resolve_company, internet_search],
+        tools=all_tools,
         system_prompt=ORCHESTRATOR_PROMPT,
-        subagents=subagents,
+        subagents={},
         **memory_cfg,
     )
 
     print(f"[ORCHESTRATOR] Agent built successfully!")
-    print(f"[ORCHESTRATOR] Agent type: {type(_agent)}")
-    return _agent
+    return agent
+
