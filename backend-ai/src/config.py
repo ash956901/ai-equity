@@ -31,7 +31,7 @@ class Settings(BaseSettings):
     qdrant_api_key: Optional[str] = None
 
     # LLM
-    llm_provider: Literal["ollama", "deepseek", "openai", "groq"] = "ollama"
+    llm_provider: Literal["ollama", "deepseek", "openai", "groq"] = "groq"
     # Optional global override model from .env (takes priority if set)
     llm_model: Optional[str] = None
     # Optional documented list for UI/ops discoverability, comma-separated in .env
@@ -42,7 +42,7 @@ class Settings(BaseSettings):
     ollama_model: str = "deepseek-r1:8b"
     deepseek_model: str = "deepseek-chat"
     openai_model: str = "gpt-4o-mini"
-    groq_model: str = "moonshotai/kimi-k2-instruct"
+    groq_model: str = "llama-3.3-70b-versatile"
 
     # Ollama
     ollama_base_url: str = "http://localhost:11434"
@@ -53,7 +53,7 @@ class Settings(BaseSettings):
     openai_api_key: Optional[str] = None
 
     # Groq API (when llm_provider=groq)
-    groq_api_key: Optional[str] = None
+    groq_api_key: Optional[str] = "dkdkvm"
     groq_base_url: str = "https://api.groq.com/openai/v1"
 
     # Gemini API (for supplemental company enrichment)

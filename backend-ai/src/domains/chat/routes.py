@@ -12,8 +12,6 @@ from sqlalchemy.orm import Session
 from src.db.database import get_db
 from src.domains.chat.service import ChatService
 
-logger = logging.getLogger(__name__)
-
 router = APIRouter(prefix="/chat", tags=["chat"])
 
 
@@ -46,8 +44,12 @@ class QueryResponse(BaseModel):
 @router.post("/query", response_model=QueryResponse)
 def process_query(request: QueryRequest, db: Session = Depends(get_db)) -> QueryResponse:
     """Process a research query through the deep agent orchestrator."""
+    print(f"[STAGE 1: ROUTES] Received: user_id={request.user_id}, session_id={request.session_id}, query='{request.query[:50]}...', expertise={request.expertise_level}, upload_id={request.upload_id}")
+    
     service = ChatService(db)
     try:
+        print(f"[STAGE 2: SERVICE] Calling service.process_query for user_id={request.user_id}")
+        
         result = service.process_query(
             user_id=request.user_id,
             query=request.query,
@@ -55,12 +57,20 @@ def process_query(request: QueryRequest, db: Session = Depends(get_db)) -> Query
             session_id=request.session_id,
             upload_id=request.upload_id,
         )
+        
+        print(f"[STAGE 5: RESPONSE] Got response: session_id={result.get('session_id')}, tokens_used={result.get('tokens_used')}")
+        
+        # Print response text for debugging
+        print(f"[STAGE 5: FINAL_RESPONSE] response = {result.get('response')[:500] if result.get('response') else 'None'}...")
+        
         return QueryResponse(**result)
     except HTTPException:
         raise
     except Exception as e:
         db.rollback()
-        logger.error("Chat query failed:\n%s", traceback.format_exc())
+        print(f"[ERROR] Chat query failed: {e}")
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
 

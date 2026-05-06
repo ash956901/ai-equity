@@ -3,7 +3,6 @@ long-term memory for equity research."""
 
 from __future__ import annotations
 
-import logging
 from typing import Any
 
 from deepagents import create_deep_agent
@@ -14,8 +13,6 @@ from src.agents.subagents import get_all_subagents
 from src.agents.tools.company_resolver import resolve_company
 from src.agents.tools.web_search import internet_search
 from src.config import get_settings
-
-logger = logging.getLogger(__name__)
 
 _agent = None
 
@@ -77,9 +74,15 @@ def build_research_agent():
       and portfolio-strategy domain knowledge
     - **Checkpointer** for conversation continuity within a session
     """
+    print(f"[ORCHESTRATOR] build_research_agent() called")
+    
     global _agent
     if _agent is not None:
+        print(f"[ORCHESTRATOR] Returning cached agent instance")
         return _agent
+
+    print(f"[ORCHESTRATOR] Building new research agent...")
+    print(f"[ORCHESTRATOR] Model string: {_get_model_string()}")
 
     extra = _get_model_kwargs()
 
@@ -88,20 +91,26 @@ def build_research_agent():
     else:
         model = _get_model_string()
 
+    print(f"[ORCHESTRATOR] Model configured: {model}")
+        
     memory_cfg = get_memory_config()
+    
+    print(f"[ORCHESTRATOR] Memory config keys: {list(memory_cfg.keys())}")
+    print(f"[ORCHESTRATOR] System prompt (first 500 chars): {ORCHESTRATOR_PROMPT[:500]}...")
+    
+    subagents = get_all_subagents()
+    print(f"[ORCHESTRATOR] Subagents: {list(subagents.keys()) if hasattr(subagents, 'keys') else subagents}")
+    print(f"[ORCHESTRATOR] Tools: resolve_company, internet_search")
 
+    print(f"[ORCHESTRATOR] Calling create_deep_agent...")
     _agent = create_deep_agent(
         model=model,
         tools=[resolve_company, internet_search],
         system_prompt=ORCHESTRATOR_PROMPT,
-        subagents=get_all_subagents(),
+        subagents=subagents,
         **memory_cfg,
     )
 
-    logger.info(
-        "Research orchestrator built (model=%s, subagents=%d, skills=%s, memory=on)",
-        model,
-        6,
-        memory_cfg.get("skills"),
-    )
+    print(f"[ORCHESTRATOR] Agent built successfully!")
+    print(f"[ORCHESTRATOR] Agent type: {type(_agent)}")
     return _agent

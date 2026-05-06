@@ -1,6 +1,5 @@
 """Business logic for chat query and session listing."""
 
-import logging
 import time
 from typing import Any, Optional
 from uuid import UUID
@@ -12,8 +11,6 @@ from src.agents import build_research_agent
 from src.db.models import ChatMessage, ChatSession, User, Portfolio
 from src.utils.data_sources import DataSource
 
-
-logger = logging.getLogger(__name__)
 
 MAX_AGENT_RETRIES = 2
 RETRY_BACKOFF_SECONDS = 1.0
@@ -51,6 +48,8 @@ class ChatService:
         session_id: Optional[UUID],
         upload_id: Optional[UUID],
     ) -> dict[str, Any]:
+        print(f"[STAGE 2: SERVICE] process_query called: user_id={user_id}, query='{query[:50]}...'")
+
         user = self.db.query(User).filter(User.id == user_id).first()
         if not user:
             user = User(
@@ -60,6 +59,9 @@ class ChatService:
             )
             self.db.add(user)
             self.db.flush()
+            print(f"[STAGE 2a: USER] Created new user: {user_id}")
+        else:
+            print(f"[STAGE 2a: USER] User exists: {user_id}")
 
         resolved_session_id = session_id
         if not resolved_session_id:
@@ -72,6 +74,7 @@ class ChatService:
             self.db.commit()
             self.db.refresh(session)
             resolved_session_id = session.id
+            print(f"[STAGE 2b: SESSION] Created new session: {resolved_session_id}")
         else:
             session = (
                 self.db.query(ChatSession)
@@ -83,8 +86,11 @@ class ChatService:
             )
             if not session:
                 raise HTTPException(status_code=404, detail="Session not found")
+            print(f"[STAGE 2b: SESSION] Using existing session: {resolved_session_id}")
 
+        print(f"[STAGE 3: AGENT] Building research agent...")
         agent = build_research_agent()
+        print(f"[STAGE 3: AGENT] Research agent built")
         
         primary_portfolio = (
             self.db.query(Portfolio)
@@ -92,6 +98,8 @@ class ChatService:
             .first()
         )
         primary_portfolio_id = primary_portfolio.id if primary_portfolio else None
+        if primary_portfolio_id:
+            print(f"[STAGE 3: PORTFOLIO] Primary portfolio: {primary_portfolio_id}")
 
         user_message = self._build_user_message(
             query=query,
@@ -100,27 +108,33 @@ class ChatService:
             upload_id=upload_id,
             primary_portfolio_id=primary_portfolio_id,
         )
+        
+        print(f"[STAGE 3: USER_MESSAGE] Built message (full): {user_message}")
 
+        print(f"[STAGE 4: AGENT_INVOKE] Invoking agent with session_id={resolved_session_id}")
+        print(f"[STAGE 4: INPUT_TO_LLM] messages = [{{'role': 'user', 'content': '{user_message}'}}]")
         result: Optional[dict[str, Any]] = None
         last_err = None
         for attempt in range(1, MAX_AGENT_RETRIES + 1):
             try:
+                print(f"[STAGE 4: ATTEMPT {attempt}/{MAX_AGENT_RETRIES}] Invoking agent...")
+                
                 result = agent.invoke(
                     {"messages": [{"role": "user", "content": user_message}]},
                     config={"configurable": {"thread_id": str(resolved_session_id)}},
                 )
+                
+                print(f"[STAGE 4: ATTEMPT {attempt}] Agent invoke succeeded")
+                
                 last_err = None
                 break
             except Exception as invoke_err:
                 last_err = invoke_err
                 err_msg = str(invoke_err)
+                print(f"[STAGE 4: ATTEMPT {attempt}] Agent invoke failed: {err_msg[:200]}")
+                
                 if "output_parse_failed" in err_msg or "BadRequestError" in type(invoke_err).__name__:
-                    logger.warning(
-                        "Agent invocation attempt %d/%d failed (retryable): %s",
-                        attempt,
-                        MAX_AGENT_RETRIES,
-                        err_msg[:200],
-                    )
+                    print(f"[STAGE 4: RETRY] Retrying after {RETRY_BACKOFF_SECONDS * attempt}s...")
                     if attempt < MAX_AGENT_RETRIES:
                         time.sleep(RETRY_BACKOFF_SECONDS * attempt)
                         continue
@@ -131,7 +145,11 @@ class ChatService:
         if result is None:
             raise RuntimeError("Agent returned no result")
 
+        print(f"[STAGE 4: RESULT_FULL] result keys = {list(result.keys())}")
+        
         response_text = result["messages"][-1].content
+        print(f"[STAGE 4: LLM_RESPONSE_FULL] response_text = {response_text}")
+
         tokens_used = 0
         if hasattr(result["messages"][-1], "response_metadata"):
             tokens_used = (
@@ -139,6 +157,8 @@ class ChatService:
                 .response_metadata.get("token_usage", {})
                 .get("total_tokens", 0)
             )
+            print(f"[STAGE 4: TOKENS_USED] tokens_used = {tokens_used}")
+            print(f"[STAGE 4: METADATA_FULL] response_metadata = {result['messages'][-1].response_metadata}")
 
         self.db.add(
             ChatMessage(
@@ -156,6 +176,8 @@ class ChatService:
             )
         )
         self.db.commit()
+        
+        print(f"[STAGE 5: DB] Messages saved to DB, session={resolved_session_id}")
 
         data_sources = [
             DataSource(
