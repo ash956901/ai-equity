@@ -10,6 +10,7 @@ backend-ai/.venv/
 /data/
 backend-ai/uploads/
 backend-ai/data/
+dump.rdb
 
 # Python bytecode and test caches
 __pycache__/

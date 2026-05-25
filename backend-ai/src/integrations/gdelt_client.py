@@ -207,7 +207,7 @@ class GDELTFreeClient:
     ) -> list[dict[str, Any]]:
         """Search GDELT for mentions matching query."""
         try:
-            url = f"{self.BASE_URL}/doc"
+            url = f"{self.BASE_URL}/doc/doc"
             params = {
                 "query": query,
                 "format": "json",
@@ -215,7 +215,7 @@ class GDELTFreeClient:
                 "mode": "artlist",
             }
 
-            response = httpx.get(url, params=params, timeout=30.0)
+            response = httpx.get(url, params=params, timeout=30.0, follow_redirects=True)
             response.raise_for_status()
             data = response.json()
 

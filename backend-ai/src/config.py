@@ -53,7 +53,7 @@ class Settings(BaseSettings):
     openai_api_key: Optional[str] = None
 
     # Groq API (when llm_provider=groq)
-    groq_api_key: Optional[str] = "dkdkvm"
+    groq_api_key: Optional[str] = None
     groq_base_url: str = "https://api.groq.com/openai/v1"
 
     # Gemini API (for supplemental company enrichment)

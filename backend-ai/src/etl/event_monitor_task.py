@@ -51,93 +51,44 @@ def monitor_geopolitical_events(self):
     errors = []
     
     try:
-        # Try GDELT Cloud first (if API key available)
-        if settings.gdelt_api_key:
-            from src.integrations.gdelt_client import GDELTClient
-            
-            client = GDELTClient(settings.gdelt_api_key)
-            
-            # Get events from priority regions
-            middle_east = client.get_middle_east_events(hours=2)
-            europe = client.get_europe_events(hours=2)
-            
-            all_events = middle_east + europe
-            
-            # Classify and filter significant events
-            from src.integrations.event_impact_classifier import get_event_classifier
-            
-            classifier = get_event_classifier()
-            significant = classifier.classify_batch(all_events)
-            
-            for event_data in significant:
-                # Check if already exists
-                existing = db.query(GeopoliticalEvent).filter(
-                    GeopoliticalEvent.event_id == event_data.get("event_id")
-                ).first()
-                
-                if not existing:
-                    event = GeopoliticalEvent(
-                        event_id=event_data.get("event_id"),
-                        title=event_data.get("title"),
-                        summary=event_data.get("summary"),
-                        event_date=datetime.fromisoformat(
-                            event_data.get("event_date", "").replace("Z", "+00:00")
-                        ) if event_data.get("event_date") else datetime.utcnow(),
-                        country=event_data.get("country"),
-                        region=event_data.get("region"),
-                        category=event_data.get("category"),
-                        subcategory=event_data.get("subcategory"),
-                        goldstein_scale=event_data.get("goldstein_scale"),
-                        confidence=event_data.get("confidence"),
-                        fatalities=event_data.get("fatalities"),
-                        source="gdelt",
-                        raw_data=event_data.get("raw_data"),
-                    )
-                    db.add(event)
-                    events_saved += 1
-            
-            logger.info(f"Saved {events_saved} new events from GDELT Cloud")
+        from src.integrations.gdelt_client import GDELTFreeClient
         
-        # Fallback: Use free GDELT API for broader coverage
-        else:
-            from src.integrations.gdelt_client import GDELTFreeClient
+        client = GDELTFreeClient()
+        
+        # Search for oil/conflict related news
+        queries = [
+            "oil price conflict Middle East",
+            "Russia Ukraine war energy",
+            "commodity supply disruption",
+        ]
+        
+        all_articles = []
+        for query in queries:
+            articles = client.search_mentions(query, max_results=10)
+            all_articles.extend(articles)
+        
+        # Store as basic events
+        for article in all_articles:
+            existing = db.query(GeopoliticalEvent).filter(
+                GeopoliticalEvent.title == article.get("title")
+            ).first()
             
-            client = GDELTFreeClient()
-            
-            # Search for oil/conflict related news
-            queries = [
-                "oil price conflict Middle East",
-                "Russia Ukraine war energy",
-                "commodity supply disruption",
-            ]
-            
-            all_articles = []
-            for query in queries:
-                articles = client.search_mentions(query, max_results=10)
-                all_articles.extend(articles)
-            
-            # Store as basic events
-            for article in all_articles:
-                existing = db.query(GeopoliticalEvent).filter(
-                    GeopoliticalEvent.title == article.get("title")
-                ).first()
-                
-                if not existing:
-                    event = GeopoliticalEvent(
-                        title=article.get("title"),
-                        summary=f"Source: {article.get('domain')}",
-                        event_date=datetime.fromisoformat(
-                            article.get("seendate", "").replace("Z", "+00:00")
-                        ) if article.get("seendate") else datetime.utcnow(),
-                        country="GLOBAL",
-                        category="news",
-                        source="gdelt_free",
-                        raw_data=article,
-                    )
-                    db.add(event)
-                    events_saved += 1
-            
-            logger.info(f"Saved {events_saved} events from free GDELT")
+            if not existing:
+                event = GeopoliticalEvent(
+                    title=article.get("title"),
+                    summary=f"Source: {article.get('domain')}",
+                    event_date=datetime.fromisoformat(
+                        article.get("seendate", "").replace("Z", "+00:00")
+                    ) if article.get("seendate") else datetime.utcnow(),
+                    country="GLOBAL",
+                    category="news",
+                    source="gdelt_free",
+                    raw_data=article,
+                )
+                db.add(event)
+                events_saved += 1
+        
+        logger.info(f"Saved {events_saved} events from free GDELT")
         
         db.commit()
         _finish_etl_run(db, run, records=events_saved)
