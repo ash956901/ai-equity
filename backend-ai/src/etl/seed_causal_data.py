@@ -1,9 +1,11 @@
 """Seed initial causal chains and sector exposures for Indian market."""
 
 import logging
+from datetime import datetime, timedelta
+import random
 
 from src.db.database import SessionLocal
-from src.db.models import CausalChain, SectorExposure
+from src.db.models import CausalChain, CommodityPrice, SectorExposure
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -422,16 +424,80 @@ def seed_sector_exposures(db):
     logger.info("Sector exposures seeding complete")
 
 
+def seed_dev_commodity_prices(db):
+    """Seed realistic commodity prices for dev/demo (no API keys required)."""
+    now = datetime.utcnow()
+
+    # (symbol, name, base_price, currency)
+    commodities = [
+        ("WTI_USD",          "Crude Oil WTI",        78.50,  "USD"),
+        ("BRENT_CRUDE_USD",  "Brent Crude Oil",      82.30,  "USD"),
+        ("NATURAL_GAS_USD",  "Natural Gas",           2.85,  "USD"),
+        ("JET_FUEL_USD",     "Jet Fuel",             93.20,  "USD"),
+        ("DIESEL_USD",       "Diesel",               95.40,  "USD"),
+        ("COAL_USD",         "Coal",                148.00,  "USD"),
+        ("XAU",              "Gold",               2340.00,  "USD"),
+        ("XAG",              "Silver",               27.50,  "USD"),
+        ("copper",           "Copper",                4.52,  "USD"),
+        ("aluminum",         "Aluminum",              2410,  "USD"),
+        ("sugar_11",         "Sugar No.11",           19.80, "USD"),
+        ("USDINR",           "USD/INR",               83.50, "INR"),
+    ]
+
+    for symbol, name, base_price, currency in commodities:
+        # Check if we already have recent data (within 2 days)
+        recent = (
+            db.query(CommodityPrice)
+            .filter(
+                CommodityPrice.symbol == symbol,
+                CommodityPrice.timestamp >= now - timedelta(days=2),
+            )
+            .first()
+        )
+        if recent:
+            continue
+
+        # Seed two data points: 7 days ago and now, with a realistic move
+        change_pct = random.uniform(-6.0, 8.0)
+        old_price = base_price / (1 + change_pct / 100)
+
+        db.add(CommodityPrice(
+            symbol=symbol,
+            name=name,
+            price=round(old_price, 2),
+            change=0.0,
+            change_pct=0.0,
+            currency=currency,
+            source="seed",
+            timestamp=now - timedelta(days=7),
+        ))
+        db.add(CommodityPrice(
+            symbol=symbol,
+            name=name,
+            price=round(base_price, 2),
+            change=round(base_price - old_price, 2),
+            change_pct=round(change_pct, 2),
+            currency=currency,
+            source="seed",
+            timestamp=now,
+        ))
+        logger.info("Seeded commodity prices: %s (%.1f%%)", symbol, change_pct)
+
+    db.commit()
+    logger.info("Dev commodity prices seeding complete")
+
+
 def main():
     db = SessionLocal()
     try:
         logger.info("Starting seed data for causal intelligence...")
-        
+
         seed_causal_chains(db)
         seed_sector_exposures(db)
-        
+        seed_dev_commodity_prices(db)
+
         logger.info("Seed data complete!")
-        
+
     except Exception as e:
         logger.error(f"Seed failed: {e}")
         db.rollback()

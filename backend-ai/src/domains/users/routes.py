@@ -32,6 +32,10 @@ class KycSubmitRequest(BaseModel):
     aadhaar_number: Optional[str] = Field(None, max_length=12)
 
 
+class BalanceTopupRequest(BaseModel):
+    amount: float = Field(..., gt=0)
+
+
 class ProfileOption(BaseModel):
     value: str
     label: str
@@ -109,6 +113,17 @@ async def upload_profile_pic(
     return await service.upload_profile_pic(user_id=user_id, file=file)
 
 
+@router.post("/{user_id}/balance/topup")
+def topup_balance(
+    user_id: UUID,
+    body: BalanceTopupRequest,
+    db: Session = Depends(get_db),
+):
+    """Add funds to simulation balance."""
+    service = UsersService(db)
+    return service.topup_balance(user_id=user_id, amount=body.amount)
+
+
 @router.post("/{user_id}/kyc/submit")
 def submit_kyc(
     user_id: UUID,
@@ -136,3 +151,14 @@ def verify_kyc(user_id: UUID, db: Session = Depends(get_db)):
     """Dummy KYC verification -- auto-approves for demo purposes."""
     service = UsersService(db)
     return service.verify_kyc(user_id)
+
+
+@router.get("/{user_id}/transactions")
+def get_transactions(
+    user_id: UUID,
+    limit: int = 50,
+    db: Session = Depends(get_db),
+):
+    """Get transaction history for a user (topups and future trades)."""
+    service = UsersService(db)
+    return service.get_transactions(user_id, limit)

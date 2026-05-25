@@ -11,7 +11,9 @@ from uuid import UUID
 from fastapi import HTTPException, UploadFile
 from sqlalchemy.orm import Session
 
-from src.db.models import User
+from sqlalchemy import desc
+
+from src.db.models import User, UserTransaction
 
 PAN_REGEX = re.compile(r"^[A-Z]{5}[0-9]{4}[A-Z]$")
 
@@ -43,6 +45,7 @@ class UsersService:
             "kyc_status": user.kyc_status,
             "kyc_submitted_at": user.kyc_submitted_at.isoformat() if user.kyc_submitted_at else None,
             "is_active": user.is_active,
+            "simulation_balance": user.simulation_balance,
             "created_at": user.created_at.isoformat(),
             "updated_at": user.updated_at.isoformat(),
         }
@@ -54,11 +57,40 @@ class UsersService:
         return user
 
     def get_user_profile(self, user_id: UUID) -> dict[str, Any]:
-        user = self._get_user_or_404(user_id)
+        # Return a stub for unknown users so the frontend can render the profile form.
+        user = self.db.query(User).filter(User.id == user_id).first()
+        if not user:
+            return {
+                "id": str(user_id),
+                "email": "",
+                "username": None,
+                "full_name": None,
+                "phone_number": None,
+                "date_of_birth": None,
+                "address": None,
+                "pan_card_number": None,
+                "aadhaar_number": None,
+                "profile_pic_url": None,
+                "expertise_level": "beginner",
+                "risk_tolerance": None,
+                "investment_horizon": None,
+                "kyc_status": "not_started",
+                "kyc_submitted_at": None,
+                "is_active": True,
+                "simulation_balance": 1_000_000.0,
+                "created_at": "",
+                "updated_at": "",
+            }
         return self._user_to_dict(user)
 
     def update_user_profile(self, user_id: UUID, update_data: dict[str, Any]) -> dict[str, Any]:
-        user = self._get_user_or_404(user_id)
+        # Upsert: create the user row if this is their first save (demo auth flow).
+        user = self.db.query(User).filter(User.id == user_id).first()
+        if not user:
+            email = update_data.pop("email", None) or f"user-{str(user_id)[:8]}@equityai.local"
+            user = User(id=user_id, email=email)
+            self.db.add(user)
+            self.db.flush()
 
         if "pan_card_number" in update_data and update_data["pan_card_number"]:
             pan = update_data["pan_card_number"].upper()
@@ -133,6 +165,43 @@ class UsersService:
             "kyc_submitted_at": user.kyc_submitted_at.isoformat() if user.kyc_submitted_at else None,
             "pan_card_number": user.pan_card_number,
         }
+
+    def topup_balance(self, user_id: UUID, amount: float) -> dict[str, Any]:
+        if amount <= 0:
+            raise HTTPException(status_code=400, detail="Top-up amount must be positive")
+        user = self._get_user_or_404(user_id)
+        user.simulation_balance = (user.simulation_balance or 0.0) + amount
+        txn = UserTransaction(
+            user_id=user_id,
+            transaction_type="topup",
+            amount=amount,
+            balance_after=user.simulation_balance,
+            description=f"Added ₹{amount:,.0f} to simulation account",
+        )
+        self.db.add(txn)
+        self.db.commit()
+        self.db.refresh(user)
+        return {"simulation_balance": user.simulation_balance}
+
+    def get_transactions(self, user_id: UUID, limit: int = 50) -> list[dict[str, Any]]:
+        txns = (
+            self.db.query(UserTransaction)
+            .filter(UserTransaction.user_id == user_id)
+            .order_by(desc(UserTransaction.created_at))
+            .limit(limit)
+            .all()
+        )
+        return [
+            {
+                "id": str(t.id),
+                "transaction_type": t.transaction_type,
+                "amount": t.amount,
+                "balance_after": t.balance_after,
+                "description": t.description,
+                "created_at": t.created_at.isoformat(),
+            }
+            for t in txns
+        ]
 
     def verify_kyc(self, user_id: UUID) -> dict[str, str]:
         user = self._get_user_or_404(user_id)

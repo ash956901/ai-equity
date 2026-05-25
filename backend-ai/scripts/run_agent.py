@@ -7,11 +7,10 @@ from pathlib import Path
 ROOT_DIR = Path(__file__).resolve().parents[1]
 sys.path.append(str(ROOT_DIR))
 
-from src.agents import build_research_agent
-
-
 DEFAULT_PDF_PATH = str(ROOT_DIR / "data" / "RIL-Integrated-Annual-Report-2024-25.pdf")
 DEFAULT_QUERY = "What are the key financial highlights and revenue figures from the uploaded document?"
+
+PROVIDERS = ["ollama", "deepseek", "openai", "groq", "claude"]
 
 
 def extract_pdf_chunks(pdf_path, max_pages=10):
@@ -56,11 +55,42 @@ def parse_args():
         default=10,
         help="Maximum pages to extract from the PDF.",
     )
+    parser.add_argument(
+        "--provider",
+        choices=PROVIDERS,
+        default=None,
+        help=(
+            f"LLM provider to use: {', '.join(PROVIDERS)}. "
+            "Overrides LLM_PROVIDER in .env for this run. "
+            "Example: --provider claude"
+        ),
+    )
+    parser.add_argument(
+        "--model",
+        default=None,
+        help=(
+            "Model name override for this run (overrides LLM_MODEL in .env). "
+            "Example: --model claude-opus-4-7"
+        ),
+    )
     return parser.parse_args()
 
 
 def run():
     args = parse_args()
+
+    # Apply provider/model overrides BEFORE importing src modules so that
+    # get_settings() (which is lru_cache'd) picks them up on first access.
+    if args.provider:
+        os.environ["LLM_PROVIDER"] = args.provider
+        print(f"[CLI] Provider overridden to: {args.provider}")
+    if args.model:
+        os.environ["LLM_MODEL"] = args.model
+        print(f"[CLI] Model overridden to: {args.model}")
+
+    # Deferred import — must happen after env overrides above.
+    from src.agents import build_research_agent
+
     pdf_path = os.path.abspath(args.pdf)
     if not os.path.exists(pdf_path):
         print(f"Error: PDF not found at {pdf_path}")

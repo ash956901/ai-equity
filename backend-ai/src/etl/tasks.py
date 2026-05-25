@@ -239,13 +239,8 @@ def crawl_nse_filings(
                 if symbol:
                     # Try to find company by NSE symbol
                     company = db.query(Company).filter(
-                        (Company.ticker_nse == symbol) | (Company.tl_nse == symbol)
+                        (Company.ticker_nse == symbol) | (Company.ticker_bse == symbol)
                     ).first()
-                    if company is None:
-                        # Try to find by BSE symbol
-                        company = db.query(Company).filter(
-                            (Company.ticker_nse == symbol) | (Company.ticker_bse == symbol)
-                        ).first()
                     
                     if company:
                         filing = ingestion_service.ingest_filing(company.id, result)
@@ -351,16 +346,19 @@ def crawl_ir_pages(
 
 @app.task(bind=True, name="etl.refresh_company")
 def refresh_company(self, company_id: str):
-    """Full refresh for a single company: enrich + financials + filings."""
+    """Full refresh for a single company: enrich + BSE + NSE + IR filings."""
     import importlib
 
     celery_mod = importlib.import_module("celery")
-    chain_fn = getattr(celery_mod, "chain")
+    group_fn = getattr(celery_mod, "group")
 
     enrich_sig: Any = enrich_single_company.s(company_id)
-    nse_sig: Any = crawl_nse_filings.s(company_id=company_id)
-    ir_sig: Any = crawl_ir_pages.s(company_id=company_id)
-    workflow: Any = chain_fn(enrich_sig, nse_sig, ir_sig)
+    bse_sig: Any = crawl_bse_filings.si(company_id=company_id)
+    nse_sig: Any = crawl_nse_filings.si(company_id=company_id)
+    ir_sig: Any = crawl_ir_pages.si(company_id=company_id)
+    crawl_group: Any = group_fn(bse_sig, nse_sig, ir_sig)
+    # Enrich first, then run all crawlers in parallel
+    workflow: Any = enrich_sig | crawl_group
     workflow.apply_async()
 
 

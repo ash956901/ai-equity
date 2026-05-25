@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { ArrowUpRight, Bookmark, BookmarkCheck, Newspaper, Search, TrendingUp } from "lucide-react";
+import { ArrowUpRight, Bookmark, BookmarkCheck, Newspaper, TrendingUp } from "lucide-react";
 
 import {
   ApiError,
@@ -7,6 +7,7 @@ import {
   type EnrichedNewsItem,
 } from "../../lib/api";
 import { PageHeader } from "../../shared/ui/PageHeader";
+import { CompanySearchInput } from "../../shared/components/CompanySearchInput";
 
 const DEMO_BANNER_MSG = "Demo mode — showing cached data. Switch to Live API for real-time results.";
 
@@ -40,7 +41,7 @@ export function NewsView(props: NewsViewProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const loadNews = useCallback(async (symbol: string) => {
+  const loadNews = useCallback(async (symbol: string, forceRefresh = false) => {
     setLoading(true);
     setError(null);
 
@@ -52,7 +53,7 @@ export function NewsView(props: NewsViewProps) {
     }
 
     try {
-      const data = await fetchNewsRadar(50, symbol);
+      const data = await fetchNewsRadar(50, symbol, "intermediate", forceRefresh);
       setArticles(data);
     } catch (err) {
       if (err instanceof ApiError && err.status === 401) {
@@ -96,23 +97,15 @@ export function NewsView(props: NewsViewProps) {
         subtitle="Monitor market narratives, detect sector-level shifts, and track AI sentiment scoring."
         dataMode={props.dataMode}
         right={
-          <form
-            className="search-pill"
-            onSubmit={(event) => {
-              event.preventDefault();
-              const normalized = symbolInput.trim().toUpperCase();
-              if (normalized) {
-                setActiveSymbol(normalized);
-              }
+          <CompanySearchInput
+            placeholder="Search company for news…"
+            onSelect={(c) => {
+              const ticker = c.ticker || c.name;
+              setSymbolInput(ticker);
+              setActiveSymbol(ticker);
             }}
-          >
-            <Search size={14} />
-            <input
-              placeholder="Ticker symbol"
-              value={symbolInput}
-              onChange={(event) => setSymbolInput(event.target.value)}
-            />
-          </form>
+            className="w-64"
+          />
         }
       />
 
@@ -122,7 +115,7 @@ export function NewsView(props: NewsViewProps) {
           <span className="chip">Articles: {articles.length}</span>
         </div>
         <div className="chip-row">
-          <button type="button" className="secondary-btn mini-btn" onClick={() => void loadNews(activeSymbol)}>
+          <button type="button" className="secondary-btn mini-btn" onClick={() => void loadNews(activeSymbol, true)}>
             Refresh Data
           </button>
         </div>

@@ -7,6 +7,7 @@ from src.agents.subagents.portfolio import get_portfolio_subagent
 from src.agents.subagents.news import get_news_subagent
 from src.agents.subagents.doc_insight import get_doc_insight_subagent
 from src.agents.subagents.thematic import get_thematic_subagent
+from src.agents.subagents.performance import get_performance_subagent
 
 
 def get_all_subagents() -> list[dict]:
@@ -19,6 +20,7 @@ def get_all_subagents() -> list[dict]:
         get_doc_insight_subagent(),
         get_thematic_subagent(),
         get_causal_subagent(),
+        get_performance_subagent(),
     ]
 
 

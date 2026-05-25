@@ -2,8 +2,12 @@ import { useCallback, useEffect, useState } from "react";
 import {
   Activity,
   BarChart3,
+  Loader2,
   PieChart,
+  Plus,
+  RefreshCw,
   ShieldCheck,
+  Trash2,
   TrendingDown,
   TrendingUp,
   Wallet,
@@ -19,11 +23,16 @@ import {
   fetchPortfolioMetrics,
   fetchPortfolioSuggestions,
   fetchTimeline,
+  fetchCompanyQuote,
+  createPortfolio,
+  deletePortfolio,
+  fetchUserProfile,
   type ApiStatusResponse,
   type HealthResponse,
   type NewsDataResponse,
   type PortfolioMetrics,
   type TimelineEvent,
+  type AIPortfolio,
 } from "../../lib/api";
 
 import { PageHeader } from "../../shared/ui/PageHeader";
@@ -89,6 +98,13 @@ export function DashboardView(props: DashboardViewProps) {
   const [aiSuggestions, setAiSuggestions] = useState<string | null>(null);
   const [suggestionsLoading, setSuggestionsLoading] = useState(false);
   const [timelineEvents, setTimelineEvents] = useState<TimelineEvent[]>([]);
+  const [portfolios, setPortfolios] = useState<AIPortfolio[]>([]);
+  const [activePortfolioId, setActivePortfolioId] = useState<string | null>(null);
+  const [liveQuotes, setLiveQuotes] = useState<Record<string, number>>({});
+  const [pricesRefreshing, setPricesRefreshing] = useState(false);
+  const [simBalance, setSimBalance] = useState<number | null>(null);
+  const [showNewPortfolio, setShowNewPortfolio] = useState(false);
+  const [newPortfolioName, setNewPortfolioName] = useState("");
 
 
   const loadDashboardData = useCallback(async () => {
@@ -117,13 +133,19 @@ export function DashboardView(props: DashboardViewProps) {
 
 
     try {
-      const list = await fetchPortfolios(getUserId());
-      if (list.length > 0) {
-        const primary = list.find((p) => p.is_primary) ?? list[0];
+      const [list, userProfile] = await Promise.allSettled([
+        fetchPortfolios(getUserId()),
+        fetchUserProfile(getUserId()),
+      ]);
+      if (userProfile.status === "fulfilled") {
+        setSimBalance((userProfile.value as any).simulation_balance ?? null);
+      }
+      if (list.status === "fulfilled" && list.value.length > 0) {
+        setPortfolios(list.value);
+        const primary = list.value.find((p) => p.is_primary) ?? list.value[0];
+        setActivePortfolioId(primary.id);
         const metrics = await fetchPortfolioMetrics(primary.id);
         setPortfolioMetrics(metrics);
-        
-        // Fetch AI suggestions separately as it might take longer
         setSuggestionsLoading(true);
         fetchPortfolioSuggestions(getUserId())
           .then(res => setAiSuggestions(res.suggestions))
@@ -180,7 +202,11 @@ export function DashboardView(props: DashboardViewProps) {
     (sum: number, h: HoldingDetail) => sum + h.quantity * h.average_price,
     0
   );
-  const totalCurrent = portfolioMetrics?.total_value_inr ?? 0;
+  const totalCurrent = holdings.reduce((sum, h) => {
+    const livePrice = liveQuotes[(h as any).company_id ?? h.ticker_nse];
+    const price = livePrice ?? h.current_price;
+    return sum + h.quantity * price;
+  }, 0) || (portfolioMetrics?.total_value_inr ?? 0);
   const totalPnl = totalCurrent - totalInvested;
   const totalPnlPct = totalInvested > 0 ? (totalPnl / totalInvested) * 100 : 0;
 
@@ -205,6 +231,45 @@ export function DashboardView(props: DashboardViewProps) {
     if (Math.abs(value) >= 1e5)
       return `₹${(value / 1e5).toFixed(2)} L`;
     return `₹${value.toLocaleString("en-IN", { maximumFractionDigits: 0 })}`;
+  };
+
+  const refreshPrices = async () => {
+    if (!holdings.length) return;
+    setPricesRefreshing(true);
+    const results = await Promise.allSettled(
+      holdings.map((h) => fetchCompanyQuote((h as any).company_id ?? h.ticker_nse))
+    );
+    const newQuotes: Record<string, number> = {};
+    results.forEach((res, i) => {
+      if (res.status === "fulfilled" && res.value.last_price) {
+        const companyId = (holdings[i] as any).company_id ?? holdings[i].ticker_nse;
+        newQuotes[companyId] = res.value.last_price;
+      }
+    });
+    setLiveQuotes((prev) => ({ ...prev, ...newQuotes }));
+    setPricesRefreshing(false);
+  };
+
+  const handleCreatePortfolio = async () => {
+    const name = newPortfolioName.trim();
+    if (!name) return;
+    try {
+      await createPortfolio(getUserId(), name);
+      setNewPortfolioName("");
+      setShowNewPortfolio(false);
+      await loadDashboardData();
+    } catch {
+      // ignore
+    }
+  };
+
+  const handleDeletePortfolio = async (id: string) => {
+    try {
+      await deletePortfolio(id, getUserId());
+      await loadDashboardData();
+    } catch {
+      // ignore
+    }
   };
 
   return (
@@ -307,15 +372,70 @@ export function DashboardView(props: DashboardViewProps) {
             <h2>{loading ? "--" : headlineCount}</h2>
             <small>Live market news</small>
           </article>
+
+          {simBalance !== null && (
+            <article className={`kpi-card ${cardDensityClass}`}>
+              <p><Wallet size={14} style={{ verticalAlign: "middle", marginRight: 4 }} />Simulation Cash</p>
+              <h2>{formatINR(simBalance)}</h2>
+              <small>Available to simulate</small>
+            </article>
+          )}
         </div>
       ) : null}
+
+      {/* ── Portfolio Manager ── */}
+      {portfolios.length > 0 && (
+        <div style={{ marginTop: 16, display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
+          {portfolios.map((p) => (
+            <div key={p.id} style={{ display: "flex", alignItems: "center", gap: 4, padding: "6px 10px", borderRadius: 8, background: p.id === activePortfolioId ? "var(--brand)" : "var(--bg-elevated)", border: "1px solid var(--border)", cursor: "pointer" }}
+              onClick={() => {
+                setActivePortfolioId(p.id);
+                fetchPortfolioMetrics(p.id).then(setPortfolioMetrics).catch(() => {});
+              }}
+            >
+              <span style={{ fontSize: 13, fontWeight: p.is_primary ? 700 : 400 }}>{p.name}{p.is_primary ? " ★" : ""}</span>
+              <button
+                type="button"
+                style={{ background: "none", border: "none", cursor: "pointer", color: "var(--muted)", padding: 0, marginLeft: 4 }}
+                onClick={(e) => { e.stopPropagation(); void handleDeletePortfolio(p.id); }}
+                title="Delete portfolio"
+              >
+                <Trash2 size={12} />
+              </button>
+            </div>
+          ))}
+          <button type="button" className="secondary-btn mini-btn" onClick={() => setShowNewPortfolio(true)}>
+            <Plus size={12} /> New Portfolio
+          </button>
+        </div>
+      )}
+
+      {showNewPortfolio && (
+        <div style={{ marginTop: 12, display: "flex", gap: 8, alignItems: "center" }}>
+          <input
+            type="text"
+            placeholder="Portfolio name"
+            value={newPortfolioName}
+            onChange={(e) => setNewPortfolioName(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && void handleCreatePortfolio()}
+            style={{ padding: "6px 10px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg-elevated)", color: "inherit", fontSize: 13, minWidth: 200 }}
+          />
+          <button type="button" className="primary-btn mini-btn" onClick={() => void handleCreatePortfolio()}>Create</button>
+          <button type="button" className="secondary-btn mini-btn" onClick={() => setShowNewPortfolio(false)}>Cancel</button>
+        </div>
+      )}
 
       {/* ── Holdings P&L Table ── */}
       {isWidgetVisible("holdings-pnl") && !loading && holdings.length > 0 ? (
         <article className={`feature-card ${cardDensityClass}`} style={{ marginTop: 16 }}>
-          <div className="feature-head">
-            <BarChart3 size={18} />
-            <h3>Holdings P&L Breakdown</h3>
+          <div className="feature-head" style={{ justifyContent: "space-between" }}>
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              <BarChart3 size={18} />
+              <h3>Holdings P&L Breakdown</h3>
+            </div>
+            <button type="button" className="secondary-btn mini-btn" onClick={() => void refreshPrices()} disabled={pricesRefreshing}>
+              {pricesRefreshing ? <><Loader2 size={12} className="spin" /> Refreshing…</> : <><RefreshCw size={12} /> Refresh Prices</>}
+            </button>
           </div>
           <div style={{ overflowX: "auto" }}>
             <table className="holdings-table" style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
@@ -334,8 +454,13 @@ export function DashboardView(props: DashboardViewProps) {
               </thead>
               <tbody>
                 {holdings.map((h) => {
+                  const companyId = (h as any).company_id ?? h.ticker_nse;
+                  const livePrice = liveQuotes[companyId];
+                  const currentPrice = livePrice ?? h.current_price;
                   const invested = h.quantity * h.average_price;
-                  const pnl = h.value - invested;
+                  const currentVal = h.quantity * currentPrice;
+                  const pnl = currentVal - invested;
+                  const pnlPct = invested > 0 ? (pnl / invested) * 100 : h.return_pct;
                   const pnlColor = pnl >= 0 ? "var(--good)" : "var(--bad)";
                   return (
                     <tr
@@ -354,21 +479,22 @@ export function DashboardView(props: DashboardViewProps) {
                         ₹{h.average_price.toLocaleString("en-IN")}
                       </td>
                       <td style={{ padding: "8px 10px" }}>
-                        ₹{h.current_price.toLocaleString("en-IN")}
+                        ₹{currentPrice.toLocaleString("en-IN")}
+                        {livePrice && <span style={{ fontSize: 9, color: "var(--good)", marginLeft: 4 }}>LIVE</span>}
                       </td>
                       <td style={{ padding: "8px 10px" }}>
                         {formatINR(invested)}
                       </td>
                       <td style={{ padding: "8px 10px" }}>
-                        {formatINR(h.value)}
+                        {formatINR(currentVal)}
                       </td>
                       <td style={{ padding: "8px 10px", color: pnlColor, fontWeight: 600 }}>
                         {pnl >= 0 ? "+" : ""}
                         {formatINR(pnl)}
                       </td>
                       <td style={{ padding: "8px 10px", color: pnlColor }}>
-                        {h.return_pct >= 0 ? "+" : ""}
-                        {h.return_pct.toFixed(2)}%
+                        {pnlPct >= 0 ? "+" : ""}
+                        {pnlPct.toFixed(2)}%
                       </td>
                       <td style={{ padding: "8px 10px" }}>
                         {h.weight.toFixed(1)}%
@@ -382,7 +508,7 @@ export function DashboardView(props: DashboardViewProps) {
                   <td style={{ padding: "8px 10px" }}>Total</td>
                   <td style={{ padding: "8px 10px" }}>{holdings.reduce((s, h) => s + h.quantity, 0)}</td>
                   <td style={{ padding: "8px 10px" }}></td>
-                  <td style={{ padding: "8px 10px" }}></td>
+                  <td style={{ padding: "8px 10px" }}>{Object.keys(liveQuotes).length > 0 && <span style={{ fontSize: 10, color: "var(--good)" }}>LIVE</span>}</td>
                   <td style={{ padding: "8px 10px" }}>{formatINR(totalInvested)}</td>
                   <td style={{ padding: "8px 10px" }}>{formatINR(totalCurrent)}</td>
                   <td

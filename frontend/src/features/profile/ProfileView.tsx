@@ -28,6 +28,7 @@ import {
 import {
   fetchProfileConfig,
   fetchUserProfile,
+  topupBalance,
   type ProfileOption,
   submitKyc,
   updateUserProfile,
@@ -42,6 +43,7 @@ interface ProfileViewProps {
   onToggleTheme: () => void;
   onToggleDataMode: () => void;
   pushToast: (message: string, tone?: "info" | "success" | "warning") => void;
+  onLogout?: () => void;
 }
 
 interface ProfileState {
@@ -111,6 +113,8 @@ export function ProfileView(props: ProfileViewProps) {
   const [kycSubmitting, setKycSubmitting] = useState(false);
   const [kycStep, setKycStep] = useState(0);
   const avatarInputRef = useRef<HTMLInputElement | null>(null);
+  const [simBalance, setSimBalance] = useState<number | null>(null);
+  const [customTopup, setCustomTopup] = useState("");
 
   const userId = useMemo(() => {
     let id = localStorage.getItem("equityai-user-id");
@@ -161,6 +165,7 @@ export function ProfileView(props: ProfileViewProps) {
         if (p.kyc_status === "verified") setKycStep(4);
         else if (p.kyc_status === "pending") setKycStep(2);
         else setKycStep(0);
+        setSimBalance((p as any).simulation_balance ?? null);
       } catch {
         // profile may not exist yet
       }
@@ -539,6 +544,68 @@ export function ProfileView(props: ProfileViewProps) {
 
       <div className="profile-section">
         <h3>
+          <TrendingUp size={16} /> Simulation Account
+        </h3>
+        {simBalance !== null && (
+          <div style={{ marginBottom: 16 }}>
+            <p style={{ fontSize: 13, color: "var(--muted)", marginBottom: 4 }}>Current Balance</p>
+            <h2 style={{ fontSize: "1.8rem", margin: 0 }}>
+              ₹{simBalance.toLocaleString("en-IN", { maximumFractionDigits: 0 })}
+            </h2>
+          </div>
+        )}
+        <p style={{ fontSize: 13, color: "var(--muted)", marginBottom: 12 }}>Add virtual funds to simulate investments on real data.</p>
+        <div className="chip-row" style={{ flexWrap: "wrap", gap: 8 }}>
+          {[100000, 500000, 1000000].map((amt) => (
+            <button
+              key={amt}
+              type="button"
+              className="secondary-btn mini-btn"
+              onClick={async () => {
+                try {
+                  const res = await topupBalance(userId, amt);
+                  setSimBalance(res.simulation_balance);
+                  props.pushToast(`Added ₹${(amt / 100000).toFixed(0)}L to simulation account`, "success");
+                } catch {
+                  props.pushToast("Failed to add funds", "warning");
+                }
+              }}
+            >
+              + ₹{amt >= 1000000 ? `${amt / 100000}0L` : `${amt / 100000}L`}
+            </button>
+          ))}
+          <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+            <input
+              type="number"
+              placeholder="Custom amount"
+              value={customTopup}
+              onChange={(e) => setCustomTopup(e.target.value)}
+              style={{ padding: "6px 10px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg-elevated)", color: "inherit", fontSize: 12, width: 130 }}
+            />
+            <button
+              type="button"
+              className="primary-btn mini-btn"
+              onClick={async () => {
+                const amount = parseFloat(customTopup);
+                if (!amount || amount <= 0) return;
+                try {
+                  const res = await topupBalance(userId, amount);
+                  setSimBalance(res.simulation_balance);
+                  setCustomTopup("");
+                  props.pushToast(`Added ₹${amount.toLocaleString()} to simulation account`, "success");
+                } catch {
+                  props.pushToast("Failed to add funds", "warning");
+                }
+              }}
+            >
+              Add
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div className="profile-section">
+        <h3>
           <Settings size={16} /> Account Settings
         </h3>
         <div className="chip-row">
@@ -564,6 +631,16 @@ export function ProfileView(props: ProfileViewProps) {
               </>
             )}
           </button>
+          {props.onLogout && (
+            <button
+              type="button"
+              className="secondary-btn"
+              style={{ color: "var(--color-danger, #E50914)", borderColor: "var(--color-danger, #E50914)" }}
+              onClick={props.onLogout}
+            >
+              Switch Profile
+            </button>
+          )}
         </div>
       </div>
     </section>

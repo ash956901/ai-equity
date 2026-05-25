@@ -216,3 +216,28 @@ class PortfoliosService:
         self.db.commit()
         self.db.refresh(holding)
         return {"holding_id": str(holding.id), "action": "created"}
+
+    def delete_portfolio(self, portfolio_id: UUID, user_id: UUID) -> dict[str, Any]:
+        portfolio = self.db.query(Portfolio).filter(Portfolio.id == portfolio_id).first()
+        if not portfolio:
+            raise HTTPException(status_code=404, detail="Portfolio not found")
+        if portfolio.user_id != user_id:
+            raise HTTPException(status_code=403, detail="Not authorised to delete this portfolio")
+        self.db.delete(portfolio)
+        self.db.commit()
+        from src.utils.cache import get_analysis_cache
+        get_analysis_cache().invalidate(f"portfolio_causal:{portfolio_id}")
+        return {"portfolio_id": str(portfolio_id), "deleted": True}
+
+    def delete_holding(self, portfolio_id: UUID, holding_id: UUID) -> dict[str, Any]:
+        holding = self.db.query(Holding).filter(
+            Holding.id == holding_id,
+            Holding.portfolio_id == portfolio_id,
+        ).first()
+        if not holding:
+            raise HTTPException(status_code=404, detail="Holding not found")
+        self.db.delete(holding)
+        self.db.commit()
+        from src.utils.cache import get_analysis_cache
+        get_analysis_cache().invalidate(f"portfolio_causal:{portfolio_id}")
+        return {"holding_id": str(holding_id), "deleted": True}

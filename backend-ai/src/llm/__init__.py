@@ -52,6 +52,15 @@ def get_llm(model: str | None = None, temperature: float = 0.3) -> Any:
             temperature=temp,
         )
 
+    if s.llm_provider == "claude":
+        from langchain_anthropic import ChatAnthropic
+
+        return ChatAnthropic(
+            model=model,
+            api_key=s.anthropic_api_key or "",
+            temperature=temp,
+        )
+
     raise ValueError(f"Unknown llm_provider: {s.llm_provider}")
 
 

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { ArrowUpRight, Bookmark, BookmarkCheck, Brain, Search, X } from "lucide-react";
+import { ArrowUpRight, Bookmark, BookmarkCheck, Brain, Loader2, Search, X } from "lucide-react";
 
 import {
   ApiError,
@@ -47,6 +47,7 @@ export function DiscoveryView(props: DiscoveryViewProps) {
   const [error, setError] = useState<string | null>(null);
   const [totalCount, setTotalCount] = useState(0);
   const [sectors, setSectors] = useState<string[]>(["all"]);
+  const [hasSearched, setHasSearched] = useState(false);
 
   const loadCompanies = useCallback(async (searchTerm?: string, sector?: string) => {
     setLoading(true);
@@ -81,6 +82,7 @@ export function DiscoveryView(props: DiscoveryViewProps) {
       setThematicResults([]);
     } finally {
       setLoading(false);
+      setHasSearched(true);
     }
   }, []);
 
@@ -136,6 +138,7 @@ export function DiscoveryView(props: DiscoveryViewProps) {
             onClick={() => {
               setMode("keyword");
               setThematicResults([]);
+              setHasSearched(false);
               void loadCompanies();
             }}
           >
@@ -239,9 +242,24 @@ export function DiscoveryView(props: DiscoveryViewProps) {
 
       {error ? <div className="notice warning">{error}</div> : null}
 
-      {mode === "thematic" && !loading && thematicResults.length === 0 && !error && (
-        <div className="notice">
-          Enter an investment theme above and click "Find Companies" to discover stocks using AI.
+      {/* Thematic empty states */}
+      {mode === "thematic" && !hasSearched && !loading && !error && (
+        <div className="notice" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <Brain size={14} style={{ color: "var(--brand)", flexShrink: 0 }} />
+          Enter a theme above or click a trending chip to discover stocks.
+        </div>
+      )}
+
+      {mode === "thematic" && loading && (
+        <div className="notice" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <Loader2 size={14} className="spin" style={{ flexShrink: 0 }} />
+          Scanning filings with AI…
+        </div>
+      )}
+
+      {mode === "thematic" && hasSearched && !loading && thematicResults.length === 0 && !error && (
+        <div className="notice warning">
+          No companies found for this theme. Try rephrasing or a different theme.
         </div>
       )}
 
@@ -251,7 +269,7 @@ export function DiscoveryView(props: DiscoveryViewProps) {
         </div>
       )}
 
-      {/* Thematic Results */}
+      {/* Thematic match count */}
       {mode === "thematic" && thematicResults.length > 0 && (
         <div className="notice">
           {`${thematicResults.length} companies matched "${query}" via AI semantic search.`}

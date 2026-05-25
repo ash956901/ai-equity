@@ -101,6 +101,58 @@ class EventImpactClassifier:
             "sectors": ["Transportation", "Logistics"],
             "description": "Shipping disruptions affect commodity transport costs",
         },
+        # India government policy decisions (Ethanol blending, PLI, export bans)
+        "india_policy": {
+            "keywords": [
+                "ethanol", "e20", "e10", "blending mandate", "pli scheme", "production linked",
+                "export ban", "import duty", "customs duty", "minimum support price", "msp",
+                "subsidy", "government policy", "cabinet decision", "union budget",
+            ],
+            "commodities": ["sugar_11"],
+            "direction": "increase",
+            "magnitude": "medium",
+            "sectors": ["Sugar", "Automobile", "Oil & Gas"],
+            "description": "Indian policy decisions create cascading effects: Ethanol mandates boost sugar (byproduct), EV sector, while affecting petroleum/auto industries",
+        },
+        # Bilateral/multilateral trade agreements and technology transfer deals
+        "trade_agreement": {
+            "keywords": [
+                "trade pact", "bilateral agreement", "free trade", "fta", "technology transfer",
+                "asml", "lithographic", "semiconductor", "chip import", "export deal",
+                "trade deal", "mou signed", "memorandum of understanding", "import agreement",
+            ],
+            "commodities": [],
+            "direction": "increase",
+            "magnitude": "medium",
+            "sectors": ["IT Services", "Metals & Mining"],
+            "description": "Trade deals and technology transfers boost manufacturing capacity and supply chain depth; chip/semiconductor deals benefit IT and electronics sectors",
+        },
+        # Major technology adoption shifts
+        "technology_adoption": {
+            "keywords": [
+                "ev adoption", "electric vehicle", "5g rollout", "5g spectrum", "ai adoption",
+                "renewable energy", "solar capacity", "wind energy", "battery storage",
+                "semiconductor fab", "data center", "cloud computing",
+            ],
+            "commodities": ["copper", "aluminum"],
+            "direction": "increase",
+            "magnitude": "medium",
+            "sectors": ["Metals & Mining", "Power", "Automobile"],
+            "description": "Technology adoption waves drive demand for enabling commodities (copper for EVs/5G, aluminum for batteries) and boost adjacent sectors",
+        },
+        # RBI / SEBI / MoF regulatory decisions
+        "india_regulatory": {
+            "keywords": [
+                "rbi", "reserve bank", "repo rate", "reverse repo", "crr", "slr",
+                "sebi", "securities", "npa", "bad loan", "nbfc", "credit policy",
+                "monetary policy", "interest rate cut", "rate hike", "inflation target",
+            ],
+            "commodities": [],
+            "direction": "uncertain",
+            "magnitude": "medium",
+            "sectors": ["Banking", "Real Estate"],
+            "description": "RBI rate decisions ripple through banking, real estate (home loans), and auto (vehicle loans); SEBI rules affect financial services broadly",
+        },
     }
 
     def classify(self, event: dict[str, Any]) -> Optional[EventImpact]:

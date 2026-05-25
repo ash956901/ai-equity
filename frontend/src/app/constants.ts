@@ -1,10 +1,12 @@
 import {
+  Banknote,
   Building2,
   Bot,
   CircleUserRound,
   Clock3,
   Compass,
   FileText,
+  GitBranch,
   GitCompareArrows,
   LayoutDashboard,
   Newspaper,
@@ -72,6 +74,8 @@ export const navItems: NavItem[] = [
   { key: "chat", label: "Iris Chat", icon: Bot, caption: "Copilot" },
   { key: "discovery", label: "Discovery", icon: Compass, caption: "Themes" },
   { key: "portfolio", label: "Portfolio", icon: Wallet, caption: "Exposure" },
+  { key: "domino", label: "Domino Effect", icon: GitBranch, caption: "Causal Chains" },
+  { key: "money", label: "Money", icon: Banknote, caption: "Balance" },
   { key: "filings", label: "Filings", icon: FileText, caption: "Reports" },
   { key: "timeline", label: "Timeline", icon: Clock3, caption: "Feed" },
   { key: "news", label: "News", icon: Newspaper, caption: "Sentiment" },
@@ -80,6 +84,7 @@ export const navItems: NavItem[] = [
 
 ];
 
+export const ACTIVE_PROFILE_KEY = "equityai-active-profile";
 export const THEME_STORAGE_KEY = "equityai-theme";
 export const DATA_MODE_STORAGE_KEY = "equityai-data-mode";
 export const NOTIFICATIONS_STORAGE_KEY = "equityai-notifications";

@@ -31,7 +31,7 @@ class Settings(BaseSettings):
     qdrant_api_key: Optional[str] = None
 
     # LLM
-    llm_provider: Literal["ollama", "deepseek", "openai", "groq"] = "groq"
+    llm_provider: Literal["ollama", "deepseek", "openai", "groq", "claude"] = "groq"
     # Optional global override model from .env (takes priority if set)
     llm_model: Optional[str] = None
     # Optional documented list for UI/ops discoverability, comma-separated in .env
@@ -55,6 +55,10 @@ class Settings(BaseSettings):
     # Groq API (when llm_provider=groq)
     groq_api_key: Optional[str] = "dkdkvm"
     groq_base_url: str = "https://api.groq.com/openai/v1"
+
+    # Anthropic / Claude API (when llm_provider=claude)
+    anthropic_api_key: Optional[str] = None
+    claude_model: str = "claude-sonnet-4-6"
 
     # Gemini API (for supplemental company enrichment)
     gemini_api_key: Optional[str] = None
@@ -131,6 +135,8 @@ class Settings(BaseSettings):
             return self.openai_model
         if self.llm_provider == "groq":
             return self.groq_model
+        if self.llm_provider == "claude":
+            return self.claude_model
         return self.ollama_model
 
     @property

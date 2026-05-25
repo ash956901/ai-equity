@@ -140,14 +140,17 @@ class CompaniesService:
 
     async def get_quote(self, company_id: UUID) -> dict[str, Any]:
         cached_quote = self._get_cache_snapshot(company_id, self.QUOTE_CACHE_SOURCE)
-        if cached_quote:
+        # Discard cached failures (no last_price) so the next request tries the live APIs again
+        if cached_quote and cached_quote.get("last_price"):
             return cached_quote
 
         result = await self._quotes.get_quote(company_id)
         company = self.db.query(Company).filter(Company.id == company_id).first()
         ticker = company.ticker_nse if company else None
         result["data_sources"] = quote_sources(result.get("source", ""), ticker)
-        self._save_cache_snapshot(company_id, self.QUOTE_CACHE_SOURCE, result)
+        # Only persist a snapshot when we actually got a price
+        if result.get("last_price"):
+            self._save_cache_snapshot(company_id, self.QUOTE_CACHE_SOURCE, result)
         return result
 
     def get_financials(self, company_id: UUID, periods: int) -> dict[str, Any]:
@@ -177,6 +180,54 @@ class CompaniesService:
         result["data_sources"] = financial_sources(ticker, result.get("source"))
         self._save_cache_snapshot(company_id, cache_source, result)
         return result
+
+    def get_filings(
+        self, company_id: UUID, limit: int, filing_type: Optional[str]
+    ) -> list[dict[str, Any]]:
+        from src.db.models import Filing
+
+        company = self.db.query(Company).filter(Company.id == company_id).first()
+        if not company:
+            raise HTTPException(status_code=404, detail="Company not found")
+
+        query = self.db.query(Filing).filter(Filing.company_id == company_id)
+        if filing_type:
+            query = query.filter(Filing.filing_type == filing_type)
+        filings = query.order_by(Filing.filing_date.desc()).limit(limit).all()
+        return [
+            {
+                "id": str(f.id),
+                "filing_type": f.filing_type,
+                "title": f.title,
+                "filing_date": f.filing_date.isoformat() if f.filing_date else None,
+                "source_url": f.source_url,
+                "status": f.status,
+                "period_start": f.period_start.isoformat() if f.period_start else None,
+                "period_end": f.period_end.isoformat() if f.period_end else None,
+            }
+            for f in filings
+        ]
+
+    def trigger_filings_sync(self, company_id: UUID) -> dict[str, Any]:
+        from src.etl.tasks import crawl_bse_filings, crawl_nse_filings, crawl_ir_pages
+
+        company = self.db.query(Company).filter(Company.id == company_id).first()
+        if not company:
+            raise HTTPException(status_code=404, detail="Company not found")
+
+        cid = str(company_id)
+        task_bse: Any = crawl_bse_filings
+        task_nse: Any = crawl_nse_filings
+        task_ir: Any = crawl_ir_pages
+        task_bse.delay(company_id=cid)
+        task_nse.delay(company_id=cid)
+        task_ir.delay(company_id=cid)
+        return {
+            "status": "queued",
+            "company_id": cid,
+            "company_name": company.name,
+            "sources": ["BSE", "NSE", "IR"],
+        }
 
     def enrich_company(self, company_id: UUID) -> dict[str, Any]:
         return self._enrichment.enrich_company(company_id)

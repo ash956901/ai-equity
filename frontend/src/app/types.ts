@@ -7,9 +7,11 @@ export type ViewKey =
   | "company"
   | "discovery"
   | "portfolio"
+  | "domino"
   | "filings"
   | "timeline"
   | "news"
+  | "money"
   | "profile"
   | "settings"
 

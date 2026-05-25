@@ -13,6 +13,8 @@ app = Celery(
     backend=settings.celery_result_backend or settings.redis_url or settings.celery_broker_url,
     include=[
         "src.etl.tasks",
+        "src.etl.news_sync_task",
+        "src.etl.portfolio_news_task",
     ],
 )
 
@@ -65,5 +67,15 @@ app.conf.beat_schedule = {
     "crawl-ir-pages-weekly": {
         "task": "etl.crawl_ir",
         "schedule": crontab(hour=2, minute=0, day_of_week="saturday"),
+    },
+    # Sync and causal-tag news every 6 hours
+    "sync-news-every-6-hours": {
+        "task": "etl.sync_news",
+        "schedule": crontab(hour="*/6", minute=30),
+    },
+    # Check portfolio holdings against new news every 30 minutes
+    "check-portfolio-news": {
+        "task": "etl.check_portfolio_news",
+        "schedule": crontab(minute="*/30"),
     },
 }

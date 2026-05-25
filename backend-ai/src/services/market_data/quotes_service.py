@@ -48,7 +48,9 @@ class QuotesService:
 
         result["company_id"] = str(company_id)
         result["name"] = company.name
-        self.context.cache.set("quote", cache_key, result, CacheTTL.QUOTE_LTP)
+        # Only cache successful responses — don't persist null-quote failures
+        if result.get("last_price") or result.get("quote"):
+            self.context.cache.set("quote", cache_key, result, CacheTTL.QUOTE_LTP)
         return result
 
     async def _fetch_quote_from_api(self, company: Company) -> Optional[dict[str, Any]]:
@@ -103,6 +105,10 @@ class QuotesService:
         alpha_quote = await self._fetch_quote_from_alpha_vantage(company)
         if alpha_quote:
             return alpha_quote
+
+        yahoo_quote = await self._fetch_quote_from_yahoo(company)
+        if yahoo_quote:
+            return yahoo_quote
 
         return None
 
@@ -163,6 +169,54 @@ class QuotesService:
                 }
             except Exception as e:
                 logger.debug("Alpha Vantage quote failed for %s: %s", symbol, e)
+
+        return None
+
+    async def _fetch_quote_from_yahoo(self, company: Company) -> Optional[dict[str, Any]]:
+        """Fetch live quote from Yahoo Finance — no API key required."""
+        symbols: list[str] = []
+        if company.ticker_nse:
+            symbols.append(f"{company.ticker_nse}.NS")
+        if company.ticker_bse:
+            symbols.append(f"{company.ticker_bse}.BO")
+
+        for symbol in symbols:
+            try:
+                async with httpx.AsyncClient(timeout=15.0) as client:
+                    resp = await client.get(
+                        f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}",
+                        params={"interval": "1d", "range": "1d"},
+                        headers={"User-Agent": "Mozilla/5.0 (compatible)"},
+                    )
+                if resp.status_code != 200:
+                    continue
+                data = resp.json()
+                result_block = (data.get("chart") or {}).get("result") or []
+                if not result_block:
+                    continue
+                meta = result_block[0].get("meta", {})
+                last_price = meta.get("regularMarketPrice")
+                if not last_price:
+                    continue
+                prev_close = meta.get("previousClose") or meta.get("chartPreviousClose")
+                change = (last_price - prev_close) if prev_close else None
+                change_pct = ((change / prev_close) * 100) if (change is not None and prev_close) else None
+                return {
+                    "source": "Yahoo Finance",
+                    "symbol": symbol,
+                    "last_price": last_price,
+                    "change": round(change, 2) if change is not None else None,
+                    "change_pct": round(change_pct, 2) if change_pct is not None else None,
+                    "volume": meta.get("regularMarketVolume"),
+                    "previous_close": prev_close,
+                    "fifty_two_week_high": meta.get("fiftyTwoWeekHigh"),
+                    "fifty_two_week_low": meta.get("fiftyTwoWeekLow"),
+                    "market_state": meta.get("marketState"),
+                    "fetched_at": datetime.utcnow().isoformat(),
+                    "data_sources": [{"label": "Yahoo Finance", "type": "live"}],
+                }
+            except Exception as e:
+                logger.debug("Yahoo Finance quote failed for %s: %s", symbol, e)
 
         return None
 

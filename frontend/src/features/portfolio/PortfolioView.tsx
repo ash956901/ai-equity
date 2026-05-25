@@ -13,8 +13,10 @@ import {
 } from "../../lib/api";
 import { PageHeader } from "../../shared/ui/PageHeader";
 import { SourceBadges } from "../../shared/ui/SourceBadges";
+import { HoldingDetailPanel } from "./HoldingDetailPanel";
 
 interface PortfolioHolding {
+  companyId: string;
   symbol: string;
   company: string;
   sector: string;
@@ -54,6 +56,7 @@ export function PortfolioView(props: PortfolioViewProps) {
   const [activePortfolio, setActivePortfolio] = useState<AIPortfolioDetail | null>(null);
   const [holdings, setHoldings] = useState<PortfolioHolding[]>([]);
   const [dataSources, setDataSources] = useState<DataSourceInfo[]>([]);
+  const [selectedHolding, setSelectedHolding] = useState<PortfolioHolding | null>(null);
 
   const userId = useMemo(() => getUserId(), []);
 
@@ -70,6 +73,7 @@ export function PortfolioView(props: PortfolioViewProps) {
         setDataSources(detail.data_sources ?? []);
         const sourceHoldings = detail.metrics?.holdings ?? detail.holdings ?? [];
         const mapped: PortfolioHolding[] = sourceHoldings.map((h: any) => ({
+          companyId: h.company_id,
           symbol: h.ticker_nse ?? h.company_id.slice(0, 6),
           company: h.company_name ?? "Unknown",
           sector: h.sector ?? "Unknown",
@@ -286,10 +290,15 @@ export function PortfolioView(props: PortfolioViewProps) {
         <div className="table-card">
           <div className="table-head">
             <h3>Top Holdings</h3>
-            <span>From backend portfolio</span>
+            <span>Click a row to see details</span>
           </div>
           {holdings.map((holding) => (
-            <div key={holding.symbol} className="table-row portfolio-row">
+            <div
+              key={holding.symbol}
+              className="table-row portfolio-row"
+              style={{ cursor: "pointer" }}
+              onClick={() => setSelectedHolding(holding)}
+            >
               <span>
                 {holding.symbol}
                 <small>{holding.company}</small>
@@ -302,6 +311,13 @@ export function PortfolioView(props: PortfolioViewProps) {
             </div>
           ))}
         </div>
+      )}
+
+      {selectedHolding && (
+        <HoldingDetailPanel
+          holding={selectedHolding}
+          onClose={() => setSelectedHolding(null)}
+        />
       )}
     </section>
   );

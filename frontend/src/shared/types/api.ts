@@ -73,6 +73,30 @@ export interface SecFiling {
   finalLink?: string;
 }
 
+export interface AppProfile {
+  id: string;
+  name: string;
+  avatar_color?: string;
+  created_at?: string;
+}
+
+export interface ProfileData {
+  profile: AppProfile;
+  chat_history: unknown[];
+  portfolio: unknown[];
+  watchlists: unknown[];
+  bookmarks: unknown[];
+}
+
+export interface UserTransaction {
+  id: string;
+  transaction_type: string;
+  amount: number;
+  balance_after: number;
+  description: string | null;
+  created_at: string;
+}
+
 export interface CompanySearchResult {
   symbol?: string;
   name?: string;
@@ -144,6 +168,10 @@ export interface AIQuote {
   change_pct?: number;
   volume?: number;
   market_cap?: number;
+  previous_close?: number;
+  fifty_two_week_high?: number;
+  fifty_two_week_low?: number;
+  market_state?: string;
   fetched_at?: string;
   data_sources?: DataSourceInfo[];
 }
@@ -362,4 +390,111 @@ export interface ProfileConfigResponse {
   investment_horizons: ProfileOption[];
   kyc_statuses: ProfileOption[];
   defaults: Record<string, string>;
+}
+
+// ── Causal / Domino Effect types ──────────────────────────────────────────
+
+export interface CausalCommodityTrend {
+  current_price: number;
+  change_pct: number;
+  direction: "up" | "down" | "stable";
+  name: string;
+}
+
+export interface CausalGeoEvent {
+  title: string;
+  country: string;
+  category: string;
+  confidence: number;
+  goldstein_scale: number | null;
+  date: string | null;
+}
+
+export interface CausalNewsImpact {
+  title: string;
+  source: string | null;
+  commodity: string | null;
+  sector: string | null;
+  impact_direction: string | null;
+  classification_confidence: number | null;
+  published_at?: string | null;
+}
+
+export interface CausalChainItem {
+  id: string;
+  name: string;
+  trigger_type: string;
+  trigger_value: string;
+  hop1_target: string;
+  hop1_relationship: string;
+  hop2_target: string | null;
+  hop2_relationship: string | null;
+  hop3_target: string | null;
+  hop3_relationship: string | null;
+  confidence: number;
+  current_commodity_change_pct: number;
+}
+
+export interface CausalMarketData {
+  commodity_trends: Record<string, CausalCommodityTrend>;
+  geopolitical_events: CausalGeoEvent[];
+  news_impacts: CausalNewsImpact[];
+  causal_chains: CausalChainItem[];
+}
+
+export interface CausalPortfolioPattern {
+  company_name: string;
+  ticker: string;
+  sector: string;
+  commodity: string;
+  commodity_name: string;
+  price_change_pct: number;
+  impact_direction: "positive" | "negative";
+  confidence: number;
+  trigger: string;
+}
+
+export interface CausalPortfolioData {
+  portfolio_id: string | null;
+  patterns: CausalPortfolioPattern[];
+}
+
+export interface CausalExposure {
+  commodity: string;
+  dependency_type: string;
+  impact_direction: string;
+  impact_magnitude: "high" | "medium" | "low";
+  affected_companies: string[];
+  current_change_pct: number;
+  commodity_direction: string;
+}
+
+export interface CausalCompanyData {
+  company_id: string;
+  company_name: string;
+  sector: string;
+  exposures: CausalExposure[];
+  news_impacts: CausalNewsImpact[];
+}
+
+export interface CausalLLMImpact {
+  sector: string;
+  direction: "positive" | "negative" | "neutral";
+  reasoning: string;
+  confidence: number;
+}
+
+export interface CausalLLMData {
+  trigger: string;
+  trigger_type: string;
+  primary_impacts: CausalLLMImpact[];
+  hidden_impacts: CausalLLMImpact[];
+  opportunities: string[];
+  risks: string[];
+  recommendations: {
+    monitor: string[];
+    mitigate: string[];
+    entry_points: string[];
+  };
+  grounded_sectors: string[];
 }

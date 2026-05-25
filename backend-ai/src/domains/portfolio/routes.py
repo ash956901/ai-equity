@@ -88,7 +88,6 @@ def get_portfolio_metrics(
 
 
 @router.post("/{portfolio_id}/holdings", status_code=201)
-
 def add_holding(
     portfolio_id: UUID,
     request: AddHoldingRequest,
@@ -102,3 +101,25 @@ def add_holding(
         quantity=request.quantity,
         average_price=request.average_price,
     )
+
+
+@router.delete("/{portfolio_id}", status_code=200)
+def delete_portfolio(
+    portfolio_id: UUID,
+    user_id: UUID,
+    db: Session = Depends(get_db),
+):
+    """Delete a portfolio and all its holdings."""
+    service = PortfoliosService(db)
+    return service.delete_portfolio(portfolio_id=portfolio_id, user_id=user_id)
+
+
+@router.delete("/{portfolio_id}/holdings/{holding_id}", status_code=200)
+def delete_holding(
+    portfolio_id: UUID,
+    holding_id: UUID,
+    db: Session = Depends(get_db),
+):
+    """Remove a single holding from a portfolio."""
+    service = PortfoliosService(db)
+    return service.delete_holding(portfolio_id=portfolio_id, holding_id=holding_id)

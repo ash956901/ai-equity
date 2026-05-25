@@ -9,11 +9,15 @@ from sqlalchemy.orm import Session
 
 from src.agents import build_research_agent
 from src.db.models import ChatMessage, ChatSession, User, Portfolio
+from src.utils.cache import get_analysis_cache
 from src.utils.data_sources import DataSource
 
 
 MAX_AGENT_RETRIES = 2
 RETRY_BACKOFF_SECONDS = 1.0
+
+# Keywords that make a query portfolio-specific (cache must include user context)
+_PORTFOLIO_KEYWORDS = {"my portfolio", "my holdings", "my stocks", "portfolio"}
 
 
 class ChatService:
@@ -39,6 +43,19 @@ class ChatService:
         context_lines.append(f"expertise_level={expertise_level}")
         parts.append(f"\n\n[Context: {', '.join(context_lines)}]")
         return "".join(parts)
+
+    @staticmethod
+    def _is_portfolio_query(query: str) -> bool:
+        q_lower = query.lower()
+        return any(kw in q_lower for kw in _PORTFOLIO_KEYWORDS)
+
+    @staticmethod
+    def _cache_key(query: str, expertise_level: str, user_id: UUID, portfolio_id: Any) -> str:
+        cache = get_analysis_cache()
+        q_norm = query.strip().lower()
+        if ChatService._is_portfolio_query(query):
+            return cache.make_key("chat", q_norm, expertise_level, str(user_id), str(portfolio_id))
+        return cache.make_key("chat", q_norm, expertise_level)
 
     def process_query(
         self,
@@ -88,10 +105,6 @@ class ChatService:
                 raise HTTPException(status_code=404, detail="Session not found")
             print(f"[STAGE 2b: SESSION] Using existing session: {resolved_session_id}")
 
-        print(f"[STAGE 3: AGENT] Building research agent...")
-        agent = build_research_agent()
-        print(f"[STAGE 3: AGENT] Research agent built")
-        
         primary_portfolio = (
             self.db.query(Portfolio)
             .filter(Portfolio.user_id == user_id, Portfolio.is_primary == True)
@@ -101,6 +114,35 @@ class ChatService:
         if primary_portfolio_id:
             print(f"[STAGE 3: PORTFOLIO] Primary portfolio: {primary_portfolio_id}")
 
+        # --- Cache check (skip for document-attached queries) ---
+        cache = get_analysis_cache()
+        cache_key = None
+        if not upload_id:
+            cache_key = self._cache_key(query, expertise_level, user_id, primary_portfolio_id)
+            cached = cache.get(cache_key)
+            if cached:
+                print(f"[CACHE HIT] Returning cached response for query='{query[:50]}'")
+                # Still save user message / assistant response to DB for session continuity
+                self.db.add(ChatMessage(session_id=resolved_session_id, role="user", content=query))
+                self.db.add(ChatMessage(
+                    session_id=resolved_session_id,
+                    role="assistant",
+                    content=cached["response_text"],
+                    tokens_used=0,
+                ))
+                self.db.commit()
+                return {
+                    "response": cached["response_text"],
+                    "tokens_used": 0,
+                    "session_id": str(resolved_session_id),
+                    "data_sources": cached["data_sources"],
+                    "cached": True,
+                }
+
+        print(f"[STAGE 3: AGENT] Building research agent...")
+        agent = build_research_agent()
+        print(f"[STAGE 3: AGENT] Research agent built")
+
         user_message = self._build_user_message(
             query=query,
             user_id=user_id,
@@ -108,7 +150,7 @@ class ChatService:
             upload_id=upload_id,
             primary_portfolio_id=primary_portfolio_id,
         )
-        
+
         print(f"[STAGE 3: USER_MESSAGE] Built message (full): {user_message}")
 
         print(f"[STAGE 4: AGENT_INVOKE] Invoking agent with session_id={resolved_session_id}")
@@ -118,21 +160,21 @@ class ChatService:
         for attempt in range(1, MAX_AGENT_RETRIES + 1):
             try:
                 print(f"[STAGE 4: ATTEMPT {attempt}/{MAX_AGENT_RETRIES}] Invoking agent...")
-                
+
                 result = agent.invoke(
                     {"messages": [{"role": "user", "content": user_message}]},
                     config={"configurable": {"thread_id": str(resolved_session_id)}},
                 )
-                
+
                 print(f"[STAGE 4: ATTEMPT {attempt}] Agent invoke succeeded")
-                
+
                 last_err = None
                 break
             except Exception as invoke_err:
                 last_err = invoke_err
                 err_msg = str(invoke_err)
                 print(f"[STAGE 4: ATTEMPT {attempt}] Agent invoke failed: {err_msg[:200]}")
-                
+
                 if "output_parse_failed" in err_msg or "BadRequestError" in type(invoke_err).__name__:
                     print(f"[STAGE 4: RETRY] Retrying after {RETRY_BACKOFF_SECONDS * attempt}s...")
                     if attempt < MAX_AGENT_RETRIES:
@@ -146,7 +188,7 @@ class ChatService:
             raise RuntimeError("Agent returned no result")
 
         print(f"[STAGE 4: RESULT_FULL] result keys = {list(result.keys())}")
-        
+
         response_text = result["messages"][-1].content
         print(f"[STAGE 4: LLM_RESPONSE_FULL] response_text = {response_text}")
 
@@ -176,7 +218,7 @@ class ChatService:
             )
         )
         self.db.commit()
-        
+
         print(f"[STAGE 5: DB] Messages saved to DB, session={resolved_session_id}")
 
         data_sources = [
@@ -186,6 +228,14 @@ class ChatService:
                 data_type="ai_response",
             ).model_dump(),
         ]
+
+        # Store in cache for future identical queries
+        if cache_key:
+            cache.set(cache_key, {
+                "response_text": response_text,
+                "data_sources": data_sources,
+            })
+            print(f"[CACHE SET] Stored response under key {cache_key[:24]}...")
 
         return {
             "response": response_text,

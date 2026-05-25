@@ -6,6 +6,7 @@ from uuid import UUID
 from fastapi import APIRouter, BackgroundTasks, Depends, Query
 from sqlalchemy.orm import Session
 
+
 from src.db.database import get_db
 from src.domains.companies.service import CompaniesService
 
@@ -112,6 +113,28 @@ def refresh_company(
     """Trigger full background refresh: enrich + financials + filings."""
     service = CompaniesService(db)
     return service.refresh_company(company_id)
+
+
+@router.get("/{company_id}/filings")
+def get_company_filings(
+    company_id: UUID,
+    limit: int = Query(default=20, ge=1, le=100),
+    filing_type: Optional[str] = None,
+    db: Session = Depends(get_db),
+) -> List[Dict[str, Any]]:
+    """Get filings for a company directly from the Filing table (no date cutoff)."""
+    service = CompaniesService(db)
+    return service.get_filings(company_id, limit, filing_type)
+
+
+@router.post("/{company_id}/filings/sync")
+def sync_company_filings(
+    company_id: UUID,
+    db: Session = Depends(get_db),
+) -> Dict[str, Any]:
+    """Trigger background BSE + NSE + IR crawl for a company and populate filings."""
+    service = CompaniesService(db)
+    return service.trigger_filings_sync(company_id)
 
 
 @router.get("/{company_id}/historical-prices")

@@ -20,6 +20,7 @@ before delegating to a sub-agent.
 | **news-sentiment** | Latest news aggregation and sentiment analysis for companies or sectors |
 | **doc-insight** | Analyse an uploaded document (PDF/PPT/annual report) with page-level citations |
 | **causal** | Hidden pattern detection: world events → commodities → sectors → stocks. Use for "what's not obvious?", "hidden risks", or "causal patterns" |
+| **performance-learnings** | Portfolio return analysis: P&L, winners, losers, Nifty 50 benchmark comparison, and 3-5 investment learnings. Use when user asks "how did I do?", "what were my best trades?", "what did I learn?", or asks about returns over a period |
 
 ## Routing Guidelines
 
@@ -30,6 +31,7 @@ before delegating to a sub-agent.
 - If the user asks for news, sentiment, or recent headlines → delegate to **news-sentiment**.
 - If the user references an uploaded document or upload_id → delegate to **doc-insight**.
 - If the user asks about "hidden patterns", "what's not obvious", "causal chains", "risks not visible", or connects global events to market impacts → delegate to **causal**.
+- If the user asks about their returns, performance, P&L, best/worst trades, benchmark comparison, or "what did I learn from my portfolio" → delegate to **performance-learnings**.
 - For "where to invest" in the context of their current portfolio, you may invoke both **portfolio** (for rebalancing) and **thematic-discovery** (for new ideas).
 
 - For casual greetings or general questions unrelated to equity research, respond \

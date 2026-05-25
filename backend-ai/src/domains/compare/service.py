@@ -26,6 +26,7 @@ from src.db.models import (
 )
 from src.services.gemini_enrichment_service import GeminiEnrichmentService
 from src.services.market_data.helpers import persist_scraped_financials
+from src.utils.cache import get_analysis_cache
 from src.utils.request_context import get_request_id
 from src.services.financial_service import FinancialService
 
@@ -56,6 +57,19 @@ class CompareService:
         if len(company_names) != 2:
             raise ValueError("Compare endpoint supports exactly 2 companies")
 
+        # --- Cache check ---
+        cache = get_analysis_cache()
+        cache_key = cache.make_key(
+            "compare",
+            sorted(n.strip().lower() for n in company_names),
+            (query or "").strip().lower(),
+            expertise_level,
+        )
+        cached = cache.get(cache_key)
+        if cached is not None:
+            logger.info("AnalysisCache HIT for compare %s", company_names)
+            return cached
+
         company_ids = self._resolve_company_ids_by_name(company_names)
 
         request_id = get_request_id() or str(uuid.uuid4())
@@ -68,9 +82,6 @@ class CompareService:
         company_a = self._get_or_build_company_snapshot(company_ids[0], flow_logs)
         company_b = self._get_or_build_company_snapshot(company_ids[1], flow_logs)
 
-        a_labels = self._build_company_labels(company_a)
-        b_labels = self._build_company_labels(company_b)
-
         comparison = {
             "growth": self._growth_winner(company_a, company_b),
             "profitability": self._profitability_winner(company_a, company_b),
@@ -78,29 +89,38 @@ class CompareService:
             "valuation": self._valuation_winner(company_a, company_b),
         }
         scores = self._build_scorecard(comparison)
-        insights = self._hidden_insights(company_a, company_b)
-        final_verdict = self._build_verdict(company_a, company_b, comparison, scores)
+
+        llm_narratives = self._generate_llm_narratives(company_a, company_b, comparison, scores)
+
+        if llm_narratives:
+            companyA_summary = llm_narratives.get("companyA_summary") or self._build_company_labels(company_a)["narrative"]
+            companyB_summary = llm_narratives.get("companyB_summary") or self._build_company_labels(company_b)["narrative"]
+            detailed_comparison = {
+                **self._build_detailed_comparison(company_a, company_b, comparison),
+                **{k: v for k, v in (llm_narratives.get("detailed_comparison") or {}).items() if v},
+            }
+            insights = llm_narratives.get("insights") or self._hidden_insights(company_a, company_b)
+            final_verdict = llm_narratives.get("final_verdict") or self._build_verdict(company_a, company_b, comparison, scores)
+        else:
+            a_labels = self._build_company_labels(company_a)
+            b_labels = self._build_company_labels(company_b)
+            companyA_summary = a_labels["narrative"]
+            companyB_summary = b_labels["narrative"]
+            detailed_comparison = self._build_detailed_comparison(company_a, company_b, comparison)
+            insights = self._hidden_insights(company_a, company_b)
+            final_verdict = self._build_verdict(company_a, company_b, comparison, scores)
 
         result: Dict[str, Any] = {
-            "companyA_summary": a_labels["narrative"],
-            "companyB_summary": b_labels["narrative"],
+            "companyA_summary": companyA_summary,
+            "companyB_summary": companyB_summary,
             "comparison": comparison,
             "insights": insights,
             "final_verdict": final_verdict,
             "companyA_stock_data": self._build_stock_data(company_a),
             "companyB_stock_data": self._build_stock_data(company_b),
-            "detailed_comparison": self._build_detailed_comparison(
-                company_a,
-                company_b,
-                comparison,
-            ),
+            "detailed_comparison": detailed_comparison,
         }
-        result["local_summary"] = self._generate_local_summary(
-            company_a,
-            company_b,
-            comparison,
-            result["detailed_comparison"],
-        )
+        result["local_summary"] = final_verdict
         result = self._sanitize_for_json(result)
 
         duration_ms = int((time.perf_counter() - start_time) * 1000)
@@ -115,6 +135,9 @@ class CompareService:
             result=result,
             duration_ms=duration_ms,
         )
+
+        cache.set(cache_key, result)
+        logger.info("AnalysisCache SET for compare %s", company_names)
         return result
 
     def _resolve_company_ids_by_name(self, company_names: List[str]) -> List[str]:
@@ -1086,6 +1109,85 @@ class CompareService:
             f"while {safety_pick} is better for stability-focused investors."
         )
 
+    def _generate_llm_narratives(
+        self,
+        company_a: Dict[str, Any],
+        company_b: Dict[str, Any],
+        comparison: Dict[str, str],
+        scores: Dict[str, int],
+    ) -> Optional[Dict[str, Any]]:
+        """Call NVIDIA NIM LLM with full snapshot data; return rich narrative dict or None on failure."""
+        try:
+            import json as _json
+
+            from langchain_core.messages import HumanMessage
+
+            from src.llm import get_llm
+
+            def _snap(c: Dict[str, Any]) -> Dict[str, Any]:
+                return {
+                    "name": c.get("company_name"),
+                    "ticker": c.get("ticker_nse") or c.get("ticker_bse"),
+                    "sector": c.get("sector"),
+                    "growth_cagr_pct": c.get("growth_score"),
+                    "revenue_5yr_cr": c.get("revenue_last_5_years"),
+                    "quarterly_revenue_cr": c.get("quarterly_revenue"),
+                    "net_profit_latest_cr": c.get("net_profit"),
+                    "net_margin_pct": c.get("profit_margin"),
+                    "roe_pct": c.get("roe"),
+                    "roce_pct": c.get("roce"),
+                    "pe_ratio": c.get("pe_ratio"),
+                    "debt_to_equity": c.get("debt_to_equity"),
+                    "earnings_volatility": c.get("earnings_volatility"),
+                    "margin_trend": c.get("margin_trend"),
+                    "quarterly_consistency_score": c.get("quarterly_consistency"),
+                    "extra": c.get("gemini_extra") or {},
+                }
+
+            prompt = (
+                "You are a senior Indian equity research analyst. "
+                "Given detailed financial data for two companies, write a comprehensive comparison report.\n\n"
+                "Return ONLY valid JSON (no markdown fences) with this exact structure:\n"
+                '{\n'
+                '  "companyA_summary": "<2-3 sentence analyst profile of Company A citing specific numbers>",\n'
+                '  "companyB_summary": "<2-3 sentence analyst profile of Company B citing specific numbers>",\n'
+                '  "detailed_comparison": {\n'
+                '    "growth": "<paragraph comparing revenue CAGR, quarterly consistency — cite numbers, name the winner and why>",\n'
+                '    "profitability": "<paragraph comparing net margin, ROE, ROCE — cite exact numbers, name the winner>",\n'
+                '    "risk": "<paragraph comparing debt/equity, earnings volatility, margin trend — cite numbers>",\n'
+                '    "valuation": "<paragraph comparing PE ratio, PEG context, sector norms — cite numbers>"\n'
+                '  },\n'
+                '  "insights": [\n'
+                '    "<non-obvious insight 1>",\n'
+                '    "<non-obvious insight 2>",\n'
+                '    "<non-obvious insight 3>"\n'
+                '  ],\n'
+                '  "final_verdict": "<2-3 sentence verdict naming the overall winner and which investor profile each suits>"\n'
+                '}\n\n'
+                f"Company A data: {_json.dumps(_snap(company_a))}\n"
+                f"Company B data: {_json.dumps(_snap(company_b))}\n"
+                f"Category winners (deterministic): {_json.dumps(comparison)}\n"
+                f"Score: A wins {scores['A']} of 4, B wins {scores['B']} of 4\n\n"
+                "Rules:\n"
+                "- All INR figures in the data are in Crores.\n"
+                "- Never fabricate numbers not present in the data; if a metric is null, say data is unavailable.\n"
+                "- Insights must be non-obvious — not just restating who won each category.\n"
+                "- Keep each section analytical and specific, not generic."
+            )
+
+            llm = get_llm(temperature=0.3)
+            response = llm.invoke([HumanMessage(content=prompt)])
+            raw = str(getattr(response, "content", "") or "").strip()
+            if raw.startswith("```"):
+                raw = raw.split("```")[1]
+                if raw.startswith("json"):
+                    raw = raw[4:]
+                raw = raw.rstrip("`").strip()
+            return _json.loads(raw)
+        except Exception as exc:
+            logger.warning("LLM narrative generation failed: %s", exc)
+            return None
+
     def _generate_local_summary(
         self,
         company_a: Dict[str, Any],
@@ -1093,7 +1195,7 @@ class CompareService:
         comparison: Dict[str, str],
         detailed_comparison: Dict[str, str],
     ) -> str:
-        """Generate a concise final comparison summary using the local Ollama model."""
+        """Generate a concise final comparison summary using the configured LLM."""
         fallback = (
             f"{company_a.get('company_name')} vs {company_b.get('company_name')}: "
             f"growth winner={comparison.get('growth')}, profitability winner={comparison.get('profitability')}, "
@@ -1101,14 +1203,9 @@ class CompareService:
         )
 
         try:
-            from langchain_ollama import ChatOllama
+            from src.llm import get_llm
 
-            settings = get_settings()
-            llm = ChatOllama(
-                model=settings.ollama_model,
-                base_url=settings.ollama_base_url,
-                temperature=0.2,
-            )
+            llm = get_llm(temperature=0.2)
             prompt = (
                 "You are an equity analyst. Write a short, factual comparison summary in under 90 words. "
                 "Use only provided data, avoid speculation, and mention the best fit investor type.\n\n"
@@ -1117,7 +1214,8 @@ class CompareService:
                 f"Category winners: {comparison}\n"
                 f"Detailed metrics: {detailed_comparison.get('full_report', '')}"
             )
-            response = llm.invoke(prompt)
+            from langchain_core.messages import HumanMessage
+            response = llm.invoke([HumanMessage(content=prompt)])
             text = getattr(response, "content", "") if response is not None else ""
             summary = str(text).strip()
             return summary or fallback

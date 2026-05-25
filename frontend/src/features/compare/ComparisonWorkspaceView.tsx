@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from "react";
-import { Search } from "lucide-react";
 
 import {
   compareCompanies,
@@ -7,6 +6,7 @@ import {
   type CompareResponse,
 } from "../../lib/api";
 import { PageHeader } from "../../shared/ui/PageHeader";
+import { CompanySearchInput } from "../../shared/components/CompanySearchInput";
 
 type DataMode = "live" | "demo";
 type ToastTone = "info" | "success" | "warning";
@@ -41,22 +41,19 @@ interface ComparisonWorkspaceViewProps {
   setSearchSelection: (selection: ComparisonSelectionUpdate) => void;
 }
 
-function normalizeSymbolsInput(value: string): string[] {
-  return Array.from(
-    new Set(
-      value
-        .split(",")
-        .map((item) => item.trim().toUpperCase())
-        .filter(Boolean)
-        .slice(0, 4)
-    )
-  );
+
+interface CompanySelection {
+  id: string;
+  name: string;
+  ticker: string;
+  sector: string;
 }
 
 export function ComparisonWorkspaceView(props: ComparisonWorkspaceViewProps) {
   const [lastSelectionStamp, setLastSelectionStamp] = useState<number>(0);
-  const [inputText, setInputText] = useState("RELIANCE, TCS");
-  const [selectedSymbols, setSelectedSymbols] = useState<string[]>(["RELIANCE", "TCS"]);
+  const [companyA, setCompanyA] = useState<CompanySelection | null>(null);
+  const [companyB, setCompanyB] = useState<CompanySelection | null>(null);
+  const [selectedSymbols, setSelectedSymbols] = useState<string[]>([]);
   const [compareLoading, setCompareLoading] = useState(false);
   const [showRaw, setShowRaw] = useState(false);
   const [compareError, setCompareError] = useState<string | null>(null);
@@ -69,11 +66,10 @@ export function ComparisonWorkspaceView(props: ComparisonWorkspaceViewProps) {
     const normalized = props.searchSelection.compareSymbols
       .map((item) => item.trim().toUpperCase())
       .filter(Boolean)
-      .slice(0, 4);
+      .slice(0, 2);
 
     if (normalized.length >= 2) {
       setSelectedSymbols(normalized);
-      setInputText(normalized.join(", "));
     }
 
     setLastSelectionStamp(props.searchSelection.stamp);
@@ -82,38 +78,41 @@ export function ComparisonWorkspaceView(props: ComparisonWorkspaceViewProps) {
   const [selectedCompanies, setSelectedCompanies] = useState<DiscoveryCompany[]>([]);
 
   useEffect(() => {
-    if (!selectedSymbols.length) return;
-    const companies = selectedSymbols.map(
-      (symbol) =>
-        ({
-          symbol,
-          name: symbol,
-          sector: "Loading...",
-          marketCapBn: 0,
-          insight: "",
-          themeScores: {},
-        }) as DiscoveryCompany
-    );
+    const symbols = companyA && companyB
+      ? [companyA.ticker || companyA.name, companyB.ticker || companyB.name]
+      : selectedSymbols;
+
+    if (!symbols.length) return;
+
+    const companies: DiscoveryCompany[] = companyA && companyB
+      ? [
+          { symbol: companyA.ticker || companyA.name, name: companyA.name, sector: companyA.sector || "…", marketCapBn: 0, insight: "", themeScores: {} },
+          { symbol: companyB.ticker || companyB.name, name: companyB.name, sector: companyB.sector || "…", marketCapBn: 0, insight: "", themeScores: {} },
+        ]
+      : symbols.map((s) => ({ symbol: s, name: s, sector: "Loading…", marketCapBn: 0, insight: "", themeScores: {} }));
+
     setSelectedCompanies(companies);
 
-    Promise.all(selectedSymbols.map((s) => searchCompaniesDB(s, 1)))
-      .then((results) => {
-        const enriched = results.map((r, i) => {
-          const c = r[0];
-          if (!c) return companies[i];
-          return {
-            symbol: c.ticker_nse ?? selectedSymbols[i],
-            name: c.name,
-            sector: c.sector ?? "Unknown",
-            marketCapBn: c.market_cap_inr ? c.market_cap_inr / 1e9 : 0,
-            insight: c.industry ?? c.description ?? "",
-            themeScores: {},
-          } as DiscoveryCompany;
-        });
-        setSelectedCompanies(enriched);
-      })
-      .catch(() => {});
-  }, [selectedSymbols]);
+    if (!companyA || !companyB) {
+      Promise.all(symbols.map((s) => searchCompaniesDB(s, 1)))
+        .then((results) => {
+          const enriched = results.map((r, i) => {
+            const c = r[0];
+            if (!c) return companies[i];
+            return {
+              symbol: c.ticker_nse ?? symbols[i],
+              name: c.name,
+              sector: c.sector ?? "Unknown",
+              marketCapBn: c.market_cap_inr ? c.market_cap_inr / 1e9 : 0,
+              insight: c.industry ?? c.description ?? "",
+              themeScores: {},
+            } as DiscoveryCompany;
+          });
+          setSelectedCompanies(enriched);
+        })
+        .catch(() => {});
+    }
+  }, [companyA, companyB, selectedSymbols]);
 
   const allThemes = useMemo(() => {
     const set = new Set<string>();
@@ -145,44 +144,15 @@ export function ComparisonWorkspaceView(props: ComparisonWorkspaceViewProps) {
     return best;
   }, [selectedCompanies]);
 
-  const applySymbols = () => {
-    const deduped = normalizeSymbolsInput(inputText);
-    if (deduped.length < 2) {
-      return;
-    }
-
-    setSelectedSymbols(deduped);
-    setInputText(deduped.join(", "));
-    setCompareResult(null);
-    setCompareError(null);
-  };
-
   const runComparison = async () => {
-    if (props.dataMode === "demo") {
-      props.pushToast("Switch to Live API mode to run backend comparison.", "info");
+    if (!companyA || !companyB) {
+      props.pushToast("Select both Company A and Company B first", "warning");
       return;
     }
 
-    const typedSymbols = normalizeSymbolsInput(inputText);
-    const symbols = typedSymbols.length >= 2 ? typedSymbols : selectedSymbols;
-
-    if (symbols.length < 2) {
-      props.pushToast("Select at least two valid companies first", "warning");
-      return;
-    }
-
-    const comparedSymbols = symbols.slice(0, 2);
-    if (symbols.length > 2) {
-      props.pushToast("Backend compare supports 2 companies. Using first two symbols.", "info");
-    }
-
-    const comparedNames = comparedSymbols.map((symbol) => {
-      const matched = selectedCompanies.find((company) => company.symbol.toUpperCase() === symbol);
-      return matched?.name ?? symbol;
-    });
-
+    const comparedNames = [companyA.name, companyB.name];
+    const comparedSymbols = [companyA.ticker || companyA.name, companyB.ticker || companyB.name];
     setSelectedSymbols(comparedSymbols);
-    setInputText(comparedSymbols.join(", "));
     setCompareLoading(true);
     setCompareError(null);
 
@@ -207,17 +177,14 @@ export function ComparisonWorkspaceView(props: ComparisonWorkspaceViewProps) {
   };
 
   const openComparisonReport = () => {
-    const typedSymbols = normalizeSymbolsInput(inputText);
-    const candidateSymbols = typedSymbols.length >= 2 ? typedSymbols : selectedSymbols;
+    const symbols = companyA && companyB
+      ? [companyA.ticker || companyA.name, companyB.ticker || companyB.name]
+      : selectedSymbols;
 
-    if (candidateSymbols.length < 2) {
+    if (symbols.length < 2) {
       props.pushToast("Select at least two valid companies first", "warning");
       return;
     }
-
-    const symbols = candidateSymbols;
-    setSelectedSymbols(symbols);
-    setInputText(symbols.join(", "));
 
     props.setSearchSelection({
       stamp: Date.now(),
@@ -235,50 +202,50 @@ export function ComparisonWorkspaceView(props: ComparisonWorkspaceViewProps) {
         title="Comparison Workspace"
         subtitle="Compare companies side-by-side across themes, sector context, and qualitative signals."
         dataMode={props.dataMode}
-        right={
-          <form
-            className="search-pill"
-            onSubmit={(event) => {
-              event.preventDefault();
-              applySymbols();
-            }}
-          >
-            <Search size={14} />
-            <input
-              placeholder="RELIANCE, TCS, INFY"
-              value={inputText}
-              onChange={(event) => setInputText(event.target.value)}
-            />
-          </form>
-        }
       />
 
-      <div className="comparison-toolbar">
-        <button type="button" className="primary-btn" onClick={applySymbols}>
-          Apply Comparison
+      <div className="comparison-search-row" style={{ display: "flex", gap: "12px", alignItems: "flex-end", marginBottom: "16px", flexWrap: "wrap" }}>
+        <div style={{ flex: 1, minWidth: "220px" }}>
+          <label style={{ display: "block", fontSize: "0.75rem", color: "var(--muted)", marginBottom: "6px", textTransform: "uppercase", letterSpacing: "0.05em" }}>Company A</label>
+          <CompanySearchInput
+            placeholder="Search company A…"
+            onSelect={(c) => { setCompanyA(c); setCompareResult(null); setCompareError(null); }}
+            initialValue={companyA ? `${companyA.name} (${companyA.ticker || "—"})` : ""}
+          />
+        </div>
+        <div style={{ flex: 1, minWidth: "220px" }}>
+          <label style={{ display: "block", fontSize: "0.75rem", color: "var(--muted)", marginBottom: "6px", textTransform: "uppercase", letterSpacing: "0.05em" }}>Company B</label>
+          <CompanySearchInput
+            placeholder="Search company B…"
+            onSelect={(c) => { setCompanyB(c); setCompareResult(null); setCompareError(null); }}
+            initialValue={companyB ? `${companyB.name} (${companyB.ticker || "—"})` : ""}
+          />
+        </div>
+        <button type="button" className="primary-btn" onClick={() => void runComparison()} disabled={compareLoading || !companyA || !companyB}>
+          {compareLoading ? "Comparing…" : "Compare"}
         </button>
-        <button type="button" className="primary-btn" onClick={() => void runComparison()}>
-          {compareLoading ? "Comparing..." : "Run Backend Compare"}
-</button>
-          <button type="button" className="secondary-btn" onClick={() => setShowRaw(!showRaw)}>
-            {showRaw ? "Hide raw response" : "Show raw response"}
-          </button>
-          <button type="button" className="primary-btn" onClick={openComparisonReport}>
+      </div>
+
+      <div className="comparison-toolbar">
+        <button type="button" className="secondary-btn" onClick={() => setShowRaw(!showRaw)}>
+          {showRaw ? "Hide raw response" : "Show raw response"}
+        </button>
+        <button type="button" className="primary-btn" onClick={openComparisonReport}>
           Generate Comparison Report
         </button>
         <button
           type="button"
           className="secondary-btn mini-btn"
           onClick={() => {
-            if (!selectedSymbols.length) return;
+            if (!companyA) return;
             props.setSearchSelection({
               stamp: Date.now(),
-              companySymbol: selectedSymbols[0],
+              companySymbol: companyA.ticker || companyA.name,
             });
             props.goToView("company");
           }}
         >
-          Open First Company
+          Open Company A
         </button>
       </div>
 
@@ -301,22 +268,20 @@ export function ComparisonWorkspaceView(props: ComparisonWorkspaceViewProps) {
             </div>
 
             <div className="comparison-scores">
-              <div className="score-box">
-                <span className="score-box-label">Growth</span>
-                <span className={`score-box-value ${compareResult.comparison.growth}`}>{compareResult.comparison.growth}</span>
-              </div>
-              <div className="score-box">
-                <span className="score-box-label">Profitability</span>
-                <span className={`score-box-value ${compareResult.comparison.profitability}`}>{compareResult.comparison.profitability}</span>
-              </div>
-              <div className="score-box">
-                <span className="score-box-label">Risk</span>
-                <span className={`score-box-value ${compareResult.comparison.risk}`}>{compareResult.comparison.risk}</span>
-              </div>
-              <div className="score-box">
-                <span className="score-box-label">Valuation</span>
-                <span className={`score-box-value ${compareResult.comparison.valuation}`}>{compareResult.comparison.valuation}</span>
-              </div>
+              {(["growth", "profitability", "risk", "valuation"] as const).map((key) => {
+                const winner = compareResult.comparison[key];
+                const nameA = companyA?.name ?? "Company A";
+                const nameB = companyB?.name ?? "Company B";
+                const label = key.charAt(0).toUpperCase() + key.slice(1);
+                return (
+                  <div key={key} className="score-box">
+                    <span className="score-box-label">{label}</span>
+                    <span className={`score-box-value ${winner}`}>
+                      {winner === "Tie" ? "Tie" : winner === "A" ? `🏆 ${nameA}` : `🏆 ${nameB}`}
+                    </span>
+                  </div>
+                );
+              })}
             </div>
 
             {compareResult.companyA_stock_data && compareResult.companyB_stock_data && (() => {
@@ -357,22 +322,47 @@ export function ComparisonWorkspaceView(props: ComparisonWorkspaceViewProps) {
               );
             })()}
             <div className="detailed-grid">
-              <div className="detailed-card growth">
-                <h4>Growth</h4>
-                <p>{compareResult.detailed_comparison?.growth || "No growth details available."}</p>
-              </div>
-              <div className="detailed-card profitability">
-                <h4>Profitability</h4>
-                <p>{compareResult.detailed_comparison?.profitability || "No profitability details available."}</p>
-              </div>
-              <div className="detailed-card risk">
-                <h4>Risk</h4>
-                <p>{compareResult.detailed_comparison?.risk || "No risk details available."}</p>
-              </div>
-              <div className="detailed-card valuation">
-                <h4>Valuation</h4>
-                <p>{compareResult.detailed_comparison?.valuation || "No valuation details available."}</p>
-              </div>
+              {(["growth", "profitability", "risk", "valuation"] as const).map((key) => {
+                const winner = compareResult.comparison[key];
+                const nameA = companyA?.name ?? "Company A";
+                const nameB = companyB?.name ?? "Company B";
+                const label = key.charAt(0).toUpperCase() + key.slice(1);
+                const aWins = winner === "A";
+                const bWins = winner === "B";
+                const isTie = winner === "Tie";
+                return (
+                  <div key={key} className={`detailed-card ${key}`}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, gap: 8, flexWrap: "wrap" }}>
+                      <h4 style={{ margin: 0 }}>{label}</h4>
+                      <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                        <span style={{
+                          fontSize: "0.72rem", fontWeight: 700, padding: "3px 10px", borderRadius: 20,
+                          background: aWins ? "color-mix(in srgb, var(--brand) 18%, transparent)" : isTie ? "color-mix(in srgb, var(--muted) 12%, transparent)" : "transparent",
+                          color: aWins ? "var(--brand)" : "var(--muted)",
+                          border: `1px solid ${aWins ? "color-mix(in srgb, var(--brand) 35%, transparent)" : "var(--line)"}`,
+                          opacity: bWins ? 0.4 : 1,
+                          whiteSpace: "nowrap",
+                        }}>
+                          {aWins ? "🏆 " : ""}{nameA}
+                        </span>
+                        <span style={{ fontSize: "0.68rem", color: "var(--muted)", fontWeight: 600 }}>vs</span>
+                        <span style={{
+                          fontSize: "0.72rem", fontWeight: 700, padding: "3px 10px", borderRadius: 20,
+                          background: bWins ? "color-mix(in srgb, var(--good) 18%, transparent)" : isTie ? "color-mix(in srgb, var(--muted) 12%, transparent)" : "transparent",
+                          color: bWins ? "var(--good)" : "var(--muted)",
+                          border: `1px solid ${bWins ? "color-mix(in srgb, var(--good) 35%, transparent)" : "var(--line)"}`,
+                          opacity: aWins ? 0.4 : 1,
+                          whiteSpace: "nowrap",
+                        }}>
+                          {bWins ? "🏆 " : ""}{nameB}
+                        </span>
+                        {isTie && <span className="winner-badge tie">TIE</span>}
+                      </div>
+                    </div>
+                    <p>{compareResult.detailed_comparison?.[key] || `No ${label.toLowerCase()} details available.`}</p>
+                  </div>
+                );
+              })}
             </div>
 
             {compareResult.insights.length ? (

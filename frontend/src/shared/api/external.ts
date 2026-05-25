@@ -28,13 +28,17 @@ function mapEnrichedToArticle(item: EnrichedNewsItem, index: number) {
 export async function fetchNewsRadar(
   limit = 20,
   query?: string,
-  _expertiseLevel = "intermediate"
+  _expertiseLevel = "intermediate",
+  forceRefresh = false
 ): Promise<EnrichedNewsItem[]> {
   const normalizedLimit = Math.min(Math.max(limit, 1), 50);
   const params = new URLSearchParams();
   params.set("limit", String(normalizedLimit));
   if (query && query.trim() !== "") {
     params.set("query", query.trim());
+  }
+  if (forceRefresh) {
+    params.set("force_refresh", "true");
   }
 
   return aiGet<EnrichedNewsItem[]>(`/get-news?${params.toString()}`, 90000);
@@ -114,57 +118,70 @@ export async function fetchTickerSentiment(
   };
 }
 
+interface FilingRecord {
+  id: string;
+  filing_type?: string;
+  title?: string;
+  filing_date?: string;
+  source_url?: string;
+  status?: string;
+  period_start?: string;
+  period_end?: string;
+}
+
+async function resolveCompanyId(symbol: string): Promise<string | null> {
+  const normalized = symbol.trim().toUpperCase();
+  const params = new URLSearchParams({ q: normalized, limit: "10" });
+  const companies = await aiGet<AICompany[]>(`/companies/search?${params.toString()}`);
+  const company =
+    companies.find((c) => c.ticker_nse?.toUpperCase() === normalized) ||
+    companies.find((c) => c.ticker_bse?.toUpperCase() === normalized) ||
+    companies[0];
+  return company?.id ?? null;
+}
+
 export async function fetchSecFilings(
   symbol: string,
   limit = 12,
   filingType?: string
 ): Promise<SecFiling[]> {
   const normalized = symbol.trim().toUpperCase();
-  if (!normalized) {
-    return [];
-  }
+  if (!normalized) return [];
 
-  const companyParams = new URLSearchParams();
-  companyParams.set("q", normalized);
-  companyParams.set("limit", "10");
+  const companyId = await resolveCompanyId(normalized);
+  if (!companyId) return [];
 
-  const companies = await aiGet<AICompany[]>(`/companies/search?${companyParams.toString()}`);
-  const company =
-    companies.find((item) => item.ticker_nse?.toUpperCase() === normalized) ||
-    companies.find((item) => item.ticker_bse?.toUpperCase() === normalized) ||
-    companies[0];
+  const params = new URLSearchParams({ limit: String(limit) });
+  if (filingType) params.set("filing_type", filingType);
 
-  if (!company?.id) {
-    return [];
-  }
+  const filings = await aiGet<FilingRecord[]>(
+    `/companies/${companyId}/filings?${params.toString()}`
+  );
 
-  const params = new URLSearchParams();
-  params.set("company_id", company.id);
-  params.set("limit", String(Math.max(limit * 3, 30)));
+  return filings.map((f) => ({
+    symbol: normalized,
+    title: f.title,
+    filingDate: f.filing_date,
+    acceptedDate: f.filing_date,
+    type: f.filing_type,
+    url: f.source_url,
+    finalLink: f.source_url,
+  }));
+}
 
-  const timeline = await aiGet<TimelineEvent[]>(`/timeline/?${params.toString()}`);
-  const filings = timeline
-    .filter((event) => event.event_type === "filing")
-    .map((event) => {
-      const metadata = (event.metadata ?? {}) as {
-        filing_type?: string;
-        source_url?: string;
-      };
-      const filingDate = event.timestamp ? event.timestamp.slice(0, 10) : undefined;
-      return {
-        symbol: normalized,
-        title: event.title,
-        filingDate,
-        acceptedDate: filingDate,
-        type: metadata.filing_type,
-        url: metadata.source_url,
-        finalLink: metadata.source_url,
-      } as SecFiling;
-    })
-    .filter((filing) => !filingType || filing.type === filingType)
-    .slice(0, limit);
+export async function syncCompanyFilings(
+  symbol: string
+): Promise<{ status: string; company_name?: string; sources?: string[] }> {
+  const normalized = symbol.trim().toUpperCase();
+  if (!normalized) return { status: "error" };
 
-  return filings;
+  const companyId = await resolveCompanyId(normalized);
+  if (!companyId) return { status: "not_found" };
+
+  return aiPost<{ status: string; company_name?: string; sources?: string[] }>(
+    `/companies/${companyId}/filings/sync`,
+    {}
+  );
 }
 
 export async function searchCompanies(

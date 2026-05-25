@@ -36,7 +36,7 @@ class NewsService:
     _loaded_zero_shot_model: Optional[str] = None
 
     MAX_NEWS_PER_REQUEST = 50
-    NEWS_CACHE_TTL_HOURS = 6
+    NEWS_CACHE_TTL_HOURS = 3
     MAX_FEED_RETRIES = 3
     MAX_FEED_CONCURRENCY = 3
     NEWS_REQUEST_LOG_FILE = Path(__file__).resolve().parents[3] / "logs" / "news_request.log"
@@ -104,18 +104,20 @@ class NewsService:
     def __init__(self, db: Optional[Session] = None):
         self.db = db
 
-    async def get_news(self, limit: int = MAX_NEWS_PER_REQUEST, query: Optional[str] = None) -> List[Dict[str, Any]]:
+    async def get_news(self, limit: int = MAX_NEWS_PER_REQUEST, query: Optional[str] = None, force_refresh: bool = False) -> List[Dict[str, Any]]:
         """Return deduplicated market news with sentiment and categories."""
         safe_limit = min(max(limit, 1), self.MAX_NEWS_PER_REQUEST)
         cleaned_query = self._clean_query(query)
         cache_key = self._cache_key(cleaned_query)
 
         if self.db is not None:
-            cached = self._get_cached_articles(cache_key=cache_key, limit=safe_limit)
-            if cached:
-                return cached
-
-            self._delete_expired_cache(cache_key=cache_key)
+            if force_refresh:
+                self._delete_expired_cache(cache_key=cache_key, force=True)
+            else:
+                cached = self._get_cached_articles(cache_key=cache_key, limit=safe_limit)
+                if cached:
+                    return cached
+                self._delete_expired_cache(cache_key=cache_key)
 
         raw_articles, source_logs = await self._fetch_all_sources(query=cleaned_query)
         deduplicated = self._deduplicate_and_clean(raw_articles)
@@ -223,24 +225,20 @@ class NewsService:
             for row in rows
         ]
 
-    def _delete_expired_cache(self, cache_key: str) -> None:
-        """Delete stale cached rows for this query before refetching."""
+    def _delete_expired_cache(self, cache_key: str, force: bool = False) -> None:
+        """Delete cached rows for this query. When force=True, wipes all rows regardless of age."""
         assert self.db is not None
-        cache_cutoff = datetime.utcnow() - timedelta(hours=self.NEWS_CACHE_TTL_HOURS)
 
         try:
-            (
-                self.db.query(NewsArticle)
-                .filter(
-                    NewsArticle.affected_dimension == cache_key,
-                    NewsArticle.fetched_at < cache_cutoff,
-                )
-                .delete(synchronize_session=False)
-            )
+            q = self.db.query(NewsArticle).filter(NewsArticle.affected_dimension == cache_key)
+            if not force:
+                cache_cutoff = datetime.utcnow() - timedelta(hours=self.NEWS_CACHE_TTL_HOURS)
+                q = q.filter(NewsArticle.fetched_at < cache_cutoff)
+            q.delete(synchronize_session=False)
             self.db.commit()
         except Exception as exc:
             self.db.rollback()
-            logger.warning("Failed to clean expired news cache '%s': %s", cache_key, exc)
+            logger.warning("Failed to clean news cache '%s': %s", cache_key, exc)
 
     def _upsert_cached_articles(self, cache_key: str, articles: List[Dict[str, Any]]) -> None:
         """Persist fetched articles so repeated requests can be served from DB."""

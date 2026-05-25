@@ -33,37 +33,83 @@ def _finish_etl_run(db, run, status="completed", records=0, error=None):
     db.commit()
 
 
+def _build_causal_summary(title: str, summary: str, commodity: str, sector: str) -> str | None:
+    """Generate a 2-sentence causal chain summary for high-confidence news items.
+
+    Returns None on failure so the news item is still saved without a summary.
+    """
+    try:
+        from langchain_core.messages import HumanMessage
+
+        from src.llm import get_llm
+
+        llm = get_llm(temperature=0.0)
+        prompt = f"""In 2 sentences, explain the causal chain triggered by this news for Indian equity markets.
+Format: "Trigger → Primary impact on [sector/commodity]. Hidden impact: [non-obvious 2nd-order effect]."
+
+News title: {title}
+Summary: {summary[:300]}
+Classified commodity: {commodity or "N/A"}
+Classified sector: {sector or "N/A"}
+
+Return ONLY the 2-sentence causal chain. No headers, no bullet points."""
+
+        response = llm.invoke([HumanMessage(content=prompt)])
+        return response.content.strip()[:400]
+    except Exception as e:
+        logger.warning(f"Causal summary generation failed: {e}")
+        return None
+
+
 @app.task(bind=True, name="etl.sync_news")
 def sync_news(self):
-    """Fetch and classify news using free APIs."""
+    """Fetch, classify, and causal-tag news using free APIs."""
     logger.info("Starting news sync with free APIs")
-    
+
     db = SessionLocal()
     run = _log_etl_run(db, "news_sync")
-    
+
     news_saved = 0
-    
+
     try:
         aggregator = NewsAggregator()
-        
-        # Get general news
         all_news = aggregator.get_all_news(limit=30)
         logger.info(f"Fetched {len(all_news)} news items")
-        
-        # Classify
+
         classifier = get_news_classifier()
         classified = classifier.classify_batch(all_news)
         logger.info(f"Classified {len(classified)} news items")
-        
-        # Store
+
+        # LLM causal tagging: only process top N high-confidence items (cost control)
+        MAX_LLM_ITEMS = 5
+        llm_tagged = 0
+
         for item in classified:
             existing = db.query(ClassifiedNews).filter(
                 ClassifiedNews.url == item.get("url")
             ).first()
-            
+
             if existing:
                 continue
-            
+
+            impact = item.get("impact", {})
+            commodity = impact.get("commodity")
+            sector = impact.get("sector")
+            confidence = impact.get("confidence", 0.0)
+            topics = list(item.get("topics", []))
+
+            # LLM causal summary for high-confidence classified items
+            if llm_tagged < MAX_LLM_ITEMS and (commodity or sector) and confidence >= 0.6:
+                causal = _build_causal_summary(
+                    title=item.get("title", ""),
+                    summary=item.get("summary", ""),
+                    commodity=commodity,
+                    sector=sector,
+                )
+                if causal:
+                    topics = [{"causal_summary": causal}] + topics
+                    llm_tagged += 1
+
             news = ClassifiedNews(
                 title=item.get("title", "")[:500],
                 summary=item.get("summary", "")[:1000],
@@ -72,27 +118,27 @@ def sync_news(self):
                 published_at=datetime.fromisoformat(
                     item.get("published_at", "").replace("Z", "+00:00")
                 ) if item.get("published_at") else datetime.utcnow(),
-                topics=item.get("topics", []),
+                topics=topics,
                 importance_score=1.0,
-                commodity=item.get("impact", {}).get("commodity"),
-                sector=item.get("impact", {}).get("sector"),
-                impact_type=item.get("impact", {}).get("impact_type"),
-                impact_direction=item.get("impact", {}).get("direction"),
-                classification_confidence=item.get("impact", {}).get("confidence"),
+                commodity=commodity,
+                sector=sector,
+                impact_type=impact.get("impact_type"),
+                impact_direction=impact.get("direction"),
+                classification_confidence=confidence,
             )
             db.add(news)
             news_saved += 1
-        
+
         db.commit()
         _finish_etl_run(db, run, records=news_saved)
-        logger.info(f"Saved {news_saved} news items")
-        
+        logger.info(f"Saved {news_saved} news items ({llm_tagged} with causal summaries)")
+
     except Exception as e:
         logger.error(f"News sync failed: {e}")
         _finish_etl_run(db, run, status="failed", error=str(e))
     finally:
         db.close()
-    
+
     return {"news_saved": news_saved}
 
 
@@ -100,19 +146,19 @@ def sync_news(self):
 def get_market_sentiment(self, hours: int = 24) -> dict:
     """Get market sentiment from recent classified news."""
     db = SessionLocal()
-    
+
     try:
         from datetime import timedelta
         cutoff = datetime.utcnow() - timedelta(hours=hours)
-        
+
         news = db.query(ClassifiedNews).filter(
             ClassifiedNews.published_at >= cutoff,
             ClassifiedNews.commodity.isnot(None),
         ).order_by(ClassifiedNews.published_at.desc()).limit(20).all()
-        
+
         bullish = sum(1 for n in news if n.impact_direction == "positive")
         bearish = sum(1 for n in news if n.impact_direction == "negative")
-        
+
         return {
             "bullish": bullish,
             "bearish": bearish,

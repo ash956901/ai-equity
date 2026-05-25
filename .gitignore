@@ -30,3 +30,10 @@ opencode.json
 # OS metadata files
 .DS_Store
 *.DS_Store
+
+
+# docs
+docs/research paper drafts
+
+# User profiles — local session data (gitignored, synced to MongoDB)
+user-profiles/

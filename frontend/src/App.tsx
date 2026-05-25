@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { ProfilePickerScreen } from "./features/profiles/ProfilePickerScreen";
 import { DashboardView } from "./features/dashboard/DashboardView";
 import { SettingsView } from "./features/settings/SettingsView";
 import { DiscoveryView } from "./features/discovery/DiscoveryView";
@@ -10,17 +11,21 @@ import { ProfileView } from "./features/profile/ProfileView";
 import { ComparisonWorkspaceView } from "./features/compare/ComparisonWorkspaceView";
 import { ChatView } from "./features/chat/ChatView";
 import { CompanyWorkspaceView } from "./features/company/CompanyWorkspaceView";
+import { MoneyView } from "./features/money/MoneyView";
+import { DominoEffectView } from "./features/domino/DominoEffectView";
 
 import { NotificationsPanel } from "./app/components/NotificationsPanel";
 import { ToastStack } from "./app/components/ToastStack";
 import { SidebarShell } from "./app/components/SidebarShell";
 import {
+  ACTIVE_PROFILE_KEY,
   DASHBOARD_PREFERENCES_KEY,
   DEMO_BANNER_MSG,
   THEME_STORAGE_KEY,
 } from "./app/constants";
 import { useChatThreads } from "./app/hooks/useChatThreads";
 import { useNotifications } from "./app/hooks/useNotifications";
+import type { AppProfile } from "./shared/types/api";
 import type {
   CompanySearchSelection,
   DashboardPreferences,
@@ -33,6 +38,16 @@ import type {
   ToastTone,
   ViewKey,
 } from "./app/types";
+
+function getStoredProfile(): AppProfile | null {
+  try {
+    const raw = window.localStorage.getItem(ACTIVE_PROFILE_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw) as AppProfile;
+  } catch {
+    return null;
+  }
+}
 
 type ViewTransitionCapable = {
   startViewTransition?: (updateCallback: () => void) => {
@@ -78,6 +93,7 @@ function getInitialDashboardPreferences(): DashboardPreferences {
 }
 
 export default function App() {
+  const [activeProfile, setActiveProfile] = useState<AppProfile | null>(getStoredProfile);
   const [activeView, setActiveView] = useState<ViewKey>("dashboard");
   const [theme, setTheme] = useState<Theme>(getInitialTheme);
   const dataMode = "live";
@@ -127,9 +143,6 @@ export default function App() {
     root.classList.toggle("theme-dark", theme === "dark");
     root.classList.toggle("theme-light", theme === "light");
     window.localStorage.setItem(THEME_STORAGE_KEY, theme);
-    
-    // Force demo user UUID for seed database
-    window.localStorage.setItem("equityai-user-id", "00000000-0000-0000-0000-000000000001");
   }, [theme]);
 
   useEffect(() => {
@@ -179,6 +192,18 @@ export default function App() {
     window.setTimeout(() => {
       clearTransitionClass();
     }, 420);
+  }, []);
+
+  const handleProfileSelected = useCallback((profile: AppProfile) => {
+    window.localStorage.setItem(ACTIVE_PROFILE_KEY, JSON.stringify(profile));
+    window.localStorage.setItem("equityai-user-id", profile.id);
+    setActiveProfile(profile);
+  }, []);
+
+  const handleLogout = useCallback(() => {
+    window.localStorage.removeItem(ACTIVE_PROFILE_KEY);
+    setActiveProfile(null);
+    setActiveView("dashboard");
   }, []);
 
   const toggleDataMode = useCallback(() => {
@@ -319,6 +344,8 @@ export default function App() {
         );
       case "portfolio":
         return <PortfolioView dataMode={dataMode} />;
+      case "domino":
+        return <DominoEffectView dataMode={dataMode} pushToast={pushToast} />;
       case "filings":
         return (
           <FilingsView
@@ -364,8 +391,12 @@ export default function App() {
             onToggleTheme={toggleTheme}
             onToggleDataMode={toggleDataMode}
             pushToast={pushToast}
+            onLogout={handleLogout}
           />
         );
+      case "money":
+        return <MoneyView />;
+
       case "settings":
         return (
           <SettingsView
@@ -411,6 +442,10 @@ export default function App() {
     unreadCount,
     createInitialThread,
   ]);
+
+  if (!activeProfile) {
+    return <ProfilePickerScreen onProfileSelected={handleProfileSelected} />;
+  }
 
   return (
     <div className="app-shell">

@@ -9,6 +9,7 @@ deepagents>=0.4.12
 langchain-ollama>=0.2.0
 langchain-core>=0.3.0
 langchain-openai>=0.3.0
+langchain-anthropic>=0.3.0
 langchain-community>=0.3.0
 langgraph>=0.3.0
 langgraph-checkpoint>=2.0.0

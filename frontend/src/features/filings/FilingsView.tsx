@@ -5,6 +5,7 @@ import {
   ApiError,
   fetchSecFilings,
   searchCompanies,
+  syncCompanyFilings,
   type CompanySearchResult,
   type SecFiling,
 } from "../../lib/api";
@@ -44,6 +45,7 @@ export function FilingsView(props: FilingsViewProps) {
 
   const [loading, setLoading] = useState(true);
   const [searchLoading, setSearchLoading] = useState(false);
+  const [syncStatus, setSyncStatus] = useState<"idle" | "syncing" | "done">("idle");
 
   const [error, setError] = useState<string | null>(null);
   const [searchError, setSearchError] = useState<string | null>(null);
@@ -133,6 +135,25 @@ export function FilingsView(props: FilingsViewProps) {
     setSymbolInput(normalized);
   }, []);
 
+  const handleRefresh = useCallback(async () => {
+    if (props.dataMode === "demo") {
+      void loadFilings(activeSymbol, filingType || undefined);
+      return;
+    }
+    setSyncStatus("syncing");
+    try {
+      await syncCompanyFilings(activeSymbol);
+      // Give Celery ~4s to start crawling, then reload
+      await new Promise((resolve) => window.setTimeout(resolve, 4000));
+      await loadFilings(activeSymbol, filingType || undefined);
+    } catch {
+      await loadFilings(activeSymbol, filingType || undefined);
+    } finally {
+      setSyncStatus("done");
+      window.setTimeout(() => setSyncStatus("idle"), 2000);
+    }
+  }, [activeSymbol, filingType, loadFilings, props.dataMode]);
+
   const formatFilingDate = (value?: string) => {
     if (!value) return "Unknown date";
     const date = new Date(value);
@@ -188,9 +209,14 @@ export function FilingsView(props: FilingsViewProps) {
           <button
             type="button"
             className="secondary-btn mini-btn"
-            onClick={() => void loadFilings(activeSymbol, filingType || undefined)}
+            disabled={syncStatus === "syncing"}
+            onClick={() => void handleRefresh()}
           >
-            Refresh Filings
+            {syncStatus === "syncing"
+              ? "Fetching from BSE/NSE..."
+              : syncStatus === "done"
+                ? "Fetched!"
+                : "Refresh Filings"}
           </button>
         </div>
       </div>

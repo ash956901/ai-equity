@@ -40,9 +40,13 @@ async def get_news(
         min_length=1,
         description="Optional company/ticker query to bias RSS search feeds.",
     ),
+    force_refresh: bool = Query(
+        default=False,
+        description="Bypass the 3-hour cache and fetch the latest news immediately.",
+    ),
     db: Session = Depends(get_db),
 ) -> List[EnrichedNewsItem]:
     """Fetch, deduplicate, and enrich market news from RSS sources."""
     news_service = NewsService(db)
-    news = await news_service.get_news(limit=limit, query=query)
+    news = await news_service.get_news(limit=limit, query=query, force_refresh=force_refresh)
     return [EnrichedNewsItem(**item) for item in news]

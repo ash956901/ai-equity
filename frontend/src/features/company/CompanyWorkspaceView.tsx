@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import {
   ArrowUpRight,
   BarChart3,
@@ -8,7 +10,6 @@ import {
   Clock3,
   FileText,
   Loader2,
-  Search,
   TrendingUp,
 } from "lucide-react";
 import type { jsPDF as JsPdfType } from "jspdf";
@@ -59,6 +60,7 @@ import {
   searchCompaniesDB,
   fetchTimeline,
   enrichCompany,
+  sendChatQuery,
   type SecFiling,
   type AICompany,
   type AIRatios,
@@ -69,6 +71,7 @@ import {
 } from "../../lib/api";
 import { PageHeader } from "../../shared/ui/PageHeader";
 import { SourceBadges } from "../../shared/ui/SourceBadges";
+import { CompanySearchInput } from "../../shared/components/CompanySearchInput";
 
 type DataMode = "live" | "demo";
 type ToastTone = "info" | "success" | "warning";
@@ -220,7 +223,7 @@ function renderPdfParagraph(
   return startY + lines.length * 6 + 2;
 }
 
-async function exportReportAsPdf(report: GeneratedReport): Promise<void> {
+async function exportReportAsPdf(report: GeneratedReport, bodyOverride?: string | null): Promise<void> {
   const { jsPDF } = await import("jspdf");
   const doc = new jsPDF({ unit: "mm", format: "a4" });
   const pageWidth = doc.internal.pageSize.getWidth();
@@ -273,35 +276,50 @@ async function exportReportAsPdf(report: GeneratedReport): Promise<void> {
   doc.setFontSize(10);
   y = renderPdfParagraph(doc, report.audienceText, marginLeft, marginRight, y);
 
-  for (const section of report.sections) {
-    if (y > pageHeight - 30) {
-      doc.addPage();
-      y = 20;
-    }
+  const renderLines = (rawLines: string[]) => {
+    for (const line of rawLines) {
+      if (!line.trim()) { y += 2; continue; }
+      if (y > pageHeight - 16) { doc.addPage(); y = 20; }
 
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(12);
-    doc.text(section.heading, marginLeft, y);
-    y += 7;
-
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(10);
-
-    const lines = section.content.split("\n");
-    for (const line of lines) {
-      if (!line.trim()) {
-        y += 2;
+      // Treat markdown headings as bold section labels in the PDF
+      const headingMatch = line.match(/^(#{1,4})\s+(.+)/);
+      if (headingMatch) {
+        if (y > pageHeight - 30) { doc.addPage(); y = 20; }
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(headingMatch[1].length === 1 ? 13 : 11);
+        doc.setTextColor(18, 32, 45);
+        doc.text(headingMatch[2], marginLeft, y);
+        y += 7;
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(10);
         continue;
       }
 
-      if (y > pageHeight - 16) {
-        doc.addPage();
-        y = 20;
-      }
+      // Strip common inline markdown decorators for clean PDF text
+      const cleanLine = line
+        .replace(/\*\*(.+?)\*\*/g, "$1")
+        .replace(/\*(.+?)\*/g, "$1")
+        .replace(/`(.+?)`/g, "$1")
+        .replace(/^[-*•]\s+/, "• ");
 
-      y = renderPdfParagraph(doc, line, marginLeft, marginRight, y);
+      y = renderPdfParagraph(doc, cleanLine, marginLeft, marginRight, y);
     }
-    y += 4;
+  };
+
+  if (bodyOverride) {
+    renderLines(bodyOverride.split("\n"));
+  } else {
+    for (const section of report.sections) {
+      if (y > pageHeight - 30) { doc.addPage(); y = 20; }
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(12);
+      doc.text(section.heading, marginLeft, y);
+      y += 7;
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(10);
+      renderLines(section.content.split("\n"));
+      y += 4;
+    }
   }
 
   const pageCount = doc.getNumberOfPages();
@@ -376,6 +394,8 @@ export function CompanyWorkspaceView(props: CompanyWorkspaceViewProps) {
   const [comparisonSymbolsInput, setComparisonSymbolsInput] = useState("");
   const [comparisonResult, setComparisonResult] = useState<CompareResultSnapshot | null>(null);
   const [comparisonResultLoading, setComparisonResultLoading] = useState(false);
+  const [reportGenerating, setReportGenerating] = useState(false);
+  const [aiReportBody, setAiReportBody] = useState<string | null>(null);
 
   useEffect(() => {
     if (!searchSelection) return;
@@ -530,7 +550,7 @@ export function CompanyWorkspaceView(props: CompanyWorkspaceViewProps) {
       return {
         symbol,
         name: companyDetail.name,
-        sector: companyDetail.sector ?? "Unknown",
+        sector: companyDetail.sector ?? (companyLoading ? "Loading…" : "Enriching…"),
         marketCapBn: mcBn,
         insight: companyDetail.description ?? companyDetail.industry ?? "",
         themeScores: {},
@@ -1082,20 +1102,46 @@ export function CompanyWorkspaceView(props: CompanyWorkspaceViewProps) {
     });
   };
 
-  const triggerReportGeneration = () => {
+  const triggerReportGeneration = async () => {
     if (reportScope === "comparison") {
       const normalized = normalizeSymbolsInput(comparisonSymbolsInput || comparisonSymbols.join(","));
       if (normalized.length >= 2) {
         setComparisonSymbols(normalized);
         setComparisonSymbolsInput(normalized.join(", "));
       }
-
       if (normalized.length < 2) {
         pushToast("Comparison report needs at least two valid symbols", "warning");
         return;
       }
+      setReportGeneratedAt(new Date().toISOString());
+      return;
     }
+
+    const userId = localStorage.getItem("equityai-user-id") ?? "11111111-1111-1111-1111-111111111111";
+    const ticker = nseOrBseTicker ?? companyData.symbol;
+    const sectionsLabel = reportSections.join(", ");
+    const prompt =
+      `Generate a ${reportAudience}-level research report for ${companyData.name} (${ticker}). ` +
+      `Include sections: ${sectionsLabel}. ` +
+      "Focus on financials, key risks, investment thesis, and outlook. " +
+      "Write in professional markdown with section headers and bullet points.";
+
+    setReportGenerating(true);
+    setAiReportBody(null);
     setReportGeneratedAt(new Date().toISOString());
+    try {
+      const res = await sendChatQuery({
+        user_id: userId,
+        query: prompt,
+        expertise_level: reportAudience === "analyst" ? "advanced" : "beginner",
+      });
+      setAiReportBody(res.response ?? "");
+      pushToast("Report generated", "success");
+    } catch {
+      pushToast("AI report generation failed. Showing structured preview.", "warning");
+    } finally {
+      setReportGenerating(false);
+    }
   };
 
   useEffect(() => {
@@ -1150,7 +1196,7 @@ export function CompanyWorkspaceView(props: CompanyWorkspaceViewProps) {
       `Generated: ${new Date(generatedReport.generatedAt).toLocaleString()}`,
       generatedReport.audienceText,
       "",
-      generatedReport.body,
+      aiReportBody ?? generatedReport.body,
     ].join("\n");
 
     const blob = new Blob([payload], { type: "text/plain;charset=utf-8" });
@@ -1170,7 +1216,7 @@ export function CompanyWorkspaceView(props: CompanyWorkspaceViewProps) {
     if (!generatedReport) return;
     try {
       pushToast("Preparing PDF export...", "info");
-      await exportReportAsPdf(generatedReport);
+      await exportReportAsPdf(generatedReport, aiReportBody);
       pushToast("PDF report downloaded", "success");
     } catch {
       pushToast("PDF export failed. Please try again.", "warning");
@@ -1184,24 +1230,15 @@ export function CompanyWorkspaceView(props: CompanyWorkspaceViewProps) {
         subtitle="One research cockpit per company: filings, sentiment, timeline, and company-context chat."
         dataMode={dataMode}
         right={
-          <form
-            className="search-pill"
-            onSubmit={(event) => {
-              event.preventDefault();
-              const normalized = symbolInput.trim().toUpperCase();
-              if (normalized) {
-                setActiveCompanyId(null);
-                setActiveSymbol(normalized);
-              }
+          <CompanySearchInput
+            placeholder="Search company by name or ticker…"
+            onSelect={(c) => {
+              setActiveCompanyId(c.id);
+              setActiveSymbol(c.ticker || c.name);
+              setSymbolInput(c.ticker || c.name);
             }}
-          >
-            <Search size={14} />
-            <input
-              placeholder="Enter company symbol"
-              value={symbolInput}
-              onChange={(event) => setSymbolInput(event.target.value)}
-            />
-          </form>
+            className="w-72"
+          />
         }
       />
 
@@ -1292,17 +1329,36 @@ export function CompanyWorkspaceView(props: CompanyWorkspaceViewProps) {
               </div>
               {companyQuote?.last_price ? (
                 <>
-                  <h2>₹{Number(companyQuote.last_price).toLocaleString()}</h2>
-                  {companyQuote.change_pct != null && (
-                    <p className={Number(companyQuote.change_pct) >= 0 ? "positive" : "negative"}>
-                      {Number(companyQuote.change_pct) >= 0 ? "+" : ""}{Number(companyQuote.change_pct).toFixed(2)}%
-                    </p>
+                  <h2 style={{ margin: "8px 0 4px" }}>₹{Number(companyQuote.last_price).toLocaleString("en-IN", { maximumFractionDigits: 2 })}</h2>
+                  <div className="chip-row" style={{ margin: "4px 0 8px" }}>
+                    {companyQuote.change_pct != null && (
+                      <span className={`chip ${Number(companyQuote.change_pct) >= 0 ? "positive" : "negative"}`} style={{ fontWeight: 700 }}>
+                        {Number(companyQuote.change_pct) >= 0 ? "+" : ""}{Number(companyQuote.change_pct).toFixed(2)}%
+                      </span>
+                    )}
+                    {companyQuote.change != null && (
+                      <span className={`chip ${Number(companyQuote.change) >= 0 ? "positive" : "negative"}`}>
+                        {Number(companyQuote.change) >= 0 ? "+" : ""}₹{Number(companyQuote.change).toFixed(2)}
+                      </span>
+                    )}
+                    {companyQuote.market_state && (
+                      <span className="chip">{companyQuote.market_state}</span>
+                    )}
+                  </div>
+                  {(companyQuote.fifty_two_week_high || companyQuote.fifty_two_week_low) && (
+                    <div style={{ fontSize: "0.78rem", color: "var(--muted)", marginBottom: 6 }}>
+                      52W: ₹{Number(companyQuote.fifty_two_week_low ?? 0).toLocaleString("en-IN")} – ₹{Number(companyQuote.fifty_two_week_high ?? 0).toLocaleString("en-IN")}
+                    </div>
                   )}
-                  <small>Source: {companyQuote.source ?? "API"} · {companyQuote.fetched_at ? new Date(companyQuote.fetched_at).toLocaleTimeString() : ""}</small>
+                  <small style={{ color: "var(--muted)" }}>
+                    {companyQuote.source ?? "API"} · {companyQuote.fetched_at ? new Date(companyQuote.fetched_at).toLocaleTimeString() : ""}
+                  </small>
                   <SourceBadges sources={companyQuote.data_sources} />
                 </>
               ) : (
-                <p>{companyLoading ? "Fetching quote..." : "No live quote data available."}</p>
+                <p style={{ color: "var(--muted)", fontSize: "0.85rem" }}>
+                  {companyLoading ? "Fetching quote…" : "No live quote available."}
+                </p>
               )}
             </article>
 
@@ -1311,13 +1367,30 @@ export function CompanyWorkspaceView(props: CompanyWorkspaceViewProps) {
                 <Clock3 size={18} />
                 <h3>Recent Events</h3>
               </div>
-              <p>{companyTimeline.length} recent timeline events for this company.</p>
-              {companyTimeline.slice(0, 3).map((ev) => (
-                <div key={ev.id} className="list-item">
-                  <p>{ev.title}</p>
-                  <small>{new Date(ev.timestamp).toLocaleDateString()}</small>
-                </div>
-              ))}
+              {companyLoading ? (
+                <p style={{ color: "var(--muted)", fontSize: "0.85rem" }}>Fetching events…</p>
+              ) : companyTimeline.length === 0 ? (
+                <p style={{ color: "var(--muted)", fontSize: "0.85rem" }}>No recent events found for this company.</p>
+              ) : (
+                <>
+                  <p style={{ fontSize: "0.78rem", color: "var(--muted)", marginBottom: 8 }}>{companyTimeline.length} event{companyTimeline.length !== 1 ? "s" : ""}</p>
+                  {companyTimeline.slice(0, 5).map((ev) => (
+                    <div key={ev.id} className="list-item">
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <p style={{ margin: 0, fontSize: "0.84rem", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{ev.title}</p>
+                        {ev.metadata?.source_url ? (
+                          <a href={ev.metadata.source_url as string} target="_blank" rel="noopener noreferrer" style={{ fontSize: "0.75rem", color: "var(--brand)" }}>
+                            {(ev.metadata?.source as string) ?? "Source"} ↗
+                          </a>
+                        ) : (
+                          <small style={{ color: "var(--muted)" }}>{(ev.metadata?.source as string) ?? ev.event_type}</small>
+                        )}
+                      </div>
+                      <small style={{ flexShrink: 0, color: "var(--muted)" }}>{new Date(ev.timestamp).toLocaleDateString()}</small>
+                    </div>
+                  ))}
+                </>
+              )}
             </article>
           </div>
 
@@ -1795,8 +1868,8 @@ export function CompanyWorkspaceView(props: CompanyWorkspaceViewProps) {
         </div>
 
         <div className="report-action-row">
-          <button type="button" className="primary-btn" onClick={triggerReportGeneration}>
-            Generate Report
+          <button type="button" className="primary-btn" onClick={() => { void triggerReportGeneration(); }} disabled={reportGenerating}>
+            {reportGenerating ? <><Loader2 size={14} className="spin" /> Generating…</> : "Generate Report"}
           </button>
           <button
             type="button"
@@ -1816,22 +1889,46 @@ export function CompanyWorkspaceView(props: CompanyWorkspaceViewProps) {
           </button>
         </div>
 
-        {generatedReport ? (
+        {reportGenerating && (
+          <div className="notice"><Loader2 size={16} className="spin" /> Generating AI report…</div>
+        )}
+        {!reportGenerating && generatedReport ? (
           <div className="report-preview">
-            <h4>{generatedReport.title}</h4>
-            <p>{generatedReport.audienceText}</p>
-            <small>Scope: {generatedReport.scope === "comparison" ? "Comparison" : "Company"}</small>
-            <small>
-              Template: {generatedReport.audience === "retail" ? "Retail Brief" : "Analyst Dossier"}
-            </small>
-            <small>Generated: {new Date(generatedReport.generatedAt).toLocaleString()}</small>
-            <pre>{generatedReport.body}</pre>
+            <div className="report-preview-header">
+              <div className="report-preview-title-row">
+                <FileText size={16} style={{ color: "var(--brand)", flexShrink: 0 }} />
+                <h4 className="report-preview-title">{generatedReport.title}</h4>
+              </div>
+              <p className="report-preview-subtitle">{generatedReport.audienceText}</p>
+              <div className="report-preview-chips">
+                <span className="report-chip">
+                  {generatedReport.scope === "comparison" ? "Comparison" : "Company"}
+                </span>
+                <span className="report-chip">
+                  {generatedReport.audience === "retail" ? "Retail Brief" : "Analyst Dossier"}
+                </span>
+                <span className="report-chip report-chip--muted">
+                  {new Date(generatedReport.generatedAt).toLocaleString("en-IN", {
+                    day: "2-digit", month: "short", year: "numeric",
+                    hour: "2-digit", minute: "2-digit",
+                  })}
+                </span>
+              </div>
+            </div>
+            <div className="report-md">
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                {aiReportBody ?? generatedReport.body}
+              </ReactMarkdown>
+            </div>
           </div>
         ) : (
-          <p className="report-placeholder">
-            Select sections and click Generate Report to build a company-specific brief.
-          </p>
+          !reportGenerating && (
+            <p className="report-placeholder">
+              Select sections and click Generate Report to build a company-specific brief.
+            </p>
+          )
         )}
+
       </article>
     </section>
   );

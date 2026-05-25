@@ -9,6 +9,7 @@ import {
   type AIRatios,
   type AIQuote,
   type AlertRule,
+  type AppProfile,
   type ChatQueryRequest,
   type ChatQueryResponse,
   type ChatSessionItem,
@@ -17,11 +18,50 @@ import {
   type CreateAlertRequest,
   type HealthResponse,
   type PortfolioMetrics,
+  type ProfileData,
   type ThematicResult,
   type TimelineEvent,
+  type UserTransaction,
   type Watchlist,
+  type CausalMarketData,
+  type CausalPortfolioData,
+  type CausalCompanyData,
+  type CausalLLMData,
 } from "../types/api";
 import { AI_BACKEND_URL, aiDelete, aiGet, aiPost, ApiError } from "./core";
+
+// ------------------------------------------------------------------ //
+//  Profile persistence API                                             //
+// ------------------------------------------------------------------ //
+
+export async function listProfiles(): Promise<AppProfile[]> {
+  return aiGet<AppProfile[]>("/profiles/");
+}
+
+export async function createProfile(
+  name: string,
+  avatarColor?: string
+): Promise<AppProfile> {
+  return aiPost<AppProfile>("/profiles/", {
+    name,
+    avatar_color: avatarColor,
+  });
+}
+
+export async function loadProfileData(profileId: string): Promise<ProfileData> {
+  return aiGet<ProfileData>(`/profiles/${profileId}/data`);
+}
+
+export async function syncProfile(
+  profileId: string,
+  data: Partial<Omit<ProfileData, "profile">> & { profile?: Partial<AppProfile> }
+): Promise<{ status: string }> {
+  return aiPost<{ status: string }>(`/profiles/${profileId}/sync`, data);
+}
+
+export async function deleteProfile(profileId: string): Promise<void> {
+  return aiDelete(`/profiles/${profileId}`);
+}
 
 export async function fetchAIHealth(): Promise<HealthResponse> {
   return aiGet<HealthResponse>("/health");
@@ -135,6 +175,28 @@ export async function addHolding(
   });
 }
 
+export async function deletePortfolio(portfolioId: string, userId: string): Promise<void> {
+  return aiDelete(`/portfolios/${portfolioId}?user_id=${userId}`);
+}
+
+export async function deleteHolding(portfolioId: string, holdingId: string): Promise<void> {
+  return aiDelete(`/portfolios/${portfolioId}/holdings/${holdingId}`);
+}
+
+export async function topupBalance(
+  userId: string,
+  amount: number
+): Promise<{ simulation_balance: number }> {
+  return aiPost<{ simulation_balance: number }>(`/users/${userId}/balance/topup`, { amount });
+}
+
+export async function fetchTransactions(
+  userId: string,
+  limit = 50
+): Promise<UserTransaction[]> {
+  return aiGet<UserTransaction[]>(`/users/${userId}/transactions?limit=${limit}`);
+}
+
 export async function compareCompanies(req: CompareRequest): Promise<CompareResponse> {
   return aiPost<CompareResponse>("/compare/", req);
 }
@@ -203,4 +265,22 @@ export async function uploadDocument(
   }
 
   return response.json();
+}
+
+// ── Causal / Domino Effect API ────────────────────────────────────────────
+
+export async function fetchCausalMarket(): Promise<CausalMarketData> {
+  return aiGet<CausalMarketData>("/causal/market");
+}
+
+export async function fetchCausalPortfolio(userId: string): Promise<CausalPortfolioData> {
+  return aiGet<CausalPortfolioData>(`/causal/portfolio?user_id=${userId}`);
+}
+
+export async function fetchCausalCompany(companyId: string): Promise<CausalCompanyData> {
+  return aiGet<CausalCompanyData>(`/causal/company/${companyId}`);
+}
+
+export async function analyzeCausalTrigger(trigger: string, companyId?: string): Promise<CausalLLMData> {
+  return aiPost<CausalLLMData>("/causal/llm-analyze", { trigger, company_id: companyId ?? null });
 }
