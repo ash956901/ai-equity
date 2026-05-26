@@ -1,116 +1,168 @@
-"""Orchestrator: builds the main deep agent with sub-agents, skills, and
-long-term memory for equity research."""
+"""Orchestrator: builds the main LangGraph agent with sub-agents and memory
+for equity research. No deepagents dependency — all LangGraph-native.
+
+Architecture:
+  agent node → routes to tools or sub_agent node based on tool call
+  tools node → executes regular tools (resolve_company, internet_search, memory)
+  sub_agent node → runs the requested sub-agent graph inline
+"""
 
 from __future__ import annotations
 
 from typing import Any
 
-from deepagents import create_deep_agent
+from langchain_core.messages import SystemMessage
+from langgraph.graph import StateGraph, START, END
+from langgraph.graph.message import MessagesState
 
-from src.agents.memory import get_memory_config
 from src.agents.prompts.orchestrator import ORCHESTRATOR_PROMPT
-from src.agents.subagents import get_all_subagents
 from src.agents.tools.company_resolver import resolve_company
 from src.agents.tools.web_search import internet_search
-from src.config import get_settings
+from src.agents.tools.orchestrator_tools import (
+    memory_read, memory_write, read_skill, task_subagent,
+)
+from src.llm import get_llm
 
 _agent = None
+_memory_cfg: dict[str, Any] | None = None
 
 
-def _get_model_string() -> str:
-    """Map ``src.config`` settings to the ``provider:model`` format expected by
-    ``create_deep_agent``."""
-    s = get_settings()
-    model = s.get_llm_model()
+def _tools_node(state: MessagesState) -> dict:
+    """Execute tools and ensure all ToolMessages have non-null string content."""
+    from langchain_core.messages import ToolMessage
+    from langgraph.prebuilt import ToolNode as _ToolNode
 
-    if s.llm_provider == "ollama":
-        return f"ollama:{model}"
-    if s.llm_provider == "openai":
-        return f"openai:{model}"
-    if s.llm_provider == "groq":
-        return f"openai:{model}"
-    if s.llm_provider == "deepseek":
-        return f"openai:{model}"
-    return f"ollama:{model}"
+    result = _ToolNode([
+        resolve_company, internet_search, memory_read, memory_write, read_skill,
+    ]).invoke(state)
+
+    msgs = result.get("messages", [])
+    safe_msgs = []
+    for msg in msgs:
+        if isinstance(msg, ToolMessage):
+            content = msg.content
+            if content is None:
+                content = "[no data]"
+            elif isinstance(content, list):
+                content = str(content) if content else "[no data]"
+            elif content == "":
+                content = "[no data]"
+            if content != msg.content:
+                msg = ToolMessage(content=str(content), tool_call_id=msg.tool_call_id)
+        safe_msgs.append(msg)
+    return {"messages": safe_msgs}
 
 
-def _get_model_kwargs() -> dict[str, Any]:
-    """Return extra keyword arguments needed for providers that require custom
-    base URLs or API keys (Groq, DeepSeek) beyond what the ``provider:model``
-    string provides."""
-    s = get_settings()
-    kwargs: dict[str, Any] = {}
+def _agent_node_factory(llm, tools, system_msg: SystemMessage):
+    """Build the agent node function (closure over LLM + tools + system prompt)."""
+    llm_with_tools = llm.bind_tools(tools)
 
-    if s.llm_provider == "groq":
-        from src.agents.middleware_groq import GroqChatOpenAI
+    def agent_node(state: MessagesState) -> dict:
+        msgs = [system_msg] + list(state["messages"])
+        response = llm_with_tools.invoke(msgs)
+        return {"messages": [response]}
 
-        kwargs["model"] = GroqChatOpenAI(
-            model=s.get_llm_model(),
-            api_key=s.groq_api_key or "",
-            base_url=s.groq_base_url,
-            temperature=s.llm_temperature,
-        )
-    elif s.llm_provider == "deepseek":
-        from src.agents.middleware_openai_compat import StrictOpenAICompatChatOpenAI
+    return agent_node
 
-        kwargs["model"] = StrictOpenAICompatChatOpenAI(
-            model=s.get_llm_model(),
-            api_key=s.deepseek_api_key or "",
-            base_url=s.deepseek_base_url,
-            temperature=s.llm_temperature,
-        )
 
-    return kwargs
+def _sub_agent_node(state: MessagesState) -> dict:
+    """Execute a sub-agent task and return its result as a message.
+
+    Called when the last message contains a task_subagent tool call.
+    """
+    messages = state["messages"]
+    last_msg = messages[-1]
+
+    if not hasattr(last_msg, "tool_calls") or not last_msg.tool_calls:
+        return {"messages": messages}
+
+    # Execute each task_subagent call in sequence
+    new_messages = list(messages)
+    for tc in last_msg.tool_calls:
+        if tc.get("name") != "task_subagent":
+            continue
+
+        args = tc.get("args", {})
+        name = args.get("name", "")
+        task = args.get("task", "")
+
+        result = task_subagent(name, task)
+
+        from langchain_core.messages import ToolMessage
+        new_messages.append(ToolMessage(
+            content=result,
+            tool_call_id=tc.get("id", ""),
+        ))
+
+    return {"messages": new_messages}
+
+
+def _route_after_agent(state: MessagesState) -> str:
+    """Conditional edge routing after the agent node.
+
+    If the agent called task_subagent → go to sub_agent node.
+    If the agent called any other tool → go to tools node.
+    Otherwise → END.
+    """
+    messages = state["messages"]
+    last_msg = messages[-1]
+
+    if hasattr(last_msg, "tool_calls") and last_msg.tool_calls:
+        tool_names = [tc.get("name", "") for tc in last_msg.tool_calls]
+
+        if "task_subagent" in tool_names:
+            return "sub_agent"
+
+        return "tools"
+
+    return "end"
 
 
 def build_research_agent():
-    """Build and return the compiled orchestrator deep agent.
+    """Build and return the compiled orchestrator LangGraph agent.
 
-    The orchestrator has two lightweight tools (``resolve_company`` and
-    ``internet_search``), delegates heavy analysis to five specialist
-    sub-agents, and is equipped with:
-    - **Long-term memory** via CompositeBackend (/memories/ persists across sessions)
-    - **Skills** (progressive disclosure) for Indian equity, annual-report,
-      and portfolio-strategy domain knowledge
-    - **Checkpointer** for conversation continuity within a session
+    The orchestrator has tools for:
+    - resolve_company: company name/ticker → UUID
+    - internet_search: web search augmentation
+    - memory_read / memory_write: persistent long-term memory
+    - read_skill: domain knowledge progressive disclosure
+    - task_subagent: delegate to specialist sub-agents
+
+    Sub-agents are compiled as independent graphs and dispatched via task_subagent.
+    The checkpointer provides conversation continuity within a session.
     """
-    print(f"[ORCHESTRATOR] build_research_agent() called")
-    
     global _agent
     if _agent is not None:
-        print(f"[ORCHESTRATOR] Returning cached agent instance")
         return _agent
 
-    print(f"[ORCHESTRATOR] Building new research agent...")
-    print(f"[ORCHESTRATOR] Model string: {_get_model_string()}")
+    global _memory_cfg
+    from src.agents.memory import get_memory_config
+    _memory_cfg = get_memory_config()
 
-    extra = _get_model_kwargs()
+    llm = get_llm()
 
-    if "model" in extra:
-        model = extra.pop("model")
-    else:
-        model = _get_model_string()
+    # Orchestrator tools (excluding task_subagent for the main ToolNode)
+    regular_tools = [resolve_company, internet_search, memory_read, memory_write, read_skill]
+    all_tools = regular_tools + [task_subagent]
 
-    print(f"[ORCHESTRATOR] Model configured: {model}")
-        
-    memory_cfg = get_memory_config()
-    
-    print(f"[ORCHESTRATOR] Memory config keys: {list(memory_cfg.keys())}")
-    print(f"[ORCHESTRATOR] System prompt (first 500 chars): {ORCHESTRATOR_PROMPT[:500]}...")
-    
-    subagents = get_all_subagents()
-    print(f"[ORCHESTRATOR] Subagents: {list(subagents.keys()) if hasattr(subagents, 'keys') else subagents}")
-    print(f"[ORCHESTRATOR] Tools: resolve_company, internet_search")
+    system_msg = SystemMessage(content=ORCHESTRATOR_PROMPT)
 
-    print(f"[ORCHESTRATOR] Calling create_deep_agent...")
-    _agent = create_deep_agent(
-        model=model,
-        tools=[resolve_company, internet_search],
-        system_prompt=ORCHESTRATOR_PROMPT,
-        subagents=subagents,
-        **memory_cfg,
+    graph = StateGraph(MessagesState)
+
+    # Nodes — use safe wrappers that pad empty tool results
+    graph.add_node("agent", _agent_node_factory(llm, all_tools, system_msg))
+    graph.add_node("tools", _tools_node)
+    graph.add_node("sub_agent", _sub_agent_node)
+
+    # Edges
+    graph.add_edge(START, "agent")
+    graph.add_conditional_edges(
+        "agent",
+        _route_after_agent,
+        {"tools": "tools", "sub_agent": "sub_agent", "end": END},
     )
+    graph.add_edge("tools", "agent")
+    graph.add_edge("sub_agent", "agent")
 
-    print(f"[ORCHESTRATOR] Agent built successfully!")
-    print(f"[ORCHESTRATOR] Agent type: {type(_agent)}")
+    _agent = graph.compile(checkpointer=_memory_cfg["checkpointer"])
     return _agent

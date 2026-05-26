@@ -1,4 +1,4 @@
-"""AI Equity research agents powered by the deepagents library."""
+"""AI Equity research agents powered by LangGraph."""
 
 from src.agents.orchestrator import build_research_agent
 
