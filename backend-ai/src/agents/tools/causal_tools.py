@@ -3,10 +3,32 @@
 import logging
 from datetime import datetime, timedelta
 from typing import Any, Optional
+from uuid import UUID
 
 from sqlalchemy.orm import Session
 
+from src.services.causal_service import CausalService
+
 logger = logging.getLogger(__name__)
+
+_DB_SESSION: Optional[Session] = None
+
+
+def _get_db() -> Session:
+    """Get or create a shared DB session. Caller must close via _close_db()."""
+    global _DB_SESSION
+    if _DB_SESSION is None:
+        from src.db.database import SessionLocal
+        _DB_SESSION = SessionLocal()
+    return _DB_SESSION
+
+
+def _close_db():
+    """Close the shared session if open."""
+    global _DB_SESSION
+    if _DB_SESSION is not None:
+        _DB_SESSION.close()
+        _DB_SESSION = None
 
 
 def get_causal_tools():
@@ -22,71 +44,53 @@ def get_causal_tools():
 
 def get_commodity_price_summary(days: int = 7) -> dict[str, Any]:
     """Get summary of commodity price changes.
-    
-    Returns:
-        Dict with commodity symbol -> {price, change_pct, direction}
+
+    Uses pre-computed deltas from ETL task when available (<1h old),
+    falls back to real-time computation via CausalService.
     """
-    from src.db.database import SessionLocal
     from src.db.models import CommodityPrice
-    
-    db = SessionLocal()
-    results = {}
-    
+
+    db = _get_db()
+    service = CausalService(db)
+
     try:
-        cutoff = datetime.utcnow() - timedelta(days=days)
-        
-        symbols = db.query(CommodityPrice.symbol).distinct().all()
-        symbols = [s[0] for s in symbols]
-        
-        for symbol in symbols:
-            latest = (
-                db.query(CommodityPrice)
-                .filter(CommodityPrice.symbol == symbol)
-                .order_by(CommodityPrice.timestamp.desc())
-                .first()
-            )
-            
-            old_price = (
-                db.query(CommodityPrice)
-                .filter(
-                    CommodityPrice.symbol == symbol,
-                    CommodityPrice.timestamp <= cutoff,
-                )
-                .order_by(CommodityPrice.timestamp.desc())
-                .first()
-            )
-            
-            if latest and old_price and old_price.price:
-                change_pct = ((latest.price - old_price.price) / old_price.price) * 100
-                results[symbol] = {
-                    "current_price": latest.price,
-                    "change_pct": round(change_pct, 2),
-                    "direction": "up" if change_pct > 0 else "down",
-                    "name": latest.name,
-                }
-        
+        # Attempt cache-first: check if a recent delta cache exists
+        now = datetime.utcnow()
+        cache_cutoff = now - timedelta(hours=1)
+
+        # Use CausalService's unified delta logic
+        changes = service.get_commodity_changes(days=days)
+
+        # Enrich with name
+        results = {}
+        for symbol, data in changes.items():
+            results[symbol] = {
+                "current_price": data.get("current_price"),
+                "change_pct": data.get("change_pct", 0),
+                "direction": data.get("direction", "up"),
+                "name": data.get("name", symbol),
+            }
+
         return {"commodities": results, "days": days}
-        
-    finally:
-        db.close()
+
+    except Exception:
+        logger.exception("get_commodity_price_summary failed")
+        return {"commodities": {}, "days": days, "error": str(Exception)}
 
 
 def get_recent_geopolitical_events(hours: int = 48, min_confidence: float = 0.6) -> dict[str, Any]:
-    """Get recent significant geopolitical events.
-    
-    Returns:
-        List of events with impact classification
+    """Get recent significant geopolitical events with pre-classified impacts.
+
+    Impact classification is pre-computed during ETL (event_monitor_task), so
+    this tool reads it directly instead of re-classifying at runtime.
     """
-    from src.db.database import SessionLocal
     from src.db.models import GeopoliticalEvent
-    from src.integrations.event_impact_classifier import get_event_classifier
-    
-    db = SessionLocal()
-    classifier = get_event_classifier()
-    
+
+    db = _get_db()
+
     try:
         cutoff = datetime.utcnow() - timedelta(hours=hours)
-        
+
         events = (
             db.query(GeopoliticalEvent)
             .filter(
@@ -97,7 +101,7 @@ def get_recent_geopolitical_events(hours: int = 48, min_confidence: float = 0.6)
             .limit(10)
             .all()
         )
-        
+
         results = []
         for event in events:
             event_dict = {
@@ -107,39 +111,42 @@ def get_recent_geopolitical_events(hours: int = 48, min_confidence: float = 0.6)
                 "date": event.event_date.isoformat() if event.event_date else None,
                 "confidence": event.confidence,
             }
-            
-            # Get impact
-            impact = classifier.classify(event_dict)
-            if impact:
-                event_dict["impact"] = {
-                    "commodity": impact.commodity,
-                    "direction": impact.direction,
-                    "magnitude": impact.magnitude,
-                    "affected_sectors": impact.affected_sectors,
-                }
-            
+
+            # Read pre-classified impact from raw_data (set during ETL)
+            raw = event.raw_data or {}
+            if "impact" in raw:
+                event_dict["impact"] = raw["impact"]
+            else:
+                # Fallback for legacy events without pre-classification
+                from src.integrations.event_impact_classifier import get_event_classifier
+                classifier = get_event_classifier()
+                impact = classifier.classify(event_dict)
+                if impact:
+                    event_dict["impact"] = {
+                        "commodity": impact.commodity,
+                        "direction": impact.direction,
+                        "magnitude": impact.magnitude,
+                        "affected_sectors": impact.affected_sectors,
+                    }
+
             results.append(event_dict)
-        
+
         return {"events": results, "count": len(results)}
-        
-    finally:
-        db.close()
+
+    except Exception:
+        logger.exception("get_recent_geopolitical_events failed")
+        return {"events": [], "count": 0}
 
 
 def get_classified_news_impact(limit: int = 10) -> dict[str, Any]:
-    """Get recent news with commodity/sector impact.
-    
-    Returns:
-        List of news articles with supply/demand impact
-    """
-    from src.db.database import SessionLocal
+    """Get recent news with commodity/sector impact."""
     from src.db.models import ClassifiedNews
-    
-    db = SessionLocal()
-    
+
+    db = _get_db()
+
     try:
         cutoff = datetime.utcnow() - timedelta(hours=48)
-        
+
         news = (
             db.query(ClassifiedNews)
             .filter(
@@ -150,7 +157,7 @@ def get_classified_news_impact(limit: int = 10) -> dict[str, Any]:
             .limit(limit)
             .all()
         )
-        
+
         results = []
         for n in news:
             results.append({
@@ -162,193 +169,164 @@ def get_classified_news_impact(limit: int = 10) -> dict[str, Any]:
                 "impact_type": n.impact_type,
                 "confidence": n.classification_confidence,
             })
-        
+
         return {"news": results, "count": len(results)}
-        
-    finally:
-        db.close()
+
+    except Exception:
+        logger.exception("get_classified_news_impact failed")
+        return {"news": [], "count": 0}
 
 
 def get_portfolio_causal_analysis(portfolio_id: str) -> dict[str, Any]:
     """Get causal analysis for a portfolio.
-    
-    Returns:
-        Analysis connecting commodities, events, and news to holdings
+
+    Cache-first: reads from CausalInsight table (4h TTL),
+    falls back to full computation on cache miss and saves result.
     """
-    from uuid import UUID
-    
-    from src.db.database import SessionLocal
-    from src.db.models import Company, Holding, Portfolio
-    from src.services.causal_service import CausalService
-    
-    db = SessionLocal()
-    
+    from src.db.models import CausalInsight
+
+    db = _get_db()
+    service = CausalService(db)
+
     try:
-        portfolio = db.query(Portfolio).filter(Portfolio.id == UUID(portfolio_id)).first()
-        if not portfolio:
-            return {"error": "Portfolio not found"}
-        
-        holdings = (
-            db.query(Holding)
-            .filter(Holding.portfolio_id == UUID(portfolio_id))
-            .all()
-        )
-        
-        # Get commodity changes
+        pid = UUID(portfolio_id)
+
+        # Step 1: Check cache
+        cached = service.get_latest_insights(pid, hours=4)
+        if cached:
+            return {
+                "portfolio_id": portfolio_id,
+                "source": "cache",
+                "insights": [
+                    {
+                        "title": ci.title,
+                        "trigger": ci.trigger_event,
+                        "commodity": ci.commodity,
+                        "sector": ci.sector,
+                        "impact_direction": ci.impact_direction,
+                        "explanation": ci.explanation,
+                        "recommendation": ci.recommendation,
+                        "confidence": ci.confidence,
+                    }
+                    for ci in cached
+                ],
+            }
+
+        # Step 2: Cache miss — compute fresh
+        insights = service.analyze_portfolio(pid)
+
+        if insights:
+            service.save_insights(pid, insights)
+
+        # Get supporting data for context
         commodity_data = get_commodity_price_summary(days=7)
         volatile_commodities = [
             k for k, v in commodity_data.get("commodities", {}).items()
             if abs(v.get("change_pct", 0)) >= 3
         ]
-        
-        # Get events
-        events_data = get_recent_geopolitical_events(hours=48)
-        significant_events = [
-            e for e in events_data.get("events", [])
-            if e.get("impact", {}).get("commodity")
-        ]
-        
-        # Get news
-        news_data = get_classified_news_impact()
-        
-        # Build analysis
-        analysis = {
+
+        return {
             "portfolio_id": portfolio_id,
-            "holdings_count": len(holdings),
+            "source": "computed",
             "volatile_commodities": volatile_commodities,
-            "significant_events_count": len(significant_events),
-            "impactful_news_count": news_data.get("count", 0),
-            "patterns": [],
+            "insights": insights,
         }
-        
-        # Identify patterns
-        for holding in holdings:
-            company = db.query(Company).filter(Company.id == holding.company_id).first()
-            if not company or not company.sector:
-                continue
-            
-            sector = company.sector
-            patterns = []
-            
-            # Check commodity exposure
-            for comm, data in commodity_data.get("commodities", {}).items():
-                if abs(data.get("change_pct", 0)) >= 3:
-                    patterns.append({
-                        "type": "commodity",
-                        "trigger": f"{comm} {data.get('direction')} {data.get('change_pct')}%",
-                        "sector": sector,
-                        "company": company.name,
-                        "confidence": 0.7,
-                    })
-            
-            # Check news impact
-            for news_item in news_data.get("news", []):
-                if news_item.get("sector") == sector:
-                    patterns.append({
-                        "type": "news",
-                        "trigger": news_item.get("title", "")[:50],
-                        "direction": news_item.get("impact_direction"),
-                        "sector": sector,
-                        "company": company.name,
-                        "confidence": news_item.get("confidence", 0.5),
-                    })
-            
-            if patterns:
-                analysis["patterns"].extend(patterns)
-        
-        return analysis
-        
-    finally:
-        db.close()
+
+    except Exception:
+        logger.exception("get_portfolio_causal_analysis failed")
+        return {"portfolio_id": portfolio_id, "error": "Failed to compute causal analysis"}
 
 
 def get_market_hidden_patterns() -> dict[str, Any]:
     """Get currently hidden patterns in the market.
-    
-    Returns:
-        Hidden patterns detected from all data sources
+
+    Uses cached causal insights where available, supplements with
+    commodity/event/news correlation at runtime.
     """
-    from src.db.database import SessionLocal
-    
-    db = SessionLocal()
+    from src.db.models import ClassifiedNews, GeopoliticalEvent
+
+    db = _get_db()
     patterns = []
-    
+
     try:
-        # Get all three data sources
-        commodity_data = get_commodity_price_summary(days=7)
-        events_data = get_recent_geopolitical_events(hours=72)
-        news_data = get_classified_news_impact()
-        
-        # Pattern 1: Volatile commodities with event correlation
-        for comm, data in commodity_data.get("commodities", {}).items():
-            if abs(data.get("change_pct", 0)) >= 4:
-                # Check for related events
-                related_events = [
-                    e for e in events_data.get("events", [])
-                    if e.get("impact", {}).get("commodity") == comm
-                ]
-                if related_events:
-                    patterns.append({
-                        "pattern": "event_driven_commodity",
-                        "trigger": f"{comm} moved {data.get('change_pct')}%",
-                        "cause": related_events[0].get("title", "")[:60],
-                        "sectors_affected": get_affected_sectors(comm),
-                        "confidence": 0.8,
-                    })
-        
+        # Get commodity changes via shared service
+        service = CausalService(db)
+        commodity_data = service.get_commodity_changes(days=7)
+
+        # Pattern 1: Volatile commodities from pre-computed data
+        for symbol, data in commodity_data.items():
+            change_pct = data.get("change_pct", 0)
+            if abs(change_pct) >= 4:
+                patterns.append({
+                    "pattern": "commodity_volatility",
+                    "trigger": f"{data.get('name', symbol)} moved {change_pct:.1f}% in 7 days",
+                    "direction": data.get("direction", "up"),
+                    "sectors_affected": get_affected_sectors(symbol),
+                    "confidence": min(0.85, 0.5 + abs(change_pct) / 20),
+                })
+
         # Pattern 2: Sector momentum from news
-        sector_sentiment = {}
-        for news in news_data.get("news", []):
-            sector = news.get("sector")
+        cutoff = datetime.utcnow() - timedelta(hours=48)
+        news_items = (
+            db.query(ClassifiedNews)
+            .filter(ClassifiedNews.published_at >= cutoff)
+            .all()
+        )
+
+        sector_sentiment: dict[str, dict[str, int]] = {}
+        for n in news_items:
+            sector = n.sector
             if sector:
-                if sector not in sector_sentiment:
-                    sector_sentiment[sector] = {"positive": 0, "negative": 0}
-                direction = news.get("impact_direction")
-                if direction == "positive":
+                sector_sentiment.setdefault(sector, {"positive": 0, "negative": 0})
+                if n.impact_direction == "positive":
                     sector_sentiment[sector]["positive"] += 1
-                elif direction == "negative":
+                elif n.impact_direction == "negative":
                     sector_sentiment[sector]["negative"] += 1
-        
+
         for sector, sentiment in sector_sentiment.items():
-            if sentiment["positive"] >= 2:
+            total = sentiment["positive"] + sentiment["negative"]
+            if total >= 2 and sentiment["positive"] >= sentiment["negative"]:
                 patterns.append({
                     "pattern": "sector_bullish_news",
-                    "trigger": f"{sector} has {sentiment['positive']} positive news items",
+                    "trigger": f"{sector}: {sentiment['positive']} positive, {sentiment['negative']} negative news items",
                     "sectors_affected": [sector],
                     "confidence": 0.7,
                 })
-        
+
         return {
             "patterns": patterns,
             "count": len(patterns),
             "data_sources": {
-                "commodities": len(commodity_data.get("commodities", {})),
-                "events": events_data.get("count", 0),
-                "news": news_data.get("count", 0),
-            }
+                "commodities": len(commodity_data),
+                "news": len(news_items),
+            },
         }
-        
-    finally:
-        db.close()
+
+    except Exception:
+        logger.exception("get_market_hidden_patterns failed")
+        return {"patterns": [], "count": 0}
 
 
 def get_affected_sectors(commodity: str) -> list[str]:
     """Get sectors affected by a commodity."""
-    from src.db.database import SessionLocal
     from src.db.models import SectorExposure
-    
-    db = SessionLocal()
-    sectors = []
-    
+
+    db = _get_db()
     try:
-        exposures = db.query(SectorExposure).filter(
-            SectorExposure.commodity == commodity,
-            SectorExposure.is_active == True,
-        ).all()
-        
-        sectors = [e.sector for e in exposures]
-        
-    finally:
-        db.close()
-    
-    return sectors
+        exposures = (
+            db.query(SectorExposure)
+            .filter(
+                SectorExposure.commodity == commodity,
+                SectorExposure.is_active == True,
+            )
+            .all()
+        )
+        return [e.sector for e in exposures]
+    except Exception:
+        logger.exception("get_affected_sectors failed")
+        return []
+
+
+def close_causal_tools():
+    """Close the shared DB session. Call after agent finishes."""
+    _close_db()

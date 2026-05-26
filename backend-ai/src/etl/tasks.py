@@ -144,16 +144,19 @@ def enrich_single_company(self, company_id: str):
 
 @app.task(bind=True, name="etl.refresh_financials_batch")
 def refresh_financials_batch(self, batch_size: int = 100):
-    """Scrape and persist financial data for companies lacking it."""
+    """Scrape and persist financial data for companies lacking it.
+    
+    Also populates FinancialRatio and MarketSignal tables for cached lookups.
+    """
     db = SessionLocal()
     run = _log_etl_run(db, "financials_refresh")
     context = None
     try:
         from src.services.market_data.context import MarketDataContext
         from src.services.market_data.financials_service import FinancialStatementsService
-
+        from src.services.financial_service import FinancialService
+        from src.db.models import FinancialRatio, FinancialStatementRaw, MarketSignal
         from sqlalchemy import func
-        from src.db.models import FinancialStatementRaw
 
         companies_with_data = (
             db.query(FinancialStatementRaw.company_id)
@@ -172,6 +175,7 @@ def refresh_financials_batch(self, batch_size: int = 100):
 
         context = MarketDataContext(db)
         financials_service = FinancialStatementsService(context)
+        fin_service = FinancialService(db)
 
         fetched = 0
         for company in companies:
@@ -179,6 +183,69 @@ def refresh_financials_batch(self, batch_size: int = 100):
                 result = financials_service.get_financials(company.id)
                 if result.get("periods") or result.get("raw_data"):
                     fetched += 1
+
+                    # Populate cached ratios
+                    try:
+                        ratios = fin_service.calculate_ratios(company.id)
+                        ratio_data = ratios.get("ratios", {})
+                        if ratio_data:
+                            period_end_str = ratio_data.get("period_end") or ratios.get("period")
+                            period_end = date.today()
+                            if period_end_str:
+                                try:
+                                    period_end = date.fromisoformat(period_end_str)
+                                except (ValueError, TypeError):
+                                    pass
+
+                            existing_ratio = db.query(FinancialRatio).filter(
+                                FinancialRatio.company_id == company.id,
+                                FinancialRatio.period_end == period_end,
+                            ).first()
+
+                            if not existing_ratio:
+                                ratio_model = FinancialRatio(
+                                    company_id=company.id,
+                                    period_end=period_end,
+                                    fiscal_year=period_end.year,
+                                    roe=ratio_data.get("roe"),
+                                    gross_margin=ratio_data.get("gross_margin"),
+                                    ebitda_margin=ratio_data.get("ebitda_margin"),
+                                    net_margin=ratio_data.get("net_margin"),
+                                    debt_to_equity=ratio_data.get("debt_to_equity"),
+                                    interest_coverage=ratio_data.get("interest_coverage"),
+                                    current_ratio=ratio_data.get("current_ratio"),
+                                    pe_ratio=ratio_data.get("pe_ratio"),
+                                    pb_ratio=ratio_data.get("pb_ratio"),
+                                    revenue_growth_yoy=ratio_data.get("revenue_growth_yoy"),
+                                    pat_growth_yoy=ratio_data.get("pat_growth_yoy"),
+                                )
+                                db.add(ratio_model)
+
+                            # Populate risk signals
+                            risk_flags = fin_service.detect_risk_flags(company.id)
+                            for flag in risk_flags:
+                                existing_signal = db.query(MarketSignal).filter(
+                                    MarketSignal.company_id == company.id,
+                                    MarketSignal.signal_type == "risk",
+                                    MarketSignal.title == flag.get("flag", ""),
+                                ).first()
+                                if not existing_signal:
+                                    signal = MarketSignal(
+                                        company_id=company.id,
+                                        signal_type="risk",
+                                        impact_level=flag.get("severity", "medium"),
+                                        title=flag.get("flag", ""),
+                                        summary=flag.get("description", ""),
+                                        source_event_type="financial_ratio",
+                                        source_event_id=company.id,
+                                    )
+                                    db.add(signal)
+
+                        db.commit()
+                    except Exception as e:
+                        logger.debug("Ratio caching failed for %s: %s", company.name, e)
+                        db.rollback()
+
             except Exception as e:
                 logger.debug("Financials fetch failed for %s: %s", company.name, e)
 

@@ -43,11 +43,16 @@ def calculate_ratios(
 ) -> Dict[str, Any]:
     """Calculate financial ratios (PE, PB, ROE, margins, leverage) for a company.
 
+    Checks cached FinancialRatio table first (populated during ETL),
+    falls back to FMP API on cache miss.
+
     Args:
         company_id: Company UUID or name/ticker (e.g. "TCS", "Infosys")
         period: Period end date YYYY-MM-DD (optional, defaults to latest)
     """
+    from datetime import date, datetime, timedelta
     from src.services.financial_service import FinancialService
+    from src.db.models import FinancialRatio
 
     db = next(get_db())
     try:
@@ -55,8 +60,41 @@ def calculate_ratios(
             uid = resolve_company_id(company_id, db)
         except ValueError as e:
             return {"error": str(e)}
+
+        # Check cache first (ratios computed within last 24h)
+        cache_cutoff = datetime.utcnow() - timedelta(hours=24)
+        cached = (
+            db.query(FinancialRatio)
+            .filter(
+                FinancialRatio.company_id == uid,
+                FinancialRatio.created_at >= cache_cutoff,
+            )
+            .order_by(FinancialRatio.period_end.desc())
+            .first()
+        )
+
+        if cached:
+            return {
+                "company_id": str(uid),
+                "period_end": cached.period_end.isoformat(),
+                "source": "cache",
+                "ratios": {
+                    "roe": float(cached.roe) if cached.roe else None,
+                    "gross_margin": float(cached.gross_margin) if cached.gross_margin else None,
+                    "ebitda_margin": float(cached.ebitda_margin) if cached.ebitda_margin else None,
+                    "net_margin": float(cached.net_margin) if cached.net_margin else None,
+                    "debt_to_equity": float(cached.debt_to_equity) if cached.debt_to_equity else None,
+                    "interest_coverage": float(cached.interest_coverage) if cached.interest_coverage else None,
+                    "current_ratio": float(cached.current_ratio) if cached.current_ratio else None,
+                    "pe_ratio": float(cached.pe_ratio) if cached.pe_ratio else None,
+                    "pb_ratio": float(cached.pb_ratio) if cached.pb_ratio else None,
+                    "revenue_growth_yoy": float(cached.revenue_growth_yoy) if cached.revenue_growth_yoy else None,
+                    "pat_growth_yoy": float(cached.pat_growth_yoy) if cached.pat_growth_yoy else None,
+                },
+            }
+
+        # Cache miss — fall back to FMP API
         service = FinancialService(db)
-        
         try:
             p = date.fromisoformat(period) if period else None
             result = service.calculate_ratios(uid, p)
@@ -73,10 +111,15 @@ def calculate_ratios(
 def detect_risk_flags(company_id: str) -> List[Dict[str, Any]]:
     """Detect financial red flags for a company based on its ratios.
 
+    Checks cached MarketSignal table first (populated during ETL),
+    falls back to real-time computation on cache miss.
+
     Args:
         company_id: Company UUID or name/ticker (e.g. "TCS", "Infosys")
     """
+    from datetime import datetime, timedelta
     from src.services.financial_service import FinancialService
+    from src.db.models import MarketSignal
 
     flags: List[Dict[str, Any]] = []
     db = next(get_db())
@@ -85,6 +128,30 @@ def detect_risk_flags(company_id: str) -> List[Dict[str, Any]]:
             uid = resolve_company_id(company_id, db)
         except ValueError as e:
             return [{"error": str(e)}]
+
+        # Check cache first (signals detected within last 24h)
+        cache_cutoff = datetime.utcnow() - timedelta(hours=24)
+        cached = (
+            db.query(MarketSignal)
+            .filter(
+                MarketSignal.company_id == uid,
+                MarketSignal.signal_type == "risk",
+                MarketSignal.detected_at >= cache_cutoff,
+            )
+            .all()
+        )
+
+        if cached:
+            for signal in cached:
+                flags.append({
+                    "flag": signal.title,
+                    "severity": signal.impact_level,
+                    "description": signal.summary,
+                    "source": "cache",
+                })
+            return flags
+
+        # Cache miss — compute in real-time
         service = FinancialService(db)
         ratio_data = service.calculate_ratios(uid)
         ratios = ratio_data.get("ratios", {})
@@ -126,6 +193,7 @@ def detect_risk_flags(company_id: str) -> List[Dict[str, Any]]:
                     "description": desc_fn(val),
                     "metric": metric,
                     "value": val,
+                    "source": "computed",
                 })
         return flags
     finally:

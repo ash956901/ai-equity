@@ -67,13 +67,34 @@ def monitor_geopolitical_events(self):
             articles = client.search_mentions(query, max_results=10)
             all_articles.extend(articles)
         
-        # Store as basic events
+        # Store as basic events with pre-classified impacts
+        from src.integrations.event_impact_classifier import get_event_classifier
+        classifier = get_event_classifier()
+        
         for article in all_articles:
             existing = db.query(GeopoliticalEvent).filter(
                 GeopoliticalEvent.title == article.get("title")
             ).first()
             
             if not existing:
+                event_dict = {
+                    "title": article.get("title"),
+                    "summary": article.get("summary", ""),
+                    "country": article.get("country", "GLOBAL"),
+                    "category": article.get("category", "news"),
+                }
+                # Pre-classify impact during ETL
+                impact = classifier.classify(event_dict)
+                
+                raw = dict(article)
+                if impact:
+                    raw["impact"] = {
+                        "commodity": impact.commodity,
+                        "direction": impact.direction,
+                        "magnitude": impact.magnitude,
+                        "affected_sectors": impact.affected_sectors,
+                    }
+                
                 event = GeopoliticalEvent(
                     title=article.get("title"),
                     summary=f"Source: {article.get('domain')}",
@@ -83,7 +104,7 @@ def monitor_geopolitical_events(self):
                     country="GLOBAL",
                     category="news",
                     source="gdelt_free",
-                    raw_data=article,
+                    raw_data=raw,
                 )
                 db.add(event)
                 events_saved += 1
@@ -155,38 +176,13 @@ def generate_event_alerts(self):
 
 
 def get_commodity_changes_from_db(db, days: int = 7) -> dict[str, float]:
-    """Get commodity price changes from database."""
-    from datetime import timedelta
-    
-    cutoff = datetime.utcnow() - timedelta(days=days)
-    changes = {}
-    
-    symbols = db.query(CommodityPrice.symbol).distinct().all()
-    symbols = [s[0] for s in symbols]
-    
-    for symbol in symbols:
-        latest = (
-            db.query(CommodityPrice)
-            .filter(CommodityPrice.symbol == symbol)
-            .order_by(CommodityPrice.timestamp.desc())
-            .first()
-        )
-        
-        old_price = (
-            db.query(CommodityPrice)
-            .filter(
-                CommodityPrice.symbol == symbol,
-                CommodityPrice.timestamp <= cutoff,
-            )
-            .order_by(CommodityPrice.timestamp.desc())
-            .first()
-        )
-        
-        if latest and old_price and old_price.price and latest.price:
-            change_pct = ((latest.price - old_price.price) / old_price.price) * 100
-            changes[symbol] = round(change_pct, 2)
-    
-    return changes
+    """Get commodity price changes from database (delegates to CausalService)."""
+    from src.services.causal_service import CausalService
+    service = CausalService(db)
+    return {
+        symbol: data.get("change_pct", 0)
+        for symbol, data in service.get_commodity_changes(days=days).items()
+    }
 
 
 @app.task(bind=True, name="etl.get_significant_events")

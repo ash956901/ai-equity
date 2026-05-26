@@ -160,50 +160,15 @@ def sync_commodity_prices(self):
 def get_commodity_changes(self, days: int = 7) -> dict[str, Any]:
     """Get price changes for all commodities over N days.
     
-    Returns dict of symbol -> {current, previous, change_pct}
+    Uses CausalService's unified implementation to avoid code duplication.
+    Returns dict of symbol -> {current, previous, change_pct, name, source}
     """
+    from src.services.causal_service import CausalService
+    
     db = SessionLocal()
-    results = {}
-    
     try:
-        cutoff = datetime.utcnow() - timedelta(days=days)
-        
-        # Get all unique symbols
-        symbols = db.query(CommodityPrice.symbol).distinct().all()
-        symbols = [s[0] for s in symbols]
-        
-        for symbol in symbols:
-            # Get most recent price
-            latest = (
-                db.query(CommodityPrice)
-                .filter(CommodityPrice.symbol == symbol)
-                .order_by(CommodityPrice.timestamp.desc())
-                .first()
-            )
-            
-            # Get price from N days ago
-            old_price = (
-                db.query(CommodityPrice)
-                .filter(
-                    CommodityPrice.symbol == symbol,
-                    CommodityPrice.timestamp <= cutoff,
-                )
-                .order_by(CommodityPrice.timestamp.desc())
-                .first()
-            )
-            
-            if latest and old_price and old_price.price:
-                change_pct = ((latest.price - old_price.price) / old_price.price) * 100
-                results[symbol] = {
-                    "current_price": latest.price,
-                    "previous_price": old_price.price,
-                    "change_pct": round(change_pct, 2),
-                    "name": latest.name,
-                    "source": latest.source,
-                }
-        
-        return results
-    
+        service = CausalService(db)
+        return service.get_commodity_changes(days=days)
     finally:
         db.close()
 

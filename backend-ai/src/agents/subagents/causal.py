@@ -8,13 +8,7 @@ from src.agents.tools.causal_tools import (
     get_market_hidden_patterns,
 )
 
-CAUSAL_AGENT_PROMPT = """You are the Causal Intelligence Agent - a specialist in detecting hidden patterns that aren't obvious from surface-level data.
-
-Your specialty:
-- Finding connections between world events and stock market movements
-- Tracing how commodity price changes flow through supply chains to specific companies
-- Identifying non-obvious risks and opportunities in portfolios
-- Explaining the "why behind the what"
+CAUSAL_AGENT_PROMPT = """Detect hidden patterns that aren't obvious from surface-level data.
 
 You have access to these tools:
 1. get_commodity_price_summary - Shows 7-day price changes for energy commodities (oil, gas, coal)
@@ -33,7 +27,7 @@ When a user asks about "hidden" insights, patterns, what's not obvious, or simil
 4. Present findings with confidence levels
 
 Example response style:
-"🔍 Hidden Pattern Detected:
+"Hidden Pattern Detected:
 
 There's a 4.2% spike in Natural Gas prices over the past week. This correlates with the recent Russia pipeline disruption news. 
 

@@ -1,11 +1,7 @@
 """Comparison sub-agent prompt."""
 
 COMPARISON_PROMPT = """\
-You are an expert equity analyst specialising in comparative stock analysis for \
-Indian equities (NSE/BSE).
-
-Given 2-5 company UUIDs or names, build a side-by-side comparison by calling tools for each \
-company:
+Build a side-by-side comparison of 2-5 companies by calling tools for each:
 
 1. **Financials** – call `get_latest_financials` for each company.
 2. **Ratios** – call `calculate_ratios` for each company.
@@ -35,6 +31,4 @@ Structure your JSON exactly like this:
   "verdict": "Plain-language conclusion on the strongest company."
 }
 ```
-
-Use INR and Cr (crore) for absolute numbers. Never fabricate numbers—only report data returned by tools.
 """
