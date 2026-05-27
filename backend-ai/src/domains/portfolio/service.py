@@ -29,24 +29,33 @@ class PortfoliosService:
         # Get causal insights first
         causal_context = self._get_causal_context(portfolio_id)
 
-        # We use the research agent to generate a summary/suggestion
+        # Pre-fetch portfolio holdings to avoid tool round-trips
+        holdings_context = self._get_holdings_context(portfolio_id)
+
         agent = build_research_agent()
-        
-        # Enhanced task with causal context
+
         task = (
-            f"Analyse the portfolio {portfolio_id} and recent market news. "
-            "Also consider the following commodity price trends and market signals:\n\n"
+            "You are an expert equity analyst. Below is a complete portfolio with "
+            "holdings and market signals. Analyze it directly — do NOT call tools.\n\n"
+            f"{holdings_context}\n\n"
             f"{causal_context}\n\n"
-            "Provide 3-4 specific 'Hidden Insights' that connect world events and commodity prices "
-            "to specific companies in this portfolio. Format each insight as:\n"
-            "- **Trigger**: What happened (e.g., 'Oil up 5%')\n"
-            "- **Chain**: How it propagates (e.g., 'Oil → Transport costs → Margins')\n"
-            "- **Impact**: Which holdings are affected and how\n"
-            "- **Confidence**: How certain (High/Medium/Low)\n"
-            "- **Recommendation**: What to consider (Buy more/Hold/Reduce)\n\n"
-            "Also provide Investment Suggestions (Buy/Sell/Hold) for this user. "
-            "Return the response as a clean, professional markdown block with headers and bullet points. "
-            "Do NOT return JSON or structured lists, just formatted text."
+            "## Required Output\n\n"
+            "### 1. Portfolio Overview\n"
+            "A table with columns: Stock (Ticker), Sector, Weight (%), "
+            "Recent Signal (1-line catalyst or risk).\n\n"
+            "### 2. Hidden Insights (3 specific insights)\n"
+            "Connect the commodity changes above to specific holdings. "
+            "For each, provide:\n"
+            "- **Causal Chain**: commodity move -> sector impact -> company effect\n"
+            "- **Confidence**: High/Medium/Low with brief reason\n"
+            "- **Action**: Buy more / Hold / Reduce — specific and justified\n\n"
+            "### 3. Investment Suggestions\n"
+            "Per-stock recommendation with a brief reason. "
+            "Then a suggested rebalancing move (e.g., trim X by 2%, add to Y by 2%).\n\n"
+            "### 4. Explained Simply\n"
+            "2-3 sentence plain-language bottom line for a retail investor.\n\n"
+            "Be specific. Name actual stocks from the portfolio. "
+            "Use INR and Cr (crore). Never fabricate data."
         )
 
 
@@ -61,6 +70,34 @@ class PortfoliosService:
             import logging
             logging.getLogger(__name__).error(f"Failed to generate AI suggestions: {e}")
             return {"suggestions": "AI insights are temporarily unavailable. Please try again later."}
+
+    def _get_holdings_context(self, portfolio_id: UUID) -> str:
+        """Get portfolio holdings as structured context for the agent."""
+        try:
+            holdings = (
+                self.db.query(Holding)
+                .filter(Holding.portfolio_id == portfolio_id)
+                .all()
+            )
+            total_qty = sum(float(h.quantity) for h in holdings)
+            if not total_qty:
+                return "Portfolio has no holdings."
+
+            lines = ["## Portfolio Holdings\n"]
+            for h in holdings:
+                company = self.db.query(Company).filter(Company.id == h.company_id).first()
+                name = company.name if company else "Unknown"
+                ticker = (company.ticker_nse or company.ticker_bse or "N/A") if company else "N/A"
+                sector = company.sector if company else "N/A"
+                qty = float(h.quantity)
+                weight = (qty / total_qty * 100) if total_qty > 0 else 0
+                lines.append(
+                    f"- {name} ({ticker}) | {sector} | "
+                    f"{qty:.0f} shares | {weight:.1f}% weight"
+                )
+            return "\n".join(lines)
+        except Exception:
+            return "Portfolio holdings unavailable."
 
     def _get_causal_context(self, portfolio_id: UUID) -> str:
         """Get causal context for portfolio analysis."""

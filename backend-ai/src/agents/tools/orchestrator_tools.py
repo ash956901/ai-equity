@@ -176,7 +176,7 @@ def task_subagent(name: str, task: str) -> str:
     try:
         result = graphs[name].invoke(
             {"messages": [HumanMessage(content=task)]},
-            config={"recursion_limit": 15},
+            config={"recursion_limit": 50},
         )
         last_msg = result["messages"][-1]
         return last_msg.content if hasattr(last_msg, "content") else str(last_msg)
