@@ -109,27 +109,58 @@ class SimulatorService:
         self.db = db
 
     def _get_live_price(self, company: Company) -> Optional[float]:
-        """Fetch live price synchronously via Yahoo Finance."""
-        try:
-            import httpx
-            ticker = None
-            if company.ticker_nse:
-                ticker = f"{company.ticker_nse}.NS"
-            elif company.ticker_bse:
-                ticker = f"{company.ticker_bse}.BO"
-            if not ticker:
+        """Fetch live price via Yahoo Finance with name-search fallback."""
+        import httpx
+
+        def _chart_price(symbol: str) -> Optional[float]:
+            try:
+                url = f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}"
+                with httpx.Client(timeout=10.0, follow_redirects=True) as client:
+                    resp = client.get(url, params={"interval": "1d", "range": "1d"},
+                                      headers={"User-Agent": "Mozilla/5.0"})
+                if resp.status_code != 200:
+                    return None
+                meta = resp.json().get("chart", {}).get("result", [{}])[0].get("meta", {})
+                price = meta.get("regularMarketPrice") or meta.get("previousClose")
+                return float(price) if price else None
+            except Exception as exc:
+                logger.warning("Yahoo price fetch failed for %s: %s", symbol, exc)
                 return None
 
-            url = f"https://query1.finance.yahoo.com/v8/finance/chart/{ticker}?interval=1d&range=1d"
-            with httpx.Client(timeout=10.0, follow_redirects=True) as client:
-                resp = client.get(url, headers={"User-Agent": "Mozilla/5.0"})
-            data = resp.json()
-            meta = data.get("chart", {}).get("result", [{}])[0].get("meta", {})
-            price = meta.get("regularMarketPrice") or meta.get("previousClose")
-            return float(price) if price else None
-        except Exception as exc:
-            logger.warning("Live price fetch failed for %s: %s", company.id, exc)
-            return None
+        # Build primary ticker list (skip numeric-only BSE codes)
+        candidates: list[str] = []
+        if company.ticker_nse:
+            candidates.append(f"{company.ticker_nse}.NS")
+        if company.ticker_bse and not company.ticker_bse.isdigit():
+            candidates.append(f"{company.ticker_bse}.BO")
+
+        for sym in candidates:
+            price = _chart_price(sym)
+            if price:
+                return price
+
+        # Fallback: search Yahoo Finance by company name to resolve the correct ticker
+        if company.name:
+            try:
+                with httpx.Client(timeout=8.0) as client:
+                    resp = client.get(
+                        "https://query1.finance.yahoo.com/v1/finance/search",
+                        params={"q": company.name, "quotesCount": 5, "newsCount": 0},
+                        headers={"User-Agent": "Mozilla/5.0"},
+                    )
+                quotes = resp.json().get("quotes") or []
+                for suffix in (".NS", ".BO"):
+                    for q in quotes:
+                        sym = q.get("symbol", "")
+                        if sym.endswith(suffix):
+                            price = _chart_price(sym)
+                            if price:
+                                logger.info("Simulator: resolved %s → %s via name search", company.name, sym)
+                                return price
+            except Exception as exc:
+                logger.warning("Yahoo name search failed for '%s': %s", company.name, exc)
+
+        return None
 
     def execute_trade(
         self,
@@ -148,7 +179,7 @@ class SimulatorService:
 
         live_price = self._get_live_price(company)
         if live_price is None:
-            live_price = 100.0  # fallback for testing
+            raise ValueError(f"Could not fetch live price for {company.name}. Please try again in a moment.")
 
         total_value = live_price * quantity
 

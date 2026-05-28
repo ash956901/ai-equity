@@ -133,6 +133,8 @@ export function SimulatorView({ dataMode, pushToast }: SimulatorViewProps) {
   const [tradeType, setTradeType] = useState<"buy" | "sell">("buy");
   const [quantity, setQuantity] = useState(1);
   const [tradeLoading, setTradeLoading] = useState(false);
+  const [livePrice, setLivePrice] = useState<number | null>(null);
+  const [priceLoading, setPriceLoading] = useState(false);
 
   const [positions, setPositions] = useState<OpenPosition[]>([]);
   const [history, setHistory] = useState<ClosedTrade[]>([]);
@@ -181,11 +183,21 @@ export function SimulatorView({ dataMode, pushToast }: SimulatorViewProps) {
     return () => clearTimeout(t);
   }, [searchQuery]);
 
-  const handleSelectCompany = useCallback((company: AICompany) => {
+  const handleSelectCompany = useCallback(async (company: AICompany) => {
     setSelectedCompany(company);
     setSearchQuery(company.name);
     setSearchResults([]);
     setCompanyId(company.id);
+    setLivePrice(null);
+    setPriceLoading(true);
+    try {
+      const q = await apiFetch<{ last_price?: number }>(`/companies/${company.id}/quote`);
+      setLivePrice(q.last_price ?? null);
+    } catch {
+      setLivePrice(null);
+    } finally {
+      setPriceLoading(false);
+    }
   }, []);
 
   const handleTrade = useCallback(async () => {
@@ -296,6 +308,22 @@ export function SimulatorView({ dataMode, pushToast }: SimulatorViewProps) {
                 </div>
               )}
             </div>
+
+            {/* Live price preview */}
+            {selectedCompany && (
+              <div style={{ marginBottom: 10, fontSize: "0.82rem", color: "var(--text-secondary)" }}>
+                {priceLoading ? (
+                  <span><Loader2 size={11} className="spin" style={{ marginRight: 4 }} />Fetching live price…</span>
+                ) : livePrice !== null ? (
+                  <span>
+                    Live price: <strong style={{ color: "var(--text-primary)" }}>₹{livePrice.toLocaleString("en-IN", { maximumFractionDigits: 2 })}</strong>
+                    {" · "}Est. cost: <strong style={{ color: "var(--text-primary)" }}>₹{(livePrice * quantity).toLocaleString("en-IN", { maximumFractionDigits: 2 })}</strong>
+                  </span>
+                ) : (
+                  <span style={{ color: "var(--color-warn, #f59e0b)" }}>Live price unavailable — order may fail</span>
+                )}
+              </div>
+            )}
 
             {/* Trade type */}
             <div className="sim-trade-type-row">
