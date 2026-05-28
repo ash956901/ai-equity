@@ -99,12 +99,17 @@ class BSECrawler(BaseCrawler):
             results = []
             for item in items[:50]:  # Limit to first 50
                 # Extract filing metadata
+                attachment_name = item.get("ATTACHMENTNAME", "")
+                attachment_url = (
+                    f"https://www.bseindia.com/xml-data/corpfiling/AttachLive/{attachment_name}"
+                    if attachment_name else ""
+                )
                 filing_data = {
                     "symbol": item.get("scrip_cd", ""),
                     "subject": item.get("NEWSSUB", item.get("SUBJECT", "")),
                     "filing_type": item.get("ANNOUNCEMENT_TYPE", "announcement"),
                     "date": item.get("DT_TM", ""),
-                    "attachment_url": item.get("ATTACHMENTNAME", ""),
+                    "attachment_url": attachment_url,
                     "source": "BSE",
                 }
                 

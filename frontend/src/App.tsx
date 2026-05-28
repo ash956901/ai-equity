@@ -13,6 +13,8 @@ import { ChatView } from "./features/chat/ChatView";
 import { CompanyWorkspaceView } from "./features/company/CompanyWorkspaceView";
 import { MoneyView } from "./features/money/MoneyView";
 import { DominoEffectView } from "./features/domino/DominoEffectView";
+import { PerformanceChatView } from "./features/performance/PerformanceChatView";
+import { SimulatorView } from "./features/simulator/SimulatorView";
 
 import { NotificationsPanel } from "./app/components/NotificationsPanel";
 import { ToastStack } from "./app/components/ToastStack";
@@ -24,6 +26,7 @@ import {
   THEME_STORAGE_KEY,
 } from "./app/constants";
 import { useChatThreads } from "./app/hooks/useChatThreads";
+import { usePerformanceThreads } from "./app/hooks/usePerformanceThreads";
 import { useNotifications } from "./app/hooks/useNotifications";
 import type { AppProfile } from "./shared/types/api";
 import type {
@@ -136,6 +139,14 @@ export default function App() {
     setActiveChatThreadId,
     createInitialThread,
   } = useChatThreads();
+
+  const {
+    performanceThreads,
+    setPerformanceThreads,
+    activePerformanceThreadId,
+    setActivePerformanceThreadId,
+    createInitialThread: createInitialPerformanceThread,
+  } = usePerformanceThreads();
 
   useEffect(() => {
     const root = document.documentElement;
@@ -396,6 +407,22 @@ export default function App() {
         );
       case "money":
         return <MoneyView />;
+
+      case "performance":
+        return (
+          <PerformanceChatView
+            dataMode={dataMode}
+            pushToast={pushToast}
+            threads={performanceThreads}
+            activeThreadId={activePerformanceThreadId}
+            setThreads={setPerformanceThreads}
+            setActiveThreadId={setActivePerformanceThreadId}
+            createInitialThread={createInitialPerformanceThread}
+          />
+        );
+
+      case "simulator":
+        return <SimulatorView dataMode={dataMode} pushToast={pushToast} />;
 
       case "settings":
         return (

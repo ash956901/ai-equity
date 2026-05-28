@@ -39,7 +39,12 @@ def _bootstrap_universe() -> None:
 @asynccontextmanager
 async def app_lifespan(_app):
     """Application startup/shutdown lifespan context."""
-    init_db()
+    # Start services: docker-compose up -d postgres redis qdrant
+    try:
+        init_db()
+        logger.info("Database initialized successfully")
+    except Exception as db_err:
+        logger.error("Database unavailable at startup — running in degraded mode: %s", db_err)
 
     loop = asyncio.get_event_loop()
     loop.run_in_executor(None, _bootstrap_universe)

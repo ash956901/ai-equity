@@ -746,7 +746,10 @@ class CompareService:
         if company.ticker_nse:
             candidates.extend([f"{company.ticker_nse}.NS", company.ticker_nse])
         if company.ticker_bse:
-            candidates.extend([f"{company.ticker_bse}.BO", company.ticker_bse])
+            candidates.append(f"{company.ticker_bse}.BO")
+            # Raw numeric BSE codes (e.g. "532939") cause Yahoo Finance 404 — skip them
+            if not company.ticker_bse.isdigit():
+                candidates.append(company.ticker_bse)
         if not candidates:
             return {}
 

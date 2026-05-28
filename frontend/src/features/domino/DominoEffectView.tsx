@@ -351,6 +351,15 @@ export function DominoEffectView({ dataMode, pushToast }: DominoEffectViewProps)
         }
       />
 
+      {/* Data freshness indicator */}
+      {(portfolioData?.last_refreshed_at || marketData?.last_refreshed_at) && (
+        <div style={{ fontSize: "11px", color: "var(--text-muted)", padding: "0 16px 4px", opacity: 0.7 }}>
+          Data as of {new Date(
+            (portfolioData?.last_refreshed_at || marketData?.last_refreshed_at) as string
+          ).toLocaleString("en-IN", { timeZone: "Asia/Kolkata", hour: "2-digit", minute: "2-digit", day: "2-digit", month: "short" })} IST
+        </div>
+      )}
+
       {/* Mode tabs */}
       <div className="domino-tabs">
         {(["portfolio", "company", "market"] as Mode[]).map((m) => (
@@ -433,10 +442,10 @@ export function DominoEffectView({ dataMode, pushToast }: DominoEffectViewProps)
               </div>
               <CardList cards={[...exposureCards, ...llmCards]} filter={severityFilter} />
 
-              {/* LLM opportunities & risks summary */}
+              {/* LLM opportunities, risks & recommendations summary */}
               {llmData && (
                 <div style={{ marginTop: 16 }}>
-                  {llmData.opportunities.length > 0 && (
+                  {(llmData.opportunities?.length ?? 0) > 0 && (
                     <div className="feature-card" style={{ marginBottom: 12 }}>
                       <div className="feature-head">
                         <span style={{ fontSize: "0.82rem", fontWeight: 700, color: "var(--good)" }}>Opportunities</span>
@@ -448,8 +457,8 @@ export function DominoEffectView({ dataMode, pushToast }: DominoEffectViewProps)
                       </div>
                     </div>
                   )}
-                  {llmData.risks.length > 0 && (
-                    <div className="feature-card">
+                  {(llmData.risks?.length ?? 0) > 0 && (
+                    <div className="feature-card" style={{ marginBottom: 12 }}>
                       <div className="feature-head">
                         <span style={{ fontSize: "0.82rem", fontWeight: 700, color: "var(--bad)" }}>Risks</span>
                       </div>
@@ -458,6 +467,58 @@ export function DominoEffectView({ dataMode, pushToast }: DominoEffectViewProps)
                           <span key={i} className="chip negative">{r}</span>
                         ))}
                       </div>
+                    </div>
+                  )}
+                  {llmData.recommendations && (
+                    (llmData.recommendations.monitor?.length ?? 0) > 0 ||
+                    (llmData.recommendations.mitigate?.length ?? 0) > 0 ||
+                    (llmData.recommendations.entry_points?.length ?? 0) > 0
+                  ) && (
+                    <div className="feature-card" style={{ marginBottom: 12 }}>
+                      <div className="feature-head">
+                        <span style={{ fontSize: "0.82rem", fontWeight: 700 }}>AI Recommendations</span>
+                      </div>
+                      <div style={{ marginTop: 8, fontSize: "0.83rem" }}>
+                        {(llmData.recommendations.monitor?.length ?? 0) > 0 && (
+                          <div style={{ marginBottom: 6 }}>
+                            <strong>Monitor:</strong>
+                            <div className="chip-row" style={{ marginTop: 4 }}>
+                              {llmData.recommendations.monitor.map((m, i) => (
+                                <span key={i} className="chip">{m}</span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        {(llmData.recommendations.mitigate?.length ?? 0) > 0 && (
+                          <div style={{ marginBottom: 6 }}>
+                            <strong>Mitigate:</strong>
+                            <div className="chip-row" style={{ marginTop: 4 }}>
+                              {llmData.recommendations.mitigate.map((m, i) => (
+                                <span key={i} className="chip negative">{m}</span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        {(llmData.recommendations.entry_points?.length ?? 0) > 0 && (
+                          <div>
+                            <strong>Entry points:</strong>
+                            <div className="chip-row" style={{ marginTop: 4 }}>
+                              {llmData.recommendations.entry_points.map((e, i) => (
+                                <span key={i} className="chip positive">{e}</span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                  {(llmData.opportunities?.length ?? 0) === 0 &&
+                   (llmData.risks?.length ?? 0) === 0 &&
+                   (llmData.recommendations?.monitor?.length ?? 0) === 0 &&
+                   (llmData.recommendations?.mitigate?.length ?? 0) === 0 &&
+                   (llmData.recommendations?.entry_points?.length ?? 0) === 0 && (
+                    <div className="notice">
+                      No hidden causal chains identified for this company. This may be because the company has no tracked commodity exposures, or the AI found no significant 2nd-order risk signals.
                     </div>
                   )}
                 </div>

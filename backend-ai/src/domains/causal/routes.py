@@ -1,10 +1,33 @@
 """Causal intelligence endpoints — surfaces the Causal Detective's insights via REST."""
 
 import logging
+from datetime import datetime, timedelta
 from typing import Any, Optional
 from uuid import UUID
 
 logger = logging.getLogger(__name__)
+
+_COMMODITY_STALE_MINUTES = 30
+
+
+def _maybe_refresh_commodities(db) -> Optional[datetime]:
+    """Trigger background commodity refresh if last data is older than threshold."""
+    from src.db.models import CommodityPrice
+
+    latest = (
+        db.query(CommodityPrice)
+        .order_by(CommodityPrice.timestamp.desc())
+        .first()
+    )
+    if latest is None or (datetime.utcnow() - latest.timestamp) > timedelta(minutes=_COMMODITY_STALE_MINUTES):
+        try:
+            from src.etl.tasks import refresh_commodity_prices
+            task: Any = refresh_commodity_prices
+            task.delay()
+            logger.info("Triggered background commodity price refresh")
+        except Exception as e:
+            logger.warning("Could not trigger commodity refresh: %s", e)
+    return latest.timestamp if latest else None
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -22,6 +45,7 @@ router = APIRouter(prefix="/causal", tags=["causal"])
 @router.get("/market")
 def get_market_causal(db: Session = Depends(get_db)) -> dict[str, Any]:
     """Return commodity trends, geo events, news impacts, and all active causal chains."""
+    last_refreshed_at = _maybe_refresh_commodities(db)
     service = CausalService(db)
 
     commodity_changes = service.get_commodity_changes(days=7)
@@ -55,6 +79,7 @@ def get_market_causal(db: Session = Depends(get_db)) -> dict[str, Any]:
 
     return {
         "commodity_trends": commodity_changes,
+        "last_refreshed_at": last_refreshed_at.isoformat() if last_refreshed_at else None,
         "geopolitical_events": [
             {
                 "title": e.title,
@@ -87,6 +112,8 @@ def get_market_causal(db: Session = Depends(get_db)) -> dict[str, Any]:
 @router.get("/portfolio")
 def get_portfolio_causal(user_id: UUID, db: Session = Depends(get_db)) -> dict[str, Any]:
     """Return commodity-driven impacts on the user's primary portfolio holdings."""
+    last_refreshed_at = _maybe_refresh_commodities(db)
+
     portfolio = (
         db.query(Portfolio)
         .filter(Portfolio.user_id == user_id, Portfolio.is_primary.is_(True))
@@ -98,7 +125,11 @@ def get_portfolio_causal(user_id: UUID, db: Session = Depends(get_db)) -> dict[s
     )
 
     if not portfolio:
-        return {"portfolio_id": None, "patterns": []}
+        return {
+            "portfolio_id": None,
+            "patterns": [],
+            "last_refreshed_at": last_refreshed_at.isoformat() if last_refreshed_at else None,
+        }
 
     service = CausalService(db)
     try:
@@ -106,7 +137,11 @@ def get_portfolio_causal(user_id: UUID, db: Session = Depends(get_db)) -> dict[s
     except Exception as exc:
         logger.warning("analyze_portfolio failed for %s: %s", portfolio.id, exc)
         patterns = []
-    return {"portfolio_id": str(portfolio.id), "patterns": patterns}
+    return {
+        "portfolio_id": str(portfolio.id),
+        "patterns": patterns,
+        "last_refreshed_at": last_refreshed_at.isoformat() if last_refreshed_at else None,
+    }
 
 
 # ── Company-specific causal exposures ────────────────────────────────────────

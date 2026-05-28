@@ -8,7 +8,7 @@ from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
 from src.agents import build_research_agent
-from src.db.models import ChatMessage, ChatSession, User, Portfolio
+from src.db.models import ChatMessage, ChatSession, NewsArticle, User, Portfolio
 from src.utils.cache import get_analysis_cache
 from src.utils.data_sources import DataSource
 
@@ -33,6 +33,7 @@ class ChatService:
         expertise_level: str,
         upload_id: Optional[UUID],
         primary_portfolio_id: Optional[UUID],
+        news_context: Optional[str] = None,
     ) -> str:
         parts = [query]
         context_lines = [f"user_id={user_id}"]
@@ -42,6 +43,8 @@ class ChatService:
             context_lines.append(f"primary_portfolio_id={primary_portfolio_id}")
         context_lines.append(f"expertise_level={expertise_level}")
         parts.append(f"\n\n[Context: {', '.join(context_lines)}]")
+        if news_context:
+            parts.append(f"\n\n[Recent News & Events for this company — use as context if no filing data is available:\n{news_context}]")
         return "".join(parts)
 
     @staticmethod
@@ -57,6 +60,28 @@ class ChatService:
             return cache.make_key("chat", q_norm, expertise_level, str(user_id), str(portfolio_id))
         return cache.make_key("chat", q_norm, expertise_level)
 
+    def _fetch_company_news_context(self, company_id: UUID, limit: int = 15) -> Optional[str]:
+        """Fetch recent news headlines for a company to inject into agent context."""
+        try:
+            articles = (
+                self.db.query(NewsArticle)
+                .filter(NewsArticle.company_id == company_id)
+                .order_by(NewsArticle.published_at.desc())
+                .limit(limit)
+                .all()
+            )
+            if not articles:
+                return None
+            lines = []
+            for a in articles:
+                date_str = a.published_at.strftime("%Y-%m-%d") if a.published_at else "unknown date"
+                sentiment = f" [{a.sentiment_label}]" if a.sentiment_label else ""
+                source = f" — {a.source}" if a.source else ""
+                lines.append(f"• {date_str}{source}{sentiment}: {a.headline}")
+            return "\n".join(lines)
+        except Exception:
+            return None
+
     def process_query(
         self,
         user_id: UUID,
@@ -64,6 +89,7 @@ class ChatService:
         expertise_level: str,
         session_id: Optional[UUID],
         upload_id: Optional[UUID],
+        company_id: Optional[UUID] = None,
     ) -> dict[str, Any]:
         print(f"[STAGE 2: SERVICE] process_query called: user_id={user_id}, query='{query[:50]}...'")
 
@@ -143,12 +169,14 @@ class ChatService:
         agent = build_research_agent()
         print(f"[STAGE 3: AGENT] Research agent built")
 
+        news_context = self._fetch_company_news_context(company_id) if company_id else None
         user_message = self._build_user_message(
             query=query,
             user_id=user_id,
             expertise_level=expertise_level,
             upload_id=upload_id,
             primary_portfolio_id=primary_portfolio_id,
+            news_context=news_context,
         )
 
         print(f"[STAGE 3: USER_MESSAGE] Built message (full): {user_message}")

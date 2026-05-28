@@ -13,6 +13,7 @@ from src.domains.profiles import profiles_router
 from src.domains.screens import screens_router
 from src.domains.timeline import timeline_router
 from src.domains.users import user_router
+from src.domains.simulator import simulator_router
 from src.domains.watchlists import watchlists_router
 
 
@@ -31,3 +32,4 @@ def register_routers(app: FastAPI) -> None:
     app.include_router(screens_router)
     app.include_router(user_router)
     app.include_router(causal_router)
+    app.include_router(simulator_router)

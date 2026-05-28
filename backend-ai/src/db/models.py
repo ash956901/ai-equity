@@ -772,3 +772,55 @@ class ClassifiedNews(Base):
         Index("ix_classified_news_published", "published_at"),
         Index("ix_classified_news_commodity_impact", "commodity", "impact_direction"),
     )
+
+
+class SimulatedTrade(Base):
+    """Paper trading — buy/sell at live prices without real money."""
+
+    __tablename__ = "simulated_trades"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    company_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("companies.id"), nullable=False
+    )
+    ticker: Mapped[str] = mapped_column(String(30), nullable=False)
+    company_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    trade_type: Mapped[str] = mapped_column(String(10), nullable=False)  # "buy" | "sell"
+    quantity: Mapped[int] = mapped_column(Integer, nullable=False)
+    price_at_trade: Mapped[float] = mapped_column(Float, nullable=False)
+    total_value: Mapped[float] = mapped_column(Float, nullable=False)
+    pnl_at_close: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    status: Mapped[str] = mapped_column(String(10), default="open")  # "open" | "closed"
+    opened_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    closed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+    __table_args__ = (
+        Index("ix_simulated_trades_user_status", "user_id", "status"),
+    )
+
+
+class SimulatorStats(Base):
+    """Gamification stats — XP, badges, streaks per user."""
+
+    __tablename__ = "simulator_stats"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), unique=True, nullable=False
+    )
+    xp: Mapped[int] = mapped_column(Integer, default=0)
+    badges: Mapped[Optional[list]] = mapped_column(ARRAY(String), nullable=True)
+    current_streak: Mapped[int] = mapped_column(Integer, default=0)
+    best_streak: Mapped[int] = mapped_column(Integer, default=0)
+    total_trades: Mapped[int] = mapped_column(Integer, default=0)
+    winning_trades: Mapped[int] = mapped_column(Integer, default=0)
+    daily_challenge_last: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    daily_challenge_done: Mapped[bool] = mapped_column(Boolean, default=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

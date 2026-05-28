@@ -12,6 +12,8 @@ export type ViewKey =
   | "timeline"
   | "news"
   | "money"
+  | "performance"
+  | "simulator"
   | "profile"
   | "settings"
 

@@ -38,7 +38,7 @@ class GeminiEnrichmentService:
         """Request supplemental company metadata from Gemini and return structured JSON."""
         settings = get_settings()
         if not settings.gemini_api_key:
-            return {}
+            return self._fallback_stub(company_name)
 
         model = settings.gemini_model
         endpoint = f"{settings.gemini_base_url}/{model}:generateContent"
@@ -90,7 +90,21 @@ class GeminiEnrichmentService:
             return self._safe_json_object(text)
         except Exception as exc:
             logger.warning("Gemini enrichment failed for '%s': %s", company_name, exc)
-            return {}
+            return self._fallback_stub(company_name)
+
+    @staticmethod
+    def _fallback_stub(company_name: str) -> Dict[str, Any]:
+        """Return a minimal stub so frontend sections don't render blank."""
+        return {
+            "business_model": f"Enrichment data for {company_name} is temporarily unavailable. Click the refresh button to retry.",
+            "key_products": None,
+            "primary_geographies": ["India"],
+            "key_competitors": None,
+            "major_risks": ["Data temporarily unavailable — refresh to load risk analysis."],
+            "management_notes": None,
+            "investment_highlights": None,
+            "_fallback": True,
+        }
 
     def get_company_extra_info_sync(
         self,
@@ -102,7 +116,7 @@ class GeminiEnrichmentService:
         """Synchronous Gemini enrichment variant for sync service flows."""
         settings = get_settings()
         if not settings.gemini_api_key:
-            return {}
+            return self._fallback_stub(company_name)
 
         model = settings.gemini_model
         endpoint = f"{settings.gemini_base_url}/{model}:generateContent"
@@ -154,4 +168,4 @@ class GeminiEnrichmentService:
             return self._safe_json_object(text)
         except Exception as exc:
             logger.warning("Gemini enrichment failed for '%s': %s", company_name, exc)
-            return {}
+            return self._fallback_stub(company_name)

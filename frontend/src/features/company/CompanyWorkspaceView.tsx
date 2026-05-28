@@ -10,6 +10,7 @@ import {
   Clock3,
   FileText,
   Loader2,
+  RefreshCw,
   TrendingUp,
 } from "lucide-react";
 import type { jsPDF as JsPdfType } from "jspdf";
@@ -223,115 +224,262 @@ function renderPdfParagraph(
   return startY + lines.length * 6 + 2;
 }
 
-async function exportReportAsPdf(report: GeneratedReport, bodyOverride?: string | null): Promise<void> {
+interface PdfExtraData {
+  lastPrice?: number | null;
+  changePct?: number | null;
+  pe?: number; pb?: number; roe?: number; debtToEquity?: number; operatingMargin?: number; beta?: number;
+  priceHistory?: { date: string; close: number }[];
+}
+
+async function exportReportAsPdf(
+  report: GeneratedReport,
+  bodyOverride?: string | null,
+  extra?: PdfExtraData
+): Promise<void> {
   const { jsPDF } = await import("jspdf");
   const doc = new jsPDF({ unit: "mm", format: "a4" });
-  const pageWidth = doc.internal.pageSize.getWidth();
-  const pageHeight = doc.internal.pageSize.getHeight();
-  const marginLeft = 16;
-  const marginRight = pageWidth - 16;
+  const W = doc.internal.pageSize.getWidth();
+  const H = doc.internal.pageSize.getHeight();
+  const ML = 14;
+  const MR = W - 14;
+  const CW = MR - ML;
   const template = PDF_TEMPLATES[report.audience];
+  const [ar, ag, ab] = template.accent;
 
-  doc.setFillColor(template.accent[0], template.accent[1], template.accent[2]);
-  doc.rect(0, 0, pageWidth, 46, "F");
+  const checkPage = (needed: number) => {
+    if (y + needed > H - 18) { doc.addPage(); y = 18; }
+  };
+
+  // ── Cover banner ──────────────────────────────────────────────────────────
+  doc.setFillColor(ar, ag, ab);
+  doc.rect(0, 0, W, 52, "F");
+  // decorative strip
+  doc.setFillColor(Math.max(ar - 20, 0), Math.max(ag - 20, 0), Math.max(ab - 20, 0));
+  doc.rect(0, 46, W, 6, "F");
 
   doc.setTextColor(255, 255, 255);
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(24);
-  doc.text("EquityAI Research Report", marginLeft, 20);
-  doc.setFontSize(12);
+  doc.setFontSize(9);
+  doc.text("EQUITYAI RESEARCH PLATFORM", ML, 12);
+  doc.setFontSize(22);
+  doc.text(report.companyName, ML, 25);
+  doc.setFontSize(11);
   doc.setFont("helvetica", "normal");
-  doc.text(template.coverLabel, marginLeft, 28);
-  doc.text(`${report.companyName} (${report.symbol})`, marginLeft, 35);
+  doc.text(`${report.symbol}   ·   ${template.coverLabel}`, ML, 33);
 
-  doc.setTextColor(18, 32, 45);
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(16);
-  doc.text(report.title, marginLeft, 58);
-
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(10);
-  const metadataLines = [
-    `Generated: ${new Date(report.generatedAt).toLocaleString()}`,
-    `Audience: ${report.audience === "retail" ? "Retail" : "Analyst"}`,
-    `Data Mode: ${report.dataMode === "demo" ? "Demo Data" : "Live API"}`,
-  ];
-
-  let y = 66;
-  for (const line of metadataLines) {
-    doc.text(line, marginLeft, y);
-    y += 5.5;
+  // Stock price badge (right side of banner)
+  if (extra?.lastPrice) {
+    const priceStr = `₹${Number(extra.lastPrice).toLocaleString("en-IN", { maximumFractionDigits: 2 })}`;
+    const changeStr = extra.changePct != null
+      ? `  ${extra.changePct >= 0 ? "▲" : "▼"} ${Math.abs(extra.changePct).toFixed(2)}%`
+      : "";
+    doc.setFontSize(13);
+    doc.setFont("helvetica", "bold");
+    doc.text(priceStr, MR - 40, 22, { align: "right" });
+    doc.setFontSize(9);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(extra.changePct != null && extra.changePct >= 0 ? 120 : 255, 230, extra.changePct != null && extra.changePct >= 0 ? 255 : 120);
+    doc.text(changeStr, MR - 40, 30, { align: "right" });
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(8);
+    doc.text("Live Price", MR - 40, 37, { align: "right" });
   }
 
-  doc.setDrawColor(210, 220, 230);
-  doc.line(marginLeft, y + 2, marginRight, y + 2);
-  y += 10;
+  // Timestamp row
+  doc.setTextColor(200, 220, 240);
+  doc.setFontSize(8);
+  const genDate = new Date().toLocaleString("en-IN", {
+    timeZone: "Asia/Kolkata", day: "2-digit", month: "short", year: "numeric",
+    hour: "2-digit", minute: "2-digit",
+  });
+  doc.text(`Generated: ${genDate} IST   ·   Audience: ${report.audience === "retail" ? "Retail" : "Analyst"}   ·   Data: ${report.dataMode === "demo" ? "Demo" : "Live"}`, ML, 42);
 
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(12);
-  doc.text("Executive Framing", marginLeft, y);
-  y += 7;
+  let y = 62;
 
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(10);
-  y = renderPdfParagraph(doc, report.audienceText, marginLeft, marginRight, y);
+  // ── Sparkline (30-day price trend) ───────────────────────────────────────
+  if (extra?.priceHistory && extra.priceHistory.length > 3) {
+    const prices = extra.priceHistory;
+    const chartX = ML;
+    const chartY = y;
+    const chartW = CW;
+    const chartH = 28;
 
-  const renderLines = (rawLines: string[]) => {
-    for (const line of rawLines) {
-      if (!line.trim()) { y += 2; continue; }
-      if (y > pageHeight - 16) { doc.addPage(); y = 20; }
+    const vals = prices.map(p => p.close);
+    const minVal = Math.min(...vals);
+    const maxVal = Math.max(...vals);
+    const range = maxVal - minVal || 1;
 
-      // Treat markdown headings as bold section labels in the PDF
-      const headingMatch = line.match(/^(#{1,4})\s+(.+)/);
+    // Chart background
+    doc.setFillColor(245, 248, 252);
+    doc.setDrawColor(220, 228, 236);
+    doc.roundedRect(chartX, chartY, chartW, chartH, 2, 2, "FD");
+
+    // Title
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(8);
+    doc.setTextColor(ar, ag, ab);
+    doc.text("30-DAY PRICE TREND", chartX + 3, chartY + 5);
+
+    // Min/Max labels
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(7);
+    doc.setTextColor(80, 80, 80);
+    doc.text(`H: ₹${maxVal.toFixed(0)}`, MR - 3, chartY + 5, { align: "right" });
+    doc.text(`L: ₹${minVal.toFixed(0)}`, MR - 3, chartY + 11, { align: "right" });
+
+    // Draw sparkline
+    const plotX = chartX + 3;
+    const plotW = chartW - 30;
+    const plotY = chartY + chartH - 5;
+    const plotH = chartH - 12;
+
+    const lastClose = vals[vals.length - 1];
+    const firstClose = vals[0];
+    const isUp = lastClose >= firstClose;
+    doc.setDrawColor(isUp ? 34 : 220, isUp ? 197 : 53, isUp ? 94 : 69);
+
+    for (let i = 1; i < vals.length; i++) {
+      const x1 = plotX + ((i - 1) / (vals.length - 1)) * plotW;
+      const x2 = plotX + (i / (vals.length - 1)) * plotW;
+      const y1 = plotY - ((vals[i - 1] - minVal) / range) * plotH;
+      const y2 = plotY - ((vals[i] - minVal) / range) * plotH;
+      doc.line(x1, y1, x2, y2);
+    }
+
+    // Current price dot
+    const lastX = plotX + plotW;
+    const lastY = plotY - ((lastClose - minVal) / range) * plotH;
+    doc.setFillColor(isUp ? 34 : 220, isUp ? 197 : 53, isUp ? 94 : 69);
+    doc.circle(lastX, lastY, 1, "F");
+
+    y += chartH + 6;
+  }
+
+  // ── Key Ratios table ──────────────────────────────────────────────────────
+  if (extra && (extra.pe || extra.pb || extra.roe)) {
+    checkPage(28);
+    const tableX = ML;
+    const tableY = y;
+    const colW = CW / 6;
+
+    // Header bar
+    doc.setFillColor(ar, ag, ab);
+    doc.rect(tableX, tableY, CW, 7, "F");
+    doc.setTextColor(255, 255, 255);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(8);
+    const headers = ["P/E", "P/B", "ROE", "D/E", "Op. Margin", "Beta"];
+    headers.forEach((h, i) => {
+      doc.text(h, tableX + colW * i + colW / 2, tableY + 4.8, { align: "center" });
+    });
+
+    // Values row
+    doc.setFillColor(245, 248, 252);
+    doc.rect(tableX, tableY + 7, CW, 9, "F");
+    doc.setDrawColor(220, 228, 236);
+    doc.rect(tableX, tableY, CW, 16, "D");
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(9);
+    doc.setTextColor(18, 32, 45);
+    const values = [
+      extra.pe ? extra.pe.toFixed(1) : "—",
+      extra.pb ? extra.pb.toFixed(2) : "—",
+      extra.roe ? `${extra.roe.toFixed(1)}%` : "—",
+      extra.debtToEquity ? extra.debtToEquity.toFixed(2) : "—",
+      extra.operatingMargin ? `${extra.operatingMargin.toFixed(1)}%` : "—",
+      extra.beta ? extra.beta.toFixed(2) : "—",
+    ];
+    values.forEach((v, i) => {
+      doc.text(v, tableX + colW * i + colW / 2, tableY + 13, { align: "center" });
+    });
+
+    // Column dividers
+    doc.setDrawColor(210, 218, 228);
+    for (let i = 1; i < 6; i++) {
+      doc.line(tableX + colW * i, tableY, tableX + colW * i, tableY + 16);
+    }
+
+    y += 22;
+  }
+
+  // ── Report body ───────────────────────────────────────────────────────────
+  const renderSectionHeader = (title: string) => {
+    checkPage(14);
+    doc.setFillColor(ar, ag, ab);
+    doc.rect(ML, y, CW, 7, "F");
+    doc.setTextColor(255, 255, 255);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(9);
+    doc.text(title.toUpperCase(), ML + 3, y + 5);
+    y += 9;
+    doc.setTextColor(18, 32, 45);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(9.5);
+  };
+
+  const renderBodyLines = (rawLines: string[]) => {
+    for (const rawLine of rawLines) {
+      if (!rawLine.trim()) { y += 2.5; continue; }
+      checkPage(8);
+      const headingMatch = rawLine.match(/^(#{1,4})\s+(.+)/);
       if (headingMatch) {
-        if (y > pageHeight - 30) { doc.addPage(); y = 20; }
-        doc.setFont("helvetica", "bold");
-        doc.setFontSize(headingMatch[1].length === 1 ? 13 : 11);
-        doc.setTextColor(18, 32, 45);
-        doc.text(headingMatch[2], marginLeft, y);
-        y += 7;
-        doc.setFont("helvetica", "normal");
-        doc.setFontSize(10);
+        checkPage(14);
+        if (headingMatch[1].length <= 2) {
+          renderSectionHeader(headingMatch[2]);
+        } else {
+          doc.setFont("helvetica", "bold");
+          doc.setFontSize(10);
+          doc.setTextColor(ar, ag, ab);
+          doc.text(headingMatch[2], ML, y);
+          y += 6;
+          doc.setFont("helvetica", "normal");
+          doc.setFontSize(9.5);
+          doc.setTextColor(18, 32, 45);
+        }
         continue;
       }
-
-      // Strip common inline markdown decorators for clean PDF text
-      const cleanLine = line
+      const cleanLine = rawLine
         .replace(/\*\*(.+?)\*\*/g, "$1")
         .replace(/\*(.+?)\*/g, "$1")
         .replace(/`(.+?)`/g, "$1")
-        .replace(/^[-*•]\s+/, "• ");
-
-      y = renderPdfParagraph(doc, cleanLine, marginLeft, marginRight, y);
+        .replace(/^[-*•]\s+/, "  • ");
+      if (cleanLine.startsWith("  • ")) {
+        doc.setTextColor(ar, ag, ab);
+        doc.text("•", ML + 2, y);
+        doc.setTextColor(18, 32, 45);
+        const bulletLines = doc.splitTextToSize(cleanLine.slice(4), CW - 8) as string[];
+        doc.text(bulletLines, ML + 7, y);
+        y += bulletLines.length * 5.5 + 1;
+      } else {
+        const lines = doc.splitTextToSize(cleanLine, CW) as string[];
+        doc.text(lines, ML, y);
+        y += lines.length * 5.5 + 1;
+      }
     }
   };
 
   if (bodyOverride) {
-    renderLines(bodyOverride.split("\n"));
+    renderBodyLines(bodyOverride.split("\n"));
   } else {
     for (const section of report.sections) {
-      if (y > pageHeight - 30) { doc.addPage(); y = 20; }
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(12);
-      doc.text(section.heading, marginLeft, y);
-      y += 7;
-      doc.setFont("helvetica", "normal");
-      doc.setFontSize(10);
-      renderLines(section.content.split("\n"));
+      renderSectionHeader(section.heading);
+      renderBodyLines(section.content.split("\n"));
       y += 4;
     }
   }
 
+  // ── Footer on all pages ───────────────────────────────────────────────────
   const pageCount = doc.getNumberOfPages();
-  const scopeLabel = report.scope === "comparison" ? "Comparison" : "Company";
-  for (let page = 1; page <= pageCount; page += 1) {
+  for (let page = 1; page <= pageCount; page++) {
     doc.setPage(page);
-    doc.setFontSize(9);
-    doc.setTextColor(110, 122, 134);
+    doc.setFillColor(ar, ag, ab);
+    doc.rect(0, H - 10, W, 10, "F");
+    doc.setTextColor(200, 220, 240);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(7.5);
     doc.text(
-      `${scopeLabel} · ${report.symbol} · ${report.dataMode === "demo" ? "Demo" : "Live"} · Page ${page}/${pageCount}`,
-      marginLeft,
-      pageHeight - 8
+      `EquityAI  ·  ${report.symbol}  ·  ${report.dataMode === "demo" ? "Demo Data" : "Live API"}  ·  Page ${page} of ${pageCount}`,
+      W / 2, H - 3.5, { align: "center" }
     );
   }
 
@@ -456,6 +604,7 @@ export function CompanyWorkspaceView(props: CompanyWorkspaceViewProps) {
 
   const [companyDetail, setCompanyDetail] = useState<AICompany | null>(null);
   const [companyQuote, setCompanyQuote] = useState<AIQuote | null>(null);
+  const [quoteRefreshing, setQuoteRefreshing] = useState(false);
   const [companyRatios, setCompanyRatios] = useState<AIRatios | null>(null);
   const [companyFinancials, setCompanyFinancials] = useState<AIFinancials | null>(null);
   const [historicalPrices, setHistoricalPrices] = useState<AIHistoricalPrices | null>(null);
@@ -464,6 +613,7 @@ export function CompanyWorkspaceView(props: CompanyWorkspaceViewProps) {
 
   const loadCompanyById = useCallback(async (companyId: string) => {
     setCompanyLoading(true);
+    setCompanyQuote(null);
     try {
       const [detail, ratios, financials] = await Promise.allSettled([
         fetchCompanyDetail(companyId),
@@ -498,6 +648,7 @@ export function CompanyWorkspaceView(props: CompanyWorkspaceViewProps) {
 
   const loadCompanyBySymbol = useCallback(async (symbol: string) => {
     setCompanyLoading(true);
+    setCompanyQuote(null);
     try {
       const results = await searchCompaniesDB(symbol, 5);
       if (results.length > 0) {
@@ -1134,6 +1285,7 @@ export function CompanyWorkspaceView(props: CompanyWorkspaceViewProps) {
         user_id: userId,
         query: prompt,
         expertise_level: reportAudience === "analyst" ? "advanced" : "beginner",
+        ...(activeCompanyId ? { company_id: activeCompanyId } : {}),
       });
       setAiReportBody(res.response ?? "");
       pushToast("Report generated", "success");
@@ -1216,7 +1368,18 @@ export function CompanyWorkspaceView(props: CompanyWorkspaceViewProps) {
     if (!generatedReport) return;
     try {
       pushToast("Preparing PDF export...", "info");
-      await exportReportAsPdf(generatedReport, aiReportBody);
+      const priceHistory = historicalPrices?.prices?.map(p => ({ date: p.date, close: p.close }));
+      await exportReportAsPdf(generatedReport, aiReportBody, {
+        lastPrice: companyQuote?.last_price ?? null,
+        changePct: companyQuote?.change_pct ?? null,
+        pe: companyRatioSnapshot.pe || undefined,
+        pb: companyRatioSnapshot.pb || undefined,
+        roe: companyRatioSnapshot.roe || undefined,
+        debtToEquity: companyRatioSnapshot.debtToEquity || undefined,
+        operatingMargin: companyRatioSnapshot.operatingMargin || undefined,
+        beta: companyRatioSnapshot.beta || undefined,
+        priceHistory: priceHistory?.length ? priceHistory : undefined,
+      });
       pushToast("PDF report downloaded", "success");
     } catch {
       pushToast("PDF export failed. Please try again.", "warning");
@@ -1295,7 +1458,7 @@ export function CompanyWorkspaceView(props: CompanyWorkspaceViewProps) {
             }}
           >
             <ArrowUpRight size={14} />
-            Ask Iris
+            Ask Minerva
           </button>
         </div>
       </div>
@@ -1326,6 +1489,23 @@ export function CompanyWorkspaceView(props: CompanyWorkspaceViewProps) {
               <div className="feature-head">
                 <TrendingUp size={18} />
                 <h3>Live Quote</h3>
+                {activeCompanyId && (
+                  <button
+                    className="icon-btn"
+                    title="Refresh quote"
+                    style={{ marginLeft: "auto" }}
+                    disabled={quoteRefreshing}
+                    onClick={() => {
+                      setQuoteRefreshing(true);
+                      fetchCompanyQuote(activeCompanyId)
+                        .then(setCompanyQuote)
+                        .catch(() => {})
+                        .finally(() => setQuoteRefreshing(false));
+                    }}
+                  >
+                    <RefreshCw size={14} className={quoteRefreshing ? "spin" : ""} />
+                  </button>
+                )}
               </div>
               {companyQuote?.last_price ? (
                 <>
@@ -1725,7 +1905,7 @@ export function CompanyWorkspaceView(props: CompanyWorkspaceViewProps) {
                 props.goToView("chat");
               }}
             >
-              Ask in Iris Chat
+              Ask in Minerva
             </button>
           </div>
         </article>

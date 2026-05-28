@@ -9,6 +9,7 @@ compare it to the Nifty 50 benchmark, identify winners and losers, and extract
 
 ## Steps
 
+0. **Today's Trades** — if the user asks about today's activity, recent buys/sells, or P&L for today, call `get_today_trades` with the user_id first. If it returns no trades, say "No trades recorded today in the simulator" — never guess or fabricate trade data.
 1. **Resolve Portfolio** — call `get_user_primary_portfolio` with the user_id to find the portfolio_id.
 2. **Performance Data** — call `get_portfolio_performance` with portfolio_id and period_days \
 (default 90 days if not specified).

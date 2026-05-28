@@ -25,9 +25,20 @@ def build_nse_url(ticker_nse: Optional[str]) -> str:
     return f"https://www.nseindia.com/get-quotes/equity?symbol={ticker_nse}"
 
 
-def build_bse_url(ticker_bse: Optional[str]) -> str:
+def build_bse_url(
+    ticker_bse: Optional[str],
+    company_name: Optional[str] = None,
+    ticker_nse: Optional[str] = None,
+) -> str:
     if not ticker_bse:
         return "https://www.bseindia.com"
+    if company_name and ticker_nse:
+        slug = company_name.lower().replace(" ", "-").replace(".", "").replace(",", "").replace("'", "")
+        short = ticker_nse.lower()
+        return f"https://www.bseindia.com/stock-share-price/{slug}/{short}/{ticker_bse}"
+    if company_name:
+        slug = company_name.lower().replace(" ", "-").replace(".", "").replace(",", "").replace("'", "")
+        return f"https://www.bseindia.com/stock-share-price/{slug}/{ticker_bse}/{ticker_bse}"
     return f"https://www.bseindia.com/stock-share-price/{ticker_bse}"
 
 
@@ -60,19 +71,20 @@ def build_newsdata_url() -> str:
 def company_sources(
     ticker_nse: Optional[str] = None,
     ticker_bse: Optional[str] = None,
+    company_name: Optional[str] = None,
 ) -> list[dict]:
     """Standard set of sources for company profile data."""
     sources: list[dict] = []
-    if ticker_nse:
-        sources.append(DataSource(
-            name="NSE India",
-            url=build_nse_url(ticker_nse),
-            data_type="company_profile",
-        ).model_dump())
+    # Always include NSE India — most Indian equities are dual-listed
+    sources.append(DataSource(
+        name="NSE India",
+        url=build_nse_url(ticker_nse or ticker_bse),
+        data_type="company_profile",
+    ).model_dump())
     if ticker_bse:
         sources.append(DataSource(
             name="BSE India",
-            url=build_bse_url(ticker_bse),
+            url=build_bse_url(ticker_bse, company_name=company_name, ticker_nse=ticker_nse),
             data_type="company_profile",
         ).model_dump())
     sources.append(DataSource(

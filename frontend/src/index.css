@@ -4307,3 +4307,486 @@ html.theme-transitioning * {
   text-align: center;
   margin-top: 4px;
 }
+
+/* ── Performance Chat ──────────────────────────────────────────────────────── */
+.perf-banner {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  background: var(--surface-2);
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+  margin: 0 24px 16px;
+  padding: 12px 20px;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.perf-banner__loading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+.perf-banner__metric {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 16px;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+.perf-banner__metric svg {
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+.perf-banner__label {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+.perf-banner__value {
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--text-primary);
+}
+.perf-banner__value--muted {
+  color: var(--text-muted) !important;
+}
+.perf-banner__sep {
+  width: 1px;
+  height: 24px;
+  background: var(--border-subtle);
+  flex-shrink: 0;
+}
+
+/* Buy / Sell / Hold recommendation badges */
+.performance-badge {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  vertical-align: middle;
+  margin: 0 2px;
+}
+.performance-badge--buy {
+  background: rgba(34, 197, 94, 0.15);
+  color: #22c55e;
+  border: 1px solid rgba(34, 197, 94, 0.3);
+}
+.performance-badge--sell {
+  background: rgba(239, 68, 68, 0.15);
+  color: #ef4444;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+}
+.performance-badge--hold {
+  background: rgba(234, 179, 8, 0.15);
+  color: #ca8a04;
+  border: 1px solid rgba(234, 179, 8, 0.3);
+}
+
+/* ── Simulator ─────────────────────────────────────────────────────────────── */
+.sim-layout {
+  display: grid;
+  grid-template-columns: 260px 1fr 220px;
+  gap: 16px;
+  padding: 0 24px 24px;
+  min-height: 0;
+  align-items: start;
+}
+.sim-left, .sim-right {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.sim-balance-badge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  background: var(--surface-2);
+  border: 1px solid var(--border-subtle);
+  border-radius: 20px;
+  padding: 4px 12px;
+}
+.sim-order-panel .card-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  font-size: 13px;
+  margin-bottom: 14px;
+}
+.sim-disclaimer {
+  margin-left: auto;
+  font-size: 10px;
+  font-weight: 400;
+  color: var(--color-warning, #f59e0b);
+  background: rgba(245, 158, 11, 0.1);
+  border-radius: 4px;
+  padding: 2px 6px;
+}
+.sim-search-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  background: var(--surface-1);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.15);
+  z-index: 50;
+  overflow: hidden;
+}
+.sim-search-result {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 12px;
+  text-align: left;
+  font-size: 13px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-primary);
+  transition: background 0.15s;
+}
+.sim-search-result:hover {
+  background: var(--surface-2);
+}
+.sim-search-result strong {
+  font-weight: 700;
+  min-width: 60px;
+}
+.sim-search-result span {
+  color: var(--text-secondary);
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sim-exchange-tag {
+  font-size: 10px;
+  background: var(--surface-3, var(--surface-2));
+  border-radius: 4px;
+  padding: 1px 5px;
+  color: var(--text-muted) !important;
+  flex: 0 !important;
+  font-weight: 600;
+}
+.sim-trade-type-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.sim-trade-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 0;
+  border-radius: 8px;
+  border: 1px solid var(--border-subtle);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  background: var(--surface-2);
+  color: var(--text-secondary);
+  transition: all 0.15s;
+}
+.sim-trade-btn--buy.active {
+  background: rgba(34, 197, 94, 0.15);
+  color: #22c55e;
+  border-color: rgba(34, 197, 94, 0.4);
+}
+.sim-trade-btn--sell.active {
+  background: rgba(239, 68, 68, 0.15);
+  color: #ef4444;
+  border-color: rgba(239, 68, 68, 0.4);
+}
+.sim-qty-row {
+  margin-bottom: 14px;
+}
+.sim-qty-input-wrap {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  margin-top: 4px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.sim-qty-btn {
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  font-weight: 700;
+  background: var(--surface-2);
+  border: none;
+  cursor: pointer;
+  color: var(--text-primary);
+  flex-shrink: 0;
+}
+.sim-qty-btn:hover { background: var(--surface-3, var(--surface-2)); }
+.sim-qty-input {
+  flex: 1;
+  text-align: center;
+  border: none;
+  background: transparent;
+  font-size: 14px;
+  color: var(--text-primary);
+  padding: 0 8px;
+  min-width: 0;
+}
+.sim-confirm-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 10px 0;
+  font-size: 14px;
+}
+.sim-confirm-btn--sell {
+  background: rgba(239, 68, 68, 0.85) !important;
+}
+.sim-confirm-btn--sell:hover {
+  background: rgba(239, 68, 68, 1) !important;
+}
+.sim-balance-hint {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 8px;
+  text-align: center;
+}
+.sim-stats-card .card-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  font-size: 13px;
+  margin-bottom: 12px;
+}
+.sim-stats-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.sim-stat-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.sim-stat-label {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.sim-stat-value {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+/* Tabs */
+.sim-tabs {
+  display: flex;
+  gap: 0;
+  border-bottom: 1px solid var(--border-subtle);
+  margin-bottom: 16px;
+}
+.sim-tab {
+  padding: 10px 20px;
+  font-size: 13px;
+  font-weight: 500;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  color: var(--text-muted);
+  transition: all 0.15s;
+}
+.sim-tab.active {
+  color: var(--text-primary);
+  border-bottom-color: var(--accent);
+}
+.sim-loading, .sim-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 60px 20px;
+  color: var(--text-muted);
+  font-size: 14px;
+}
+.sim-table-wrap {
+  overflow-x: auto;
+}
+.sim-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.sim-table th {
+  text-align: left;
+  padding: 8px 12px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.sim-table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border-subtle);
+  color: var(--text-primary);
+  vertical-align: middle;
+}
+.sim-table tr:last-child td { border-bottom: none; }
+.sim-table tr:hover td { background: var(--surface-2); }
+.sim-company-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.sim-ticker-tag {
+  font-size: 10px;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+.sim-type-badge {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+.sim-type-badge--buy {
+  background: rgba(34, 197, 94, 0.15);
+  color: #22c55e;
+}
+.sim-type-badge--sell {
+  background: rgba(239, 68, 68, 0.15);
+  color: #ef4444;
+}
+/* Gamification sidebar */
+.sim-xp-card .card-header,
+.sim-challenge-card .card-header,
+.sim-badges-card .card-header,
+.sim-winrate-card .card-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  font-size: 13px;
+  margin-bottom: 12px;
+}
+.sim-xp-bar-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.sim-xp-bar {
+  height: 8px;
+  background: var(--surface-2);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.sim-xp-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent, #6366f1), #a78bfa);
+  border-radius: 4px;
+  transition: width 0.5s ease;
+}
+.sim-xp-label {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.sim-challenge-card {
+  border-left: 3px solid var(--accent, #6366f1);
+}
+.sim-challenge-card--done {
+  border-left-color: var(--color-positive, #22c55e);
+  opacity: 0.8;
+}
+.sim-challenge-text {
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.4;
+  margin-bottom: 6px;
+}
+.sim-challenge-reward {
+  font-size: 11px;
+  color: var(--accent, #6366f1);
+  font-weight: 600;
+}
+.sim-done-badge {
+  margin-left: auto;
+  font-size: 10px;
+  background: rgba(34, 197, 94, 0.15);
+  color: #22c55e;
+  border-radius: 4px;
+  padding: 2px 6px;
+  font-weight: 600;
+}
+.sim-badges-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.sim-badge {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 6px;
+  border-radius: 8px;
+  border: 1px solid var(--border-subtle);
+  font-size: 10px;
+  text-align: center;
+}
+.sim-badge--earned {
+  background: rgba(99, 102, 241, 0.1);
+  border-color: rgba(99, 102, 241, 0.3);
+  color: var(--text-primary);
+}
+.sim-badge--earned svg { color: #f59e0b; }
+.sim-badge--locked {
+  opacity: 0.35;
+  color: var(--text-muted);
+}
+.sim-badge--locked svg { color: var(--text-muted); }
+.sim-winrate-bar-bg {
+  height: 6px;
+  background: var(--surface-2);
+  border-radius: 3px;
+  overflow: hidden;
+  margin-bottom: 6px;
+}
+.sim-winrate-bar-fill {
+  height: 100%;
+  background: var(--color-positive, #22c55e);
+  border-radius: 3px;
+  transition: width 0.5s;
+}
+.sim-winrate-label {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-bottom: 8px;
+  display: block;
+}
+.sim-perf-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  flex-wrap: wrap;
+}

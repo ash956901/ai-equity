@@ -51,6 +51,7 @@ def _get_model_kwargs() -> dict[str, Any]:
             api_key=s.groq_api_key or "",
             base_url=s.groq_base_url,
             temperature=s.llm_temperature,
+            request_timeout=s.groq_timeout,
         )
     elif s.llm_provider == "deepseek":
         from src.agents.middleware_openai_compat import StrictOpenAICompatChatOpenAI
@@ -60,6 +61,7 @@ def _get_model_kwargs() -> dict[str, Any]:
             api_key=s.deepseek_api_key or "",
             base_url=s.deepseek_base_url,
             temperature=s.llm_temperature,
+            request_timeout=s.deepseek_timeout,
         )
     elif s.llm_provider == "claude":
         from langchain_anthropic import ChatAnthropic

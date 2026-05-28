@@ -746,7 +746,7 @@ export function DashboardView(props: DashboardViewProps) {
             <div className="ai-insight-content">
               {suggestionsLoading ? (
                 <div className="loading-shimmer" style={{ height: 120, borderRadius: 8 }}>
-                  <p style={{ padding: 20 }}>Iris is analyzing news and portfolio...</p>
+                  <p style={{ padding: 20 }}>Minerva is analyzing news and portfolio...</p>
                 </div>
               ) : aiSuggestions ? (
                 <div className="markdown-body" style={{ fontSize: 13, lineHeight: 1.6 }}>

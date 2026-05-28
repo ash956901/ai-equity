@@ -209,7 +209,7 @@ export function TimelineView(props: TimelineViewProps) {
                   props.goToView("chat");
                 }}
               >
-                Ask Iris About This Event
+                Ask Minerva About This Event
               </button>
             </>
           ) : (

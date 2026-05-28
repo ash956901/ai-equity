@@ -28,6 +28,9 @@ class QueryRequest(BaseModel):
     upload_id: Optional[UUID] = Field(
         None, description="Attached document upload ID for doc analysis"
     )
+    company_id: Optional[UUID] = Field(
+        None, description="Company context for pre-injecting recent news into the agent"
+    )
 
 
 class QueryResponse(BaseModel):
@@ -56,6 +59,7 @@ def process_query(request: QueryRequest, db: Session = Depends(get_db)) -> Query
             expertise_level=request.expertise_level,
             session_id=request.session_id,
             upload_id=request.upload_id,
+            company_id=request.company_id,
         )
         
         print(f"[STAGE 5: RESPONSE] Got response: session_id={result.get('session_id')}, tokens_used={result.get('tokens_used')}")

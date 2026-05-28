@@ -93,7 +93,7 @@ export async function fetchPortfolioSuggestions(
 
 
 export async function sendChatQuery(req: ChatQueryRequest): Promise<ChatQueryResponse> {
-  return aiPost<ChatQueryResponse>("/chat/query", req);
+  return aiPost<ChatQueryResponse>("/chat/query", req, 300000);
 }
 
 export async function listChatSessions(userId: string): Promise<ChatSessionItem[]> {
@@ -198,7 +198,7 @@ export async function fetchTransactions(
 }
 
 export async function compareCompanies(req: CompareRequest): Promise<CompareResponse> {
-  return aiPost<CompareResponse>("/compare/", req);
+  return aiPost<CompareResponse>("/compare/", req, 300000);
 }
 
 export async function createAlertRule(req: CreateAlertRequest): Promise<AlertRule> {
@@ -282,5 +282,5 @@ export async function fetchCausalCompany(companyId: string): Promise<CausalCompa
 }
 
 export async function analyzeCausalTrigger(trigger: string, companyId?: string): Promise<CausalLLMData> {
-  return aiPost<CausalLLMData>("/causal/llm-analyze", { trigger, company_id: companyId ?? null });
+  return aiPost<CausalLLMData>("/causal/llm-analyze", { trigger, company_id: companyId ?? null }, 300000);
 }

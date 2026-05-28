@@ -1,7 +1,7 @@
 """Celery tasks for ETL pipelines."""
 
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any, Optional
 from uuid import UUID
 
@@ -206,44 +206,39 @@ def crawl_nse_filings(
 ):
     """Crawl NSE filings for companies."""
     from src.etl.ingestion_service import DocumentIngestionService
-    
+
     db = SessionLocal()
-    run = _log_etl_run(
-        db,
-        "nse_filings",
-        company_id=UUID(company_id) if company_id else None,
-    )
+    cid = UUID(company_id) if company_id else None
+    run = _log_etl_run(db, "nse_filings", company_id=cid)
     try:
-        crawler = NSECrawler()
-        cid = UUID(company_id) if company_id else None
-        results = crawler.crawl(company_id=cid, since_date=since_date)
-        
-        # Integrate with ingestion service to download filings
         ingestion_service = DocumentIngestionService(db)
-        company = db.query(Company).filter(Company.id == cid).first() if cid else None
-        
-        # If we have a specific company, use its ID; otherwise, we'll need to map symbols to companies
-        if company:
+        crawler = NSECrawler()
+
+        if cid:
+            # Single-company mode: look up NSE ticker and pass it as symbol
+            company = db.query(Company).filter(Company.id == cid).first()
+            nse_symbol = company.ticker_nse if company else None
+            results = crawler.crawl(symbol=nse_symbol, since_date=since_date)
             downloaded = 0
-            for result in results:
-                filing = ingestion_service.ingest_filing(company.id, result)
-                if filing:
-                    downloaded += 1
-                    process_filing.delay(str(filing.id))
+            if company:
+                for result in results:
+                    filing = ingestion_service.ingest_filing(company.id, result)
+                    if filing:
+                        downloaded += 1
+                        process_filing.delay(str(filing.id))
             _finish_etl_run(db, run, records=downloaded)
         else:
-            # For batch processing, we need to find companies by symbol
+            # Batch mode: no symbol filter, map results by symbol back to companies
+            results = crawler.crawl(since_date=since_date)
             downloaded = 0
             for result in results:
                 symbol = result.get("symbol")
                 if symbol:
-                    # Try to find company by NSE symbol
-                    company = db.query(Company).filter(
+                    matched = db.query(Company).filter(
                         (Company.ticker_nse == symbol) | (Company.ticker_bse == symbol)
                     ).first()
-                    
-                    if company:
-                        filing = ingestion_service.ingest_filing(company.id, result)
+                    if matched:
+                        filing = ingestion_service.ingest_filing(matched.id, result)
                         if filing:
                             downloaded += 1
                             process_filing.delay(str(filing.id))
@@ -263,49 +258,39 @@ def crawl_bse_filings(
     """Crawl BSE filings for companies."""
     from src.etl.ingestion_service import DocumentIngestionService
     from src.etl.crawler_bse import BSECrawler
-    
+
     db = SessionLocal()
-    run = _log_etl_run(
-        db,
-        "bse_filings",
-        company_id=UUID(company_id) if company_id else None,
-    )
+    cid = UUID(company_id) if company_id else None
+    run = _log_etl_run(db, "bse_filings", company_id=cid)
     try:
-        crawler = BSECrawler()
-        cid = UUID(company_id) if company_id else None
-        results = crawler.crawl(company_id=cid, since_date=since_date)
-        
-        # Integrate with ingestion service to download filings
         ingestion_service = DocumentIngestionService(db)
-        company = db.query(Company).filter(Company.id == cid).first() if cid else None
-        
-        # If we have a specific company, use its ID; otherwise, we'll need to map symbols to companies
-        if company:
+        crawler = BSECrawler()
+
+        if cid:
+            # Single-company mode: look up BSE ticker and pass it as symbol
+            company = db.query(Company).filter(Company.id == cid).first()
+            bse_symbol = company.ticker_bse if company else None
+            results = crawler.crawl(symbol=bse_symbol, since_date=since_date)
             downloaded = 0
-            for result in results:
-                filing = ingestion_service.ingest_filing(company.id, result)
-                if filing:
-                    downloaded += 1
-                    process_filing.delay(str(filing.id))
+            if company:
+                for result in results:
+                    filing = ingestion_service.ingest_filing(company.id, result)
+                    if filing:
+                        downloaded += 1
+                        process_filing.delay(str(filing.id))
             _finish_etl_run(db, run, records=downloaded)
         else:
-            # For batch processing, we need to find companies by symbol
+            # Batch mode: map results by symbol back to companies
+            results = crawler.crawl(since_date=since_date)
             downloaded = 0
             for result in results:
                 symbol = result.get("symbol")
                 if symbol:
-                    # Try to find company by BSE symbol
-                    company = db.query(Company).filter(
+                    matched = db.query(Company).filter(
                         (Company.ticker_bse == symbol) | (Company.ticker_nse == symbol)
                     ).first()
-                    if company is None:
-                        # Try to find by NSE symbol as fallback
-                        company = db.query(Company).filter(
-                            Company.ticker_nse == symbol
-                        ).first()
-                    
-                    if company:
-                        filing = ingestion_service.ingest_filing(company.id, result)
+                    if matched:
+                        filing = ingestion_service.ingest_filing(matched.id, result)
                         if filing:
                             downloaded += 1
                             process_filing.delay(str(filing.id))
@@ -427,6 +412,141 @@ def process_filing(self, filing_id: str):
     except Exception as e:
         _finish_etl_run(db, run, status="failed", error=str(e))
         logger.exception("Filing processing failed")
+        raise
+    finally:
+        db.close()
+
+
+# ------------------------------------------------------------------ #
+#  Commodity price live refresh                                        #
+# ------------------------------------------------------------------ #
+
+# Alpha Vantage commodity symbol → human name mapping
+_COMMODITY_SYMBOLS = {
+    "WTI_USD": ("WTI Crude Oil", "USD", "barrel"),
+    "BRENT_CRUDE_USD": ("Brent Crude Oil", "USD", "barrel"),
+    "NATURAL_GAS_USD": ("Natural Gas", "USD", "MMBtu"),
+    "COAL_USD": ("Coal", "USD", "ton"),
+    "XAU": ("Gold", "USD", "troy oz"),
+    "XAG": ("Silver", "USD", "troy oz"),
+    "copper": ("Copper", "USD", "lb"),
+}
+
+# Alpha Vantage commodity function map
+_AV_FUNCTION_MAP = {
+    "WTI_USD": ("WTI", "data"),
+    "BRENT_CRUDE_USD": ("BRENT", "data"),
+    "NATURAL_GAS_USD": ("NATURAL_GAS", "data"),
+}
+
+
+def _fetch_commodity_price_av(api_key: str, symbol: str) -> Optional[float]:
+    """Fetch latest commodity price from Alpha Vantage."""
+    import httpx
+
+    av_fn, data_key = _AV_FUNCTION_MAP.get(symbol, (None, None))
+    if not av_fn:
+        return None
+    try:
+        with httpx.Client(timeout=15.0) as client:
+            resp = client.get(
+                "https://www.alphavantage.co/query",
+                params={"function": av_fn, "interval": "monthly", "apikey": api_key},
+            )
+            resp.raise_for_status()
+        payload = resp.json()
+        rows = payload.get(data_key, [])
+        if rows and isinstance(rows, list):
+            return float(rows[0].get("value", 0) or 0) or None
+    except Exception as e:
+        logger.debug("AV commodity fetch failed for %s: %s", symbol, e)
+    return None
+
+
+def _fetch_commodity_price_yahoo(symbol: str) -> Optional[float]:
+    """Fetch commodity price from Yahoo Finance as fallback."""
+    import httpx
+
+    yahoo_map = {
+        "WTI_USD": "CL=F",
+        "BRENT_CRUDE_USD": "BZ=F",
+        "NATURAL_GAS_USD": "NG=F",
+        "XAU": "GC=F",
+        "XAG": "SI=F",
+        "copper": "HG=F",
+        "COAL_USD": "MTF=F",
+    }
+    yf_symbol = yahoo_map.get(symbol)
+    if not yf_symbol:
+        return None
+    try:
+        with httpx.Client(timeout=15.0) as client:
+            resp = client.get(
+                f"https://query1.finance.yahoo.com/v8/finance/chart/{yf_symbol}",
+                params={"interval": "1d", "range": "5d"},
+                headers={"User-Agent": "Mozilla/5.0 (compatible)"},
+            )
+        if resp.status_code != 200:
+            return None
+        data = resp.json()
+        result_block = (data.get("chart") or {}).get("result") or []
+        if not result_block:
+            return None
+        price = result_block[0].get("meta", {}).get("regularMarketPrice")
+        return float(price) if price else None
+    except Exception as e:
+        logger.debug("Yahoo Finance commodity fetch failed for %s: %s", symbol, e)
+    return None
+
+
+@app.task(bind=True, name="etl.refresh_commodity_prices")
+def refresh_commodity_prices(self):
+    """Fetch live commodity prices and upsert into CommodityPrice table."""
+    import os
+    from src.db.models import CommodityPrice
+
+    db = SessionLocal()
+    api_key = os.getenv("ALPHA_VANTAGE_API_KEY", "").strip()
+    updated = 0
+    now = datetime.utcnow()
+
+    try:
+        for symbol, (name, currency, unit) in _COMMODITY_SYMBOLS.items():
+            price = _fetch_commodity_price_av(api_key, symbol) if api_key else None
+            if price is None:
+                price = _fetch_commodity_price_yahoo(symbol)
+            if price is None:
+                continue
+
+            # Find existing latest row for this symbol to compute change
+            prev = (
+                db.query(CommodityPrice)
+                .filter(CommodityPrice.symbol == symbol)
+                .order_by(CommodityPrice.timestamp.desc())
+                .first()
+            )
+            change = round(price - prev.price, 4) if prev and prev.price else None
+            change_pct = round((change / prev.price) * 100, 2) if change and prev and prev.price else None
+
+            row = CommodityPrice(
+                symbol=symbol,
+                name=name,
+                price=price,
+                change=change,
+                change_pct=change_pct,
+                currency=currency,
+                unit=unit,
+                timestamp=now,
+            )
+            db.add(row)
+            updated += 1
+
+        db.commit()
+        logger.info("Commodity prices refreshed: %d symbols updated", updated)
+        return {"updated": updated, "timestamp": now.isoformat()}
+    except Exception as e:
+        db.rollback()
+        logger.exception("Commodity price refresh failed")
         raise
     finally:
         db.close()

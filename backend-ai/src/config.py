@@ -50,11 +50,13 @@ class Settings(BaseSettings):
     # DeepSeek API (when llm_provider=deepseek)
     deepseek_api_key: Optional[str] = None
     deepseek_base_url: str = "https://api.deepseek.com"
+    deepseek_timeout: int = 240
     openai_api_key: Optional[str] = None
 
     # Groq API (when llm_provider=groq)
     groq_api_key: Optional[str] = "dkdkvm"
     groq_base_url: str = "https://api.groq.com/openai/v1"
+    groq_timeout: int = 60
 
     # Anthropic / Claude API (when llm_provider=claude)
     anthropic_api_key: Optional[str] = None

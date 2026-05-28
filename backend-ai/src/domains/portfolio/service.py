@@ -1,5 +1,6 @@
 """Business logic for portfolio endpoints."""
 
+import logging
 from decimal import Decimal
 from typing import Any, Optional
 from uuid import UUID
@@ -11,6 +12,30 @@ from src.agents import build_research_agent
 from src.db.models import Company, Holding, Portfolio, User
 from src.services.portfolio_service import PortfolioService
 from src.utils.data_sources import portfolio_sources
+
+logger = logging.getLogger(__name__)
+
+
+def _fetch_live_price_sync(ticker_nse: Optional[str], ticker_bse: Optional[str]) -> Optional[float]:
+    """Synchronous yfinance price fetch — used in portfolio enrichment."""
+    import yfinance as yf  # noqa: PLC0415
+
+    tickers = [t for t in [
+        f"{ticker_nse}.NS" if ticker_nse else None,
+        # Yahoo Finance uses short-name tickers (.BO), not numeric BSE codes
+        f"{ticker_bse}.BO" if (ticker_bse and not ticker_bse.isdigit()) else None,
+    ] if t]
+    for ticker in tickers:
+        try:
+            t_obj = yf.Ticker(ticker)
+            fi = t_obj.fast_info
+            # FastInfo uses snake_case attrs — .get() does not exist on FastInfo
+            price = getattr(fi, "last_price", None) or getattr(fi, "regularMarketPrice", None)
+            if price:
+                return float(price)
+        except Exception as exc:
+            logger.debug("yfinance price fetch failed for %s: %s", ticker, exc)
+    return None
 
 
 class PortfoliosService:
@@ -102,6 +127,27 @@ class PortfoliosService:
             return "No causal data available at this time."
 
 
+    def _inject_live_prices(self, holdings_list: list[dict[str, Any]]) -> None:
+        """Overwrite current_price, value, and return_pct with live yfinance prices."""
+        for h in holdings_list:
+            try:
+                company = self.db.query(Company).filter(
+                    Company.id == UUID(h["company_id"])
+                ).first()
+                if not company:
+                    continue
+                live = _fetch_live_price_sync(company.ticker_nse, company.ticker_bse)
+                if live is None:
+                    continue
+                h["current_price"] = live
+                qty = h.get("quantity") or 0
+                avg = h.get("average_price") or 0
+                h["value"] = round(qty * live, 2)
+                if avg > 0:
+                    h["return_pct"] = round((live - avg) / avg * 100, 2)
+            except Exception as exc:
+                logger.debug("Live price injection failed for holding %s: %s", h.get("holding_id"), exc)
+
     def list_portfolios(self, user_id: UUID) -> list[dict[str, Any]]:
         portfolios = (
             self.db.query(Portfolio)
@@ -151,6 +197,8 @@ class PortfoliosService:
 
         holdings = self._portfolio_service.get_holdings(portfolio_id)
         metrics = self._portfolio_service.calculate_metrics(portfolio_id)
+        self._inject_live_prices(holdings)
+        self._inject_live_prices(metrics.get("holdings") or [])
         return {
             "id": str(portfolio.id),
             "name": portfolio.name,
@@ -169,6 +217,7 @@ class PortfoliosService:
             raise HTTPException(status_code=404, detail="Portfolio not found")
 
         metrics = self._portfolio_service.calculate_metrics(portfolio_id)
+        self._inject_live_prices(metrics.get("holdings") or [])
         return {
             "portfolio_id": str(portfolio_id),
             "portfolio_name": portfolio.name,

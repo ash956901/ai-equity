@@ -1,8 +1,11 @@
 """Business logic for company domain endpoints."""
 
+import logging
 from datetime import date, datetime, timedelta
 from typing import Any, Optional
 from uuid import UUID
+
+logger = logging.getLogger(__name__)
 
 from fastapi import BackgroundTasks, HTTPException
 from sqlalchemy.orm import Session
@@ -133,7 +136,7 @@ class CompaniesService:
             "description": company.description,
             "listing_status": company.listing_status,
             "gemini_extra": gemini_extra,
-            "data_sources": company_sources(company.ticker_nse, company.ticker_bse),
+            "data_sources": company_sources(company.ticker_nse, company.ticker_bse, company.name),
         }
         self._save_cache_snapshot(company_id, self.PROFILE_CACHE_SOURCE, payload)
         return payload
@@ -209,6 +212,7 @@ class CompaniesService:
         ]
 
     def trigger_filings_sync(self, company_id: UUID) -> dict[str, Any]:
+        import threading
         from src.etl.tasks import crawl_bse_filings, crawl_nse_filings, crawl_ir_pages
 
         company = self.db.query(Company).filter(Company.id == company_id).first()
@@ -216,17 +220,55 @@ class CompaniesService:
             raise HTTPException(status_code=404, detail="Company not found")
 
         cid = str(company_id)
-        task_bse: Any = crawl_bse_filings
-        task_nse: Any = crawl_nse_filings
-        task_ir: Any = crawl_ir_pages
-        task_bse.delay(company_id=cid)
-        task_nse.delay(company_id=cid)
-        task_ir.delay(company_id=cid)
+        since_date = (datetime.utcnow() - timedelta(days=180)).strftime("%Y-%m-%d")
+
+        celery_ok = False
+        try:
+            task_bse: Any = crawl_bse_filings
+            task_nse: Any = crawl_nse_filings
+            task_ir: Any = crawl_ir_pages
+            task_bse.delay(company_id=cid, since_date=since_date)
+            task_nse.delay(company_id=cid, since_date=since_date)
+            task_ir.delay(company_id=cid)
+            celery_ok = True
+        except Exception as celery_err:
+            logger.warning("Celery unavailable (%s) — falling back to inline sync", celery_err)
+
+        if not celery_ok:
+            # Run crawlers inline in a daemon thread so the HTTP response is not blocked
+            def _inline_sync():
+                from src.db.database import SessionLocal
+                from src.etl.crawler_bse import BSECrawler
+                from src.etl.crawler_nse import NSECrawler
+                from src.etl.ingestion_service import DocumentIngestionService
+
+                db_local = SessionLocal()
+                try:
+                    svc = DocumentIngestionService(db_local)
+                    comp = db_local.query(Company).filter(Company.id == company_id).first()
+                    if not comp:
+                        return
+                    for crawler, symbol in [
+                        (BSECrawler(), comp.ticker_bse),
+                        (NSECrawler(), comp.ticker_nse),
+                    ]:
+                        try:
+                            results = crawler.crawl(symbol=symbol, since_date=since_date)
+                            for r in results:
+                                svc.ingest_filing(comp.id, r)
+                        except Exception as exc:
+                            logger.warning("Inline crawler failed: %s", exc)
+                finally:
+                    db_local.close()
+
+            threading.Thread(target=_inline_sync, daemon=True).start()
+
         return {
-            "status": "queued",
+            "status": "queued" if celery_ok else "running_inline",
             "company_id": cid,
             "company_name": company.name,
             "sources": ["BSE", "NSE", "IR"],
+            "since_date": since_date,
         }
 
     def enrich_company(self, company_id: UUID) -> dict[str, Any]:
@@ -289,7 +331,7 @@ class CompaniesService:
             self.db.rollback()
 
     async def get_historical_prices(self, company_id: UUID, days: int = 30) -> dict[str, Any]:
-        """Return daily OHLCV price history from Alpha Vantage."""
+        """Return daily OHLCV price history from Alpha Vantage with Yahoo Finance fallback."""
         import os
         import httpx
 
@@ -302,70 +344,135 @@ class CompaniesService:
         if not company:
             raise HTTPException(status_code=404, detail="Company not found")
 
+        # Try Alpha Vantage first
         api_key = os.getenv("ALPHA_VANTAGE_API_KEY", "").strip()
-        if not api_key:
-            return {
-                "company_id": str(company_id),
-                "prices": [],
-                "error": "Alpha Vantage API key not configured",
-            }
+        if api_key:
+            # Ticker priority: NSE-name symbols first (AV supports these), numeric BSE last
+            symbols: list[str] = []
+            if company.ticker_nse:
+                symbols.append(f"{company.ticker_nse}.BSE")
+                symbols.append(f"{company.ticker_nse}.NSE")
+            if company.ticker_bse and company.ticker_nse != company.ticker_bse:
+                # Numeric BSE codes (e.g. 532939) don't work on AV — skip
+                if not company.ticker_bse.isdigit():
+                    symbols.append(f"{company.ticker_bse}.BSE")
 
-        # Build candidate symbols — Alpha Vantage works with name-based symbols
-        # Try ticker_nse with BSE suffix first (e.g., RELIANCE.BSE), then NSE suffix
-        symbols: list[str] = []
-        if company.ticker_nse:
-            symbols.append(f"{company.ticker_nse}.BSE")  # e.g., RELIANCE.BSE
-            symbols.append(f"{company.ticker_nse}.NSE")  # e.g., RELIANCE.NSE
-        if company.ticker_bse and company.ticker_nse != company.ticker_bse:
-            symbols.append(f"{company.ticker_bse}.BSE")  # numeric BSE code fallback
+            outputsize = "full" if days > 100 else "compact"
 
-        outputsize = "full" if days > 100 else "compact"
+            for symbol in symbols:
+                try:
+                    async with httpx.AsyncClient(timeout=30.0) as client:
+                        response = await client.get(
+                            "https://www.alphavantage.co/query",
+                            params={
+                                "function": "TIME_SERIES_DAILY",
+                                "symbol": symbol,
+                                "outputsize": outputsize,
+                                "apikey": api_key,
+                            },
+                        )
+                        response.raise_for_status()
 
-        for symbol in symbols:
-            try:
-                async with httpx.AsyncClient(timeout=30.0) as client:
-                    response = await client.get(
-                        "https://www.alphavantage.co/query",
-                        params={
-                            "function": "TIME_SERIES_DAILY",
-                            "symbol": symbol,
-                            "outputsize": outputsize,
-                            "apikey": api_key,
-                        },
-                    )
-                    response.raise_for_status()
+                    data = response.json()
+                    ts = data.get("Time Series (Daily)", {})
+                    if not ts:
+                        continue
 
-                data = response.json()
-                ts = data.get("Time Series (Daily)", {})
-                if not ts:
+                    prices = []
+                    for dt_str, values in sorted(ts.items(), reverse=True)[:days]:
+                        prices.append({
+                            "date": dt_str,
+                            "open": float(values.get("1. open", 0)),
+                            "high": float(values.get("2. high", 0)),
+                            "low": float(values.get("3. low", 0)),
+                            "close": float(values.get("4. close", 0)),
+                            "volume": int(values.get("5. volume", 0)),
+                        })
+                    prices.reverse()
+
+                    payload = {
+                        "company_id": str(company_id),
+                        "company_name": company.name,
+                        "symbol": symbol,
+                        "source": "AlphaVantage",
+                        "days_requested": days,
+                        "prices": prices,
+                        "data_sources": [
+                            {
+                                "name": "Alpha Vantage",
+                                "url": f"https://www.alphavantage.co/query?function=TIME_SERIES_DAILY&symbol={symbol}",
+                                "data_type": "historical_prices",
+                            }
+                        ],
+                    }
+                    self._save_cache_snapshot(company_id, cache_source, payload)
+                    return payload
+
+                except Exception:
                     continue
 
-                # Parse and sort by date, take latest N days
+        # Yahoo Finance fallback — .NS works for all NSE stocks; .BO only for named tickers, not numeric BSE codes
+        yahoo_symbols: list[str] = []
+        if company.ticker_nse:
+            yahoo_symbols.append(f"{company.ticker_nse}.NS")
+        if company.ticker_bse and not company.ticker_bse.isdigit():
+            yahoo_symbols.append(f"{company.ticker_bse}.BO")
+
+        range_map = {7: "1mo", 30: "3mo", 90: "6mo", 365: "1y"}
+        yf_range = next((v for k, v in sorted(range_map.items()) if days <= k), "2y")
+
+        for symbol in yahoo_symbols:
+            try:
+                async with httpx.AsyncClient(timeout=20.0) as client:
+                    resp = await client.get(
+                        f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}",
+                        params={"interval": "1d", "range": yf_range},
+                        headers={"User-Agent": "Mozilla/5.0 (compatible)"},
+                    )
+                if resp.status_code != 200:
+                    continue
+                data = resp.json()
+                result_block = (data.get("chart") or {}).get("result") or []
+                if not result_block:
+                    continue
+                timestamps = result_block[0].get("timestamp") or []
+                indicators = result_block[0].get("indicators") or {}
+                quote_data = (indicators.get("quote") or [{}])[0]
+                opens = quote_data.get("open") or []
+                highs = quote_data.get("high") or []
+                lows = quote_data.get("low") or []
+                closes = quote_data.get("close") or []
+                volumes = quote_data.get("volume") or []
+
+                from datetime import timezone
                 prices = []
-                for dt_str, values in sorted(ts.items(), reverse=True)[:days]:
+                for i, ts in enumerate(timestamps[-days:]):
+                    close_val = closes[i] if i < len(closes) else None
+                    if close_val is None:
+                        continue
                     prices.append({
-                        "date": dt_str,
-                        "open": float(values.get("1. open", 0)),
-                        "high": float(values.get("2. high", 0)),
-                        "low": float(values.get("3. low", 0)),
-                        "close": float(values.get("4. close", 0)),
-                        "volume": int(values.get("5. volume", 0)),
+                        "date": datetime.fromtimestamp(ts, tz=timezone.utc).strftime("%Y-%m-%d"),
+                        "open": round(opens[i], 2) if i < len(opens) and opens[i] else close_val,
+                        "high": round(highs[i], 2) if i < len(highs) and highs[i] else close_val,
+                        "low": round(lows[i], 2) if i < len(lows) and lows[i] else close_val,
+                        "close": round(close_val, 2),
+                        "volume": int(volumes[i]) if i < len(volumes) and volumes[i] else 0,
                     })
 
-                # Reverse so oldest first for charting
-                prices.reverse()
+                if not prices:
+                    continue
 
                 payload = {
                     "company_id": str(company_id),
                     "company_name": company.name,
                     "symbol": symbol,
-                    "source": "AlphaVantage",
+                    "source": "Yahoo Finance",
                     "days_requested": days,
                     "prices": prices,
                     "data_sources": [
                         {
-                            "name": "Alpha Vantage",
-                            "url": f"https://www.alphavantage.co/query?function=TIME_SERIES_DAILY&symbol={symbol}",
+                            "name": "Yahoo Finance",
+                            "url": f"https://finance.yahoo.com/quote/{symbol}/history/",
                             "data_type": "historical_prices",
                         }
                     ],

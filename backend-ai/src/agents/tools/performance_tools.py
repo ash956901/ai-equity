@@ -1,5 +1,6 @@
 """Performance & Learnings tools for the performance sub-agent."""
 
+from datetime import datetime
 from typing import Any, Dict, List
 from uuid import UUID
 
@@ -219,3 +220,69 @@ def extract_learnings(holdings_performance: List[Dict[str, Any]]) -> List[str]:
         )
 
     return learnings[:5]
+
+
+@tool
+def get_today_trades(user_id: str) -> Dict[str, Any]:
+    """Fetch all simulated trades opened today for the user.
+
+    Returns actual buy/sell records from the paper trading simulator.
+    If no trades today, returns an explicit empty summary rather than guessing.
+
+    Args:
+        user_id: User UUID as string
+    """
+    from datetime import date
+
+    from src.db.models import SimulatedTrade
+
+    db = next(get_db())
+    try:
+        today_start = datetime.combine(date.today(), datetime.min.time())
+        trades = (
+            db.query(SimulatedTrade)
+            .filter(
+                SimulatedTrade.user_id == UUID(user_id),
+                SimulatedTrade.opened_at >= today_start,
+            )
+            .order_by(SimulatedTrade.opened_at.desc())
+            .all()
+        )
+
+        if not trades:
+            return {
+                "trades": [],
+                "count": 0,
+                "total_invested_today": 0,
+                "summary": "No simulated trades recorded today in the paper trading simulator.",
+            }
+
+        trade_list = [
+            {
+                "ticker": t.ticker,
+                "company": t.company_name,
+                "type": t.trade_type,
+                "quantity": t.quantity,
+                "price": t.price_at_trade,
+                "total_value": t.total_value,
+                "status": t.status,
+                "pnl": t.pnl_at_close,
+                "opened_at": t.opened_at.isoformat(),
+            }
+            for t in trades
+        ]
+        total_invested = sum(
+            t["total_value"] for t in trade_list if t["type"] == "buy"
+        )
+        descriptions = ", ".join(
+            f"{t['type']} {t['quantity']}x {t['ticker']} @ ₹{t['price']:,.0f}"
+            for t in trade_list
+        )
+        return {
+            "trades": trade_list,
+            "count": len(trade_list),
+            "total_invested_today": round(total_invested, 2),
+            "summary": f"{len(trade_list)} trade(s) today: {descriptions}",
+        }
+    finally:
+        db.close()

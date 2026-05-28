@@ -110,6 +110,7 @@ export interface ChatQueryRequest {
   query: string;
   expertise_level?: "beginner" | "intermediate" | "advanced";
   upload_id?: string;
+  company_id?: string;
 }
 
 export interface ChatQueryResponse {
@@ -440,6 +441,7 @@ export interface CausalMarketData {
   geopolitical_events: CausalGeoEvent[];
   news_impacts: CausalNewsImpact[];
   causal_chains: CausalChainItem[];
+  last_refreshed_at?: string | null;
 }
 
 export interface CausalPortfolioPattern {
@@ -457,6 +459,7 @@ export interface CausalPortfolioPattern {
 export interface CausalPortfolioData {
   portfolio_id: string | null;
   patterns: CausalPortfolioPattern[];
+  last_refreshed_at?: string | null;
 }
 
 export interface CausalExposure {

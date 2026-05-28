@@ -418,7 +418,7 @@ export function ChatView(props: ChatViewProps) {
   return (
     <section className="page-wrap chat-page-wrap">
       <PageHeader
-        title="Iris Research Copilot"
+        title="Minerva Research Copilot"
         subtitle="Persistent threads with mode-aware responses and reusable prompts."
         dataMode={props.dataMode}
         right={
@@ -550,7 +550,7 @@ export function ChatView(props: ChatViewProps) {
               <div className="chat-empty-logo">
                 <Sparkles size={28} />
               </div>
-              <h2>Iris Research Copilot</h2>
+              <h2>Minerva Research Copilot</h2>
               <p>Ask anything about Indian equities — filings, risk signals, sentiment, or portfolio strategy.</p>
               <div className="chat-empty-suggestions">
                 {suggestions.map((suggestion) => (
@@ -675,7 +675,7 @@ export function ChatView(props: ChatViewProps) {
               <Paperclip size={16} />
             </button>
             <input
-              placeholder={attachedFile ? "Ask about this document..." : "Ask Iris anything about equities..."}
+              placeholder={attachedFile ? "Ask about this document..." : "Ask Minerva anything about equities..."}
               value={composerText}
               onChange={(event) => setComposerText(event.target.value)}
               onKeyDown={(event) => {

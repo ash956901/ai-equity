@@ -6,11 +6,13 @@ import {
   Clock3,
   Compass,
   FileText,
+  Gamepad2,
   GitBranch,
   GitCompareArrows,
   LayoutDashboard,
   Newspaper,
   Settings,
+  Trophy,
   Wallet,
 } from "lucide-react";
 
@@ -71,11 +73,13 @@ export const navItems: NavItem[] = [
   { key: "dashboard", label: "Dashboard", icon: LayoutDashboard, caption: "Overview" },
   { key: "compare", label: "Compare", icon: GitCompareArrows, caption: "Side-by-side" },
   { key: "company", label: "Company", icon: Building2, caption: "Workspace" },
-  { key: "chat", label: "Iris Chat", icon: Bot, caption: "Copilot" },
+  { key: "chat", label: "Minerva", icon: Bot, caption: "Copilot" },
   { key: "discovery", label: "Discovery", icon: Compass, caption: "Themes" },
   { key: "portfolio", label: "Portfolio", icon: Wallet, caption: "Exposure" },
   { key: "domino", label: "Domino Effect", icon: GitBranch, caption: "Causal Chains" },
   { key: "money", label: "Money", icon: Banknote, caption: "Balance" },
+  { key: "performance", label: "Performance", icon: Trophy, caption: "Learnings" },
+  { key: "simulator", label: "Simulator", icon: Gamepad2, caption: "Paper Trade" },
   { key: "filings", label: "Filings", icon: FileText, caption: "Reports" },
   { key: "timeline", label: "Timeline", icon: Clock3, caption: "Feed" },
   { key: "news", label: "News", icon: Newspaper, caption: "Sentiment" },
@@ -93,6 +97,8 @@ export const DASHBOARD_PREFERENCES_KEY = "equityai-dashboard-preferences";
 export const ALERT_RULES_STORAGE_KEY = "equityai-alert-rules";
 export const CHAT_THREADS_STORAGE_KEY = "equityai-chat-threads";
 export const CHAT_ACTIVE_THREAD_STORAGE_KEY = "equityai-chat-active-thread";
+export const PERFORMANCE_THREADS_STORAGE_KEY = "equityai-performance-threads";
+export const PERFORMANCE_ACTIVE_THREAD_STORAGE_KEY = "equityai-performance-active-thread";
 
 export const DEMO_BANNER_MSG =
   "Demo mode — showing cached data. Switch to Live API for real-time results.";

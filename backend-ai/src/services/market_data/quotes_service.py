@@ -102,13 +102,15 @@ class QuotesService:
             except Exception as e:
                 logger.debug("Kite quote failed for %s: %s", kite_ticker, e)
 
-        alpha_quote = await self._fetch_quote_from_alpha_vantage(company)
-        if alpha_quote:
-            return alpha_quote
-
+        # Yahoo Finance httpx is the most reliable free source for Indian stocks
         yahoo_quote = await self._fetch_quote_from_yahoo(company)
         if yahoo_quote:
             return yahoo_quote
+
+        # AlphaVantage as last resort (rate-limited; exchange-qualified symbols only)
+        alpha_quote = await self._fetch_quote_from_alpha_vantage(company)
+        if alpha_quote:
+            return alpha_quote
 
         return None
 
@@ -119,11 +121,12 @@ class QuotesService:
         if not api_key:
             return None
 
+        # Only use exchange-qualified symbols — bare tickers (e.g. "TCS") hit US OTC stocks
         symbols: list[str] = []
         if company.ticker_nse:
-            symbols.extend([f"{company.ticker_nse}.NSE", company.ticker_nse])
-        if company.ticker_bse:
-            symbols.extend([f"{company.ticker_bse}.BSE", company.ticker_bse])
+            symbols.extend([f"{company.ticker_nse}.NSE", f"{company.ticker_nse}.BSE"])
+        if company.ticker_bse and not company.ticker_bse.isdigit():
+            symbols.append(f"{company.ticker_bse}.BSE")
 
         seen: set[str] = set()
         unique_symbols = [s for s in symbols if not (s in seen or seen.add(s))]
@@ -148,6 +151,20 @@ class QuotesService:
                     continue
 
                 last_price = float(price_raw)
+
+                # Reject AV results where the returned symbol is a bare US ticker
+                # (e.g. requested "TCS.NSE", AV returned "TCS" matching a US OTC stock).
+                # Valid Indian quotes come back with an exchange suffix like ".BSE"/".NSE".
+                returned_symbol = quote.get("01. symbol") or symbol
+                requested_has_suffix = "." in symbol
+                returned_has_suffix = "." in returned_symbol
+                if requested_has_suffix and not returned_has_suffix:
+                    logger.warning(
+                        "AV symbol mismatch: requested %s, got %s — skipping (likely US cross-match)",
+                        symbol, returned_symbol,
+                    )
+                    continue
+
                 change = float(quote["09. change"]) if quote.get("09. change") else None
                 change_pct_raw = quote.get("10. change percent")
                 change_pct = (
@@ -157,7 +174,7 @@ class QuotesService:
 
                 return {
                     "source": "AlphaVantage",
-                    "symbol": quote.get("01. symbol") or symbol,
+                    "symbol": returned_symbol,
                     "last_price": last_price,
                     "change": change,
                     "change_pct": change_pct,
@@ -168,7 +185,7 @@ class QuotesService:
                     "fetched_at": datetime.utcnow().isoformat(),
                 }
             except Exception as e:
-                logger.debug("Alpha Vantage quote failed for %s: %s", symbol, e)
+                logger.warning("Alpha Vantage quote failed for %s: %s", symbol, e)
 
         return None
 
@@ -177,47 +194,87 @@ class QuotesService:
         symbols: list[str] = []
         if company.ticker_nse:
             symbols.append(f"{company.ticker_nse}.NS")
-        if company.ticker_bse:
+        if company.ticker_bse and not company.ticker_bse.isdigit():
             symbols.append(f"{company.ticker_bse}.BO")
 
+        failed_symbols: list[str] = []
         for symbol in symbols:
-            try:
-                async with httpx.AsyncClient(timeout=15.0) as client:
-                    resp = await client.get(
-                        f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}",
-                        params={"interval": "1d", "range": "1d"},
-                        headers={"User-Agent": "Mozilla/5.0 (compatible)"},
-                    )
-                if resp.status_code != 200:
-                    continue
-                data = resp.json()
-                result_block = (data.get("chart") or {}).get("result") or []
-                if not result_block:
-                    continue
-                meta = result_block[0].get("meta", {})
-                last_price = meta.get("regularMarketPrice")
-                if not last_price:
-                    continue
-                prev_close = meta.get("previousClose") or meta.get("chartPreviousClose")
-                change = (last_price - prev_close) if prev_close else None
-                change_pct = ((change / prev_close) * 100) if (change is not None and prev_close) else None
-                return {
-                    "source": "Yahoo Finance",
-                    "symbol": symbol,
-                    "last_price": last_price,
-                    "change": round(change, 2) if change is not None else None,
-                    "change_pct": round(change_pct, 2) if change_pct is not None else None,
-                    "volume": meta.get("regularMarketVolume"),
-                    "previous_close": prev_close,
-                    "fifty_two_week_high": meta.get("fiftyTwoWeekHigh"),
-                    "fifty_two_week_low": meta.get("fiftyTwoWeekLow"),
-                    "market_state": meta.get("marketState"),
-                    "fetched_at": datetime.utcnow().isoformat(),
-                    "data_sources": [{"label": "Yahoo Finance", "type": "live"}],
-                }
-            except Exception as e:
-                logger.debug("Yahoo Finance quote failed for %s: %s", symbol, e)
+            result = await self._yahoo_chart_fetch(symbol)
+            if result:
+                return result
+            failed_symbols.append(symbol)
 
+        # All primary tickers failed — search Yahoo by company name to find the correct ticker
+        if company.name:
+            discovered = await self._yahoo_search_ticker(company.name)
+            if discovered and discovered not in failed_symbols:
+                result = await self._yahoo_chart_fetch(discovered)
+                if result:
+                    logger.info("Yahoo Finance: resolved %s → %s via name search", company.name, discovered)
+                    return result
+
+        return None
+
+    async def _yahoo_chart_fetch(self, symbol: str) -> Optional[dict[str, Any]]:
+        """Fetch quote for a single Yahoo Finance symbol. Returns None on 404 or missing price."""
+        try:
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                resp = await client.get(
+                    f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}",
+                    params={"interval": "1d", "range": "1d"},
+                    headers={"User-Agent": "Mozilla/5.0 (compatible)"},
+                )
+            if resp.status_code != 200:
+                return None
+            data = resp.json()
+            result_block = (data.get("chart") or {}).get("result") or []
+            if not result_block:
+                return None
+            meta = result_block[0].get("meta", {})
+            last_price = meta.get("regularMarketPrice")
+            if not last_price:
+                return None
+            prev_close = meta.get("previousClose") or meta.get("chartPreviousClose")
+            change = (last_price - prev_close) if prev_close else None
+            change_pct = ((change / prev_close) * 100) if (change is not None and prev_close) else None
+            return {
+                "source": "Yahoo Finance",
+                "symbol": symbol,
+                "last_price": last_price,
+                "change": round(change, 2) if change is not None else None,
+                "change_pct": round(change_pct, 2) if change_pct is not None else None,
+                "volume": meta.get("regularMarketVolume"),
+                "previous_close": prev_close,
+                "fifty_two_week_high": meta.get("fiftyTwoWeekHigh"),
+                "fifty_two_week_low": meta.get("fiftyTwoWeekLow"),
+                "market_state": meta.get("marketState"),
+                "fetched_at": datetime.utcnow().isoformat(),
+                "data_sources": [{"label": "Yahoo Finance", "type": "live"}],
+            }
+        except Exception as e:
+            logger.warning("Yahoo Finance quote failed for %s: %s", symbol, e)
+        return None
+
+    async def _yahoo_search_ticker(self, company_name: str) -> Optional[str]:
+        """Search Yahoo Finance by company name; return best matching .NS/.BO ticker or None."""
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                resp = await client.get(
+                    "https://query1.finance.yahoo.com/v1/finance/search",
+                    params={"q": company_name, "quotesCount": 5, "newsCount": 0, "enableFuzzyQuery": "false"},
+                    headers={"User-Agent": "Mozilla/5.0 (compatible)"},
+                )
+            if resp.status_code != 200:
+                return None
+            quotes = resp.json().get("quotes") or []
+            # Prefer .NS (NSE), fall back to .BO (BSE)
+            for suffix in (".NS", ".BO"):
+                for q in quotes:
+                    sym = q.get("symbol", "")
+                    if sym.endswith(suffix):
+                        return sym
+        except Exception as e:
+            logger.warning("Yahoo Finance search failed for '%s': %s", company_name, e)
         return None
 
     def _fetch_quote_from_scraper(self, company: Company) -> Optional[dict[str, Any]]:

@@ -78,12 +78,17 @@ class NSECrawler(BaseCrawler):
             items = data if isinstance(data, list) else data.get("data", data.get("results", []))
             results = []
             for item in items[:50]:
+                attach_file = item.get("attchmntFile", "")
+                attachment_url = (
+                    f"https://nsearchives.nseindia.com/corporate/{attach_file}"
+                    if attach_file else ""
+                )
                 results.append({
                     "symbol": item.get("symbol", ""),
                     "subject": item.get("desc", item.get("subject", "")),
-                    "filing_type": item.get("attchmntFile", "announcement"),
+                    "filing_type": item.get("subcatdesc") or item.get("desc") or "announcement",
                     "date": item.get("an_dt", item.get("dt", "")),
-                    "attachment_url": item.get("attchmntFile", ""),
+                    "attachment_url": attachment_url,
                     "source": "NSE",
                 })
             logger.info("NSE crawler fetched %d announcements", len(results))

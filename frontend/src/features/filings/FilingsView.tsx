@@ -173,11 +173,12 @@ export function FilingsView(props: FilingsViewProps) {
             onSubmit={(event) => {
               event.preventDefault();
               applySymbol(symbolInput.trim());
+              void handleSearch();
             }}
           >
             <Search size={14} />
             <input
-              placeholder="Search ticker"
+              placeholder="Search company or ticker"
               value={symbolInput}
               onChange={(event) => setSymbolInput(event.target.value)}
             />

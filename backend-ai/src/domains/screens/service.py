@@ -150,6 +150,35 @@ class ScreensService:
             if len(enriched) >= limit:
                 break
 
+        # Tier 3: Direct Company table keyword match when Qdrant + CompanyTheme both empty
+        if not enriched:
+            keyword = f"%{query}%"
+            fallback_companies = (
+                self.db.query(Company)
+                .filter(
+                    (Company.sector.ilike(keyword))
+                    | (Company.industry.ilike(keyword))
+                    | (Company.name.ilike(keyword))
+                )
+                .limit(limit)
+                .all()
+            )
+            for c in fallback_companies:
+                if str(c.id) not in seen_company_ids:
+                    seen_company_ids.add(str(c.id))
+                    enriched.append({
+                        "company_id": str(c.id),
+                        "company_name": c.name,
+                        "ticker_nse": c.ticker_nse,
+                        "ticker_bse": c.ticker_bse,
+                        "sector": c.sector,
+                        "industry": c.industry,
+                        "market_cap_inr": c.market_cap_inr,
+                        "relevance_score": 0.3,
+                        "match_count": 1,
+                        "evidence_snippets": [f"Sector/industry match for '{query}'"],
+                    })
+
         # Sort by relevance descending
         enriched.sort(key=lambda x: x["relevance_score"], reverse=True)
         return enriched

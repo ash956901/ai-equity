@@ -10,6 +10,7 @@ from src.agents.tools.performance_tools import (
     get_portfolio_performance,
     compare_to_benchmark,
     extract_learnings,
+    get_today_trades,
 )
 
 
@@ -31,5 +32,6 @@ def get_performance_subagent() -> dict:
             get_portfolio_performance,
             compare_to_benchmark,
             extract_learnings,
+            get_today_trades,
         ],
     }
