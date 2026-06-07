@@ -30,6 +30,11 @@ class Settings(BaseSettings):
     qdrant_url: str = "http://localhost:6333"
     qdrant_api_key: Optional[str] = None
 
+    # Agent architecture: "react" = single fast LangGraph ReAct agent (flat tool
+    # set, far fewer LLM round-trips, fits UI timeouts); "deep" = multi-subagent
+    # deepagents orchestrator (richer but many sequential LLM calls = slow).
+    agent_mode: Literal["deep", "react"] = "react"
+
     # LLM
     llm_provider: Literal["ollama", "deepseek", "openai", "groq", "claude"] = "groq"
     # Optional global override model from .env (takes priority if set)
@@ -37,6 +42,11 @@ class Settings(BaseSettings):
     # Optional documented list for UI/ops discoverability, comma-separated in .env
     llm_model_options: Optional[str] = None
     llm_temperature: float = 0.3
+    # Cap response length to keep generation time within UI timeouts.
+    llm_max_tokens: int = 2048
+    # gpt-oss / o-series reasoning effort: "low" | "medium" | "high" (low = fastest,
+    # bounds the model's "thinking" time which was the main latency culprit).
+    llm_reasoning_effort: Optional[str] = "low"
 
     # Provider-specific default chat models
     ollama_model: str = "deepseek-r1:8b"
@@ -49,6 +59,8 @@ class Settings(BaseSettings):
 
     # DeepSeek API (when llm_provider=deepseek)
     deepseek_api_key: Optional[str] = None
+    # Optional second key for automatic failover on timeout / rate-limit (429)
+    deepseek_api_key_2: Optional[str] = None
     deepseek_base_url: str = "https://api.deepseek.com"
     deepseek_timeout: int = 240
     openai_api_key: Optional[str] = None

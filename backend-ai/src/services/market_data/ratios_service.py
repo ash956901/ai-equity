@@ -165,41 +165,60 @@ class RatiosService:
             return None
 
         symbols: list[str] = []
-        if company.ticker_nse:
+        if company.ticker_nse and not company.ticker_nse.isdigit():
             symbols.extend([f"{company.ticker_nse}.NS", company.ticker_nse])
-        if company.ticker_bse:
+        if company.ticker_bse and not company.ticker_bse.isdigit():
             symbols.extend([f"{company.ticker_bse}.BO", company.ticker_bse])
-        if not symbols:
-            return None
 
         seen: set[str] = set()
         unique_symbols = [s for s in symbols if not (s in seen or seen.add(s))]
 
-        for symbol in unique_symbols:
+        def _extract_ratios(sym: str) -> dict[str, Any] | None:
             try:
-                info = yf.Ticker(symbol).info
+                info = yf.Ticker(sym).info
+                if not info.get("regularMarketPrice") and not info.get("marketCap"):
+                    return None  # empty/invalid ticker — skip fast
                 ratios: dict[str, Any] = {
                     "pe_ratio": info.get("trailingPE"),
                     "pb_ratio": info.get("priceToBook"),
                     "roe": info.get("returnOnEquity"),
+                    "roce": info.get("returnOnAssets"),  # closest available
                     "net_margin": info.get("profitMargins"),
                     "debt_to_equity": info.get("debtToEquity"),
                     "revenue_growth_yoy": info.get("revenueGrowth"),
                     "pat_growth_yoy": info.get("earningsQuarterlyGrowth"),
+                    "market_cap": info.get("marketCap"),
+                    "earnings_growth": info.get("earningsGrowth"),
                 }
                 ratios = {k: v for k, v in ratios.items() if v is not None}
-                if not ratios:
-                    continue
+                return ratios or None
+            except Exception as e:
+                logger.debug("yfinance ratios fetch failed for %s: %s", sym, e)
+                return None
 
+        for symbol in unique_symbols:
+            ratios = _extract_ratios(symbol)
+            if ratios:
                 return {
                     "company_id": str(company.id),
                     "company_name": company.name,
                     "source": "yfinance",
                     "ratios": ratios,
                 }
-            except Exception as e:
-                logger.debug("yfinance ratios fetch failed for %s: %s", symbol, e)
-                continue
+
+        # Search-based fallback: find the correct yfinance symbol via company name
+        from src.services.market_data.helpers import resolve_yfinance_symbol
+        resolved = resolve_yfinance_symbol(company)
+        if resolved and resolved not in unique_symbols:
+            ratios = _extract_ratios(resolved)
+            if ratios:
+                return {
+                    "company_id": str(company.id),
+                    "company_name": company.name,
+                    "source": "yfinance",
+                    "ratios": ratios,
+                }
+
         return None
 
     def _fetch_ratios_from_fmp(self, company: Company) -> dict[str, Any] | None:

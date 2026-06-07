@@ -19,6 +19,36 @@ logger = logging.getLogger(__name__)
 FILINGS_DIR = Path("uploads/filings")
 FILINGS_DIR.mkdir(parents=True, exist_ok=True)
 
+# Date formats seen across NSE/BSE/IR crawler outputs.
+_DATE_FORMATS = (
+    "%Y-%m-%d",
+    "%Y-%m-%d %H:%M:%S",
+    "%d-%b-%Y %H:%M:%S",
+    "%d-%b-%Y",
+    "%d-%m-%Y",
+    "%d-%m-%Y %H:%M:%S",
+    "%d %b %Y",
+)
+
+
+def _parse_filing_date(value: Optional[str]):
+    """Best-effort parse of a crawler date string into a date; today() on failure."""
+    from datetime import date as _date
+
+    if not value or not isinstance(value, str):
+        return datetime.utcnow().date()
+    text = value.strip()
+    for fmt in _DATE_FORMATS:
+        try:
+            return datetime.strptime(text, fmt).date()
+        except ValueError:
+            continue
+    # ISO fallback (handles e.g. "2025-12-03T18:30:00")
+    try:
+        return datetime.fromisoformat(text.replace("Z", "")).date()
+    except ValueError:
+        return datetime.utcnow().date()
+
 
 class DocumentIngestionService:
     """Handles downloading and persisting filing documents."""
@@ -31,8 +61,14 @@ class DocumentIngestionService:
         self,
         company_id: UUID,
         metadata: Dict[str, Any],
+        download: bool = True,
     ) -> Optional[Filing]:
-        """Persist a filing from crawler metadata, then attempt optional document download."""
+        """Persist a filing from crawler metadata, then optionally download the document.
+
+        When ``download`` is False, only the metadata record is created (with its
+        source_url). This keeps inline/synchronous callers fast — the UI links out
+        to the source URL directly, so the PDF need not be fetched server-side.
+        """
         source_url = metadata.get("attachment_url") or metadata.get("url") or ""
 
         # Phase 1: Deduplication check
@@ -63,15 +99,7 @@ class DocumentIngestionService:
                     return existing
 
         # Phase 2: Always create the metadata record first
-        filing_date_str = metadata.get("date")
-        try:
-            filing_date = (
-                datetime.strptime(filing_date_str, "%Y-%m-%d").date()
-                if filing_date_str
-                else datetime.utcnow().date()
-            )
-        except ValueError:
-            filing_date = datetime.utcnow().date()
+        filing_date = _parse_filing_date(metadata.get("date"))
 
         filing = Filing(
             company_id=company_id,
@@ -87,8 +115,8 @@ class DocumentIngestionService:
         self.db.refresh(filing)
         logger.info("Saved filing metadata: %s for company %s", filing.title, company_id)
 
-        # Phase 3: Attempt download (non-blocking; failure keeps status as metadata_only)
-        if source_url:
+        # Phase 3: Attempt download (skipped when download=False; failure keeps status as metadata_only)
+        if source_url and download:
             try:
                 from requests.adapters import HTTPAdapter
                 from urllib3.util.retry import Retry

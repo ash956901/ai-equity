@@ -3,12 +3,10 @@ import { GitBranch, Loader2, RefreshCw, Sparkles, ChevronDown, ChevronUp } from 
 
 import {
   fetchCausalMarket,
-  fetchCausalPortfolio,
+  fetchCausalPortfolioCompanies,
   fetchCausalCompany,
   analyzeCausalTrigger,
   type CausalMarketData,
-  type CausalPortfolioData,
-  type CausalPortfolioPattern,
   type CausalCompanyData,
   type CausalExposure,
   type CausalChainItem,
@@ -195,7 +193,8 @@ export function DominoEffectView({ dataMode, pushToast }: DominoEffectViewProps)
   const [error, setError] = useState<string | null>(null);
 
   const [marketData, setMarketData] = useState<CausalMarketData | null>(null);
-  const [portfolioData, setPortfolioData] = useState<CausalPortfolioData | null>(null);
+  const [portfolioCompanies, setPortfolioCompanies] = useState<CausalCompanyData[]>([]);
+  const [portfolioRefreshedAt, setPortfolioRefreshedAt] = useState<string | null>(null);
   const [companyData, setCompanyData] = useState<CausalCompanyData | null>(null);
   const [selectedCompany, setSelectedCompany] = useState<{ id: string; name: string } | null>(null);
   const [llmData, setLlmData] = useState<CausalLLMData | null>(null);
@@ -209,8 +208,9 @@ export function DominoEffectView({ dataMode, pushToast }: DominoEffectViewProps)
     setLoading(true);
     setError(null);
     try {
-      const data = await fetchCausalPortfolio(userId);
-      setPortfolioData(data);
+      const data = await fetchCausalPortfolioCompanies(userId);
+      setPortfolioCompanies(data.companies ?? []);
+      setPortfolioRefreshedAt(data.last_refreshed_at ?? null);
     } catch {
       setError("Could not load portfolio causal data.");
     } finally {
@@ -269,16 +269,21 @@ export function DominoEffectView({ dataMode, pushToast }: DominoEffectViewProps)
     }
   }
 
-  // ── Portfolio cards ──────────────────────────────────────────────────────
-  const portfolioCards: CardGroup[] = (portfolioData?.patterns ?? []).map((p) => ({
-    severity: portfolioSeverity(p),
-    title: `${p.trigger} → ${p.company_name} (${p.ticker})`,
-    hops: [p.trigger, p.commodity_name || p.commodity, p.sector, p.company_name],
-    reasoning: `${p.commodity_name || p.commodity} moved ${p.price_change_pct >= 0 ? "+" : ""}${p.price_change_pct.toFixed(1)}%, creating a ${p.impact_direction} impact on ${p.company_name} via ${p.sector} sector exposure.`,
-    confidence: p.confidence,
-    direction: p.impact_direction,
-    tags: [p.commodity, p.sector],
-  }));
+  // ── Portfolio cards — one group per holding company ───────────────────────
+  const portfolioCardGroups: Array<{ company: CausalCompanyData; cards: CardGroup[] }> =
+    portfolioCompanies.map((company) => ({
+      company,
+      cards: company.exposures.map((e) => ({
+        severity: exposureSeverity(e),
+        title: `${e.commodity} ${e.commodity_direction === "up" ? "↑" : e.commodity_direction === "down" ? "↓" : "→"} → ${company.company_name} (${e.dependency_type})`,
+        hops: [e.commodity, company.sector, company.company_name],
+        reasoning: `${e.commodity} is a ${e.dependency_type} dependency for the ${company.sector} sector (${e.impact_magnitude} magnitude). Current move: ${e.current_change_pct >= 0 ? "+" : ""}${e.current_change_pct.toFixed(1)}%. Impact direction: ${e.impact_direction}.${e.affected_companies.length ? ` Affected peers: ${e.affected_companies.slice(0, 3).join(", ")}.` : ""}`,
+        direction: e.impact_direction,
+        tags: [e.commodity, e.impact_magnitude],
+      })),
+    }));
+
+  const totalPortfolioExposures = portfolioCardGroups.reduce((sum, g) => sum + g.cards.length, 0);
 
   // ── Company exposure cards ───────────────────────────────────────────────
   const exposureCards: CardGroup[] = (companyData?.exposures ?? []).map((e) => ({
@@ -352,10 +357,10 @@ export function DominoEffectView({ dataMode, pushToast }: DominoEffectViewProps)
       />
 
       {/* Data freshness indicator */}
-      {(portfolioData?.last_refreshed_at || marketData?.last_refreshed_at) && (
+      {(portfolioRefreshedAt || marketData?.last_refreshed_at) && (
         <div style={{ fontSize: "11px", color: "var(--text-muted)", padding: "0 16px 4px", opacity: 0.7 }}>
           Data as of {new Date(
-            (portfolioData?.last_refreshed_at || marketData?.last_refreshed_at) as string
+            (portfolioRefreshedAt || marketData?.last_refreshed_at) as string
           ).toLocaleString("en-IN", { timeZone: "Asia/Kolkata", hour: "2-digit", minute: "2-digit", day: "2-digit", month: "short" })} IST
         </div>
       )}
@@ -400,13 +405,33 @@ export function DominoEffectView({ dataMode, pushToast }: DominoEffectViewProps)
       {/* ── PORTFOLIO TAB ── */}
       {mode === "portfolio" && !loading && !error && (
         <>
-          {portfolioCards.length === 0 ? (
+          {portfolioCardGroups.length === 0 ? (
             <div className="notice">
               <GitBranch size={14} style={{ display: "inline", marginRight: 6 }} />
-              No active commodity impacts on your portfolio right now.
+              No holdings found. Add companies to your portfolio to see causal exposures.
             </div>
           ) : (
-            <CardList cards={portfolioCards} filter={severityFilter} />
+            <>
+              <div className="notice" style={{ marginBottom: 12 }}>
+                {portfolioCardGroups.length} holding{portfolioCardGroups.length !== 1 ? "s" : ""} · {totalPortfolioExposures} total commodity exposure{totalPortfolioExposures !== 1 ? "s" : ""}
+              </div>
+              {portfolioCardGroups.map(({ company, cards }) => (
+                <div key={company.company_id} style={{ marginBottom: 20 }}>
+                  <div style={{ fontSize: "0.82rem", fontWeight: 700, color: "var(--brand)", padding: "4px 0 8px", borderBottom: "1px solid var(--border)", marginBottom: 8 }}>
+                    {company.company_name}
+                    {company.ticker && <span style={{ fontWeight: 400, color: "var(--muted)", marginLeft: 6 }}>({company.ticker})</span>}
+                    <span style={{ fontWeight: 400, color: "var(--muted)", marginLeft: 8 }}>{company.sector}</span>
+                  </div>
+                  {cards.length === 0 ? (
+                    <div className="notice" style={{ fontSize: "0.8rem" }}>
+                      No commodity exposures tracked for {company.sector} sector yet.
+                    </div>
+                  ) : (
+                    <CardList cards={cards} filter={severityFilter} />
+                  )}
+                </div>
+              ))}
+            </>
           )}
         </>
       )}

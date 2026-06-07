@@ -15,10 +15,62 @@ logger = logging.getLogger(__name__)
 
 def get_fmp_symbol(company: Company) -> Optional[str]:
     """Build FMP-compatible symbol (e.g. RELIANCE.NS / TCS.BO)."""
-    if company.ticker_nse:
+    if company.ticker_nse and not company.ticker_nse.isdigit():
         return f"{company.ticker_nse}.NS"
-    if company.ticker_bse:
+    if company.ticker_bse and not company.ticker_bse.isdigit():
         return f"{company.ticker_bse}.BO"
+    return None
+
+
+def resolve_yfinance_symbol(company: Company) -> Optional[str]:
+    """Find the correct yfinance symbol for a company.
+
+    Tries stored NSE/BSE tickers first; if those return no data, falls back to
+    yfinance's own search using the company name.  Returns the first symbol that
+    yields a non-empty quote (has marketCap or regularMarketPrice).
+    """
+    try:
+        import yfinance as yf
+    except Exception:
+        return None
+
+    candidates: list[str] = []
+    if company.ticker_nse and not company.ticker_nse.isdigit():
+        candidates.append(f"{company.ticker_nse}.NS")
+    if company.ticker_bse and not company.ticker_bse.isdigit():
+        candidates.append(f"{company.ticker_bse}.BO")
+
+    def _has_data(sym: str) -> bool:
+        try:
+            info = yf.Ticker(sym).info
+            return bool(info.get("regularMarketPrice") or info.get("marketCap") or info.get("trailingPE"))
+        except Exception:
+            return False
+
+    for sym in candidates:
+        if _has_data(sym):
+            return sym
+
+    # Search fallback — useful for companies whose stored ticker is wrong/numeric
+    if company.name:
+        try:
+            results = yf.Search(company.name, max_results=8).quotes
+            for q in results:
+                sym = q.get("symbol", "")
+                if not sym:
+                    continue
+                # Prefer Indian exchanges (.NS / .BO)
+                if sym.endswith(".NS") or sym.endswith(".BO"):
+                    if _has_data(sym):
+                        return sym
+            # Accept any match if no Indian exchange symbol found
+            for q in results:
+                sym = q.get("symbol", "")
+                if sym and _has_data(sym):
+                    return sym
+        except Exception:
+            pass
+
     return None
 
 

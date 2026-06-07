@@ -172,10 +172,18 @@ class FinancialStatementsService:
             return None
 
         symbols: list[str] = []
-        if company.ticker_nse:
+        if company.ticker_nse and not company.ticker_nse.isdigit():
             symbols.extend([f"{company.ticker_nse}.NS", company.ticker_nse])
-        if company.ticker_bse:
+        if company.ticker_bse and not company.ticker_bse.isdigit():
             symbols.extend([f"{company.ticker_bse}.BO", company.ticker_bse])
+
+        # Search-based fallback for companies with missing/numeric tickers
+        if not symbols or (not company.ticker_nse and not company.ticker_bse):
+            from src.services.market_data.helpers import resolve_yfinance_symbol
+            resolved = resolve_yfinance_symbol(company)
+            if resolved:
+                symbols = [resolved]
+
         if not symbols:
             return None
 
@@ -244,6 +252,11 @@ class FinancialStatementsService:
                             periods_data.append({"period_end": period_end, "items": items})
 
                 if not periods_data:
+                    # If direct financials are empty, try searching for the correct symbol
+                    from src.services.market_data.helpers import resolve_yfinance_symbol
+                    resolved = resolve_yfinance_symbol(company)
+                    if resolved and resolved != symbol:
+                        symbols.insert(symbols.index(symbol) + 1, resolved)
                     continue
 
                 periods_data = sorted(

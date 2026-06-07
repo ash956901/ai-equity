@@ -130,6 +130,16 @@ class NewsService:
             deduplicated = self._prioritize_query_matches(deduplicated, cleaned_query)
 
         selected = deduplicated[:safe_limit]
+
+        # If RSS returned nothing, fall back to articles already stored in the DB
+        # by the ETL pipeline (searched by headline keyword).
+        if not selected and cleaned_query and self.db is not None:
+            db_fallback = self._fetch_from_news_table(cleaned_query, safe_limit)
+            if db_fallback:
+                selected = db_fallback
+                # Skip enrichment & re-caching for already-stored rows.
+                return selected
+
         await self._enrich_articles(selected)
 
         self._write_request_log(
@@ -209,6 +219,43 @@ class NewsService:
 
         if not rows:
             return []
+
+        return [
+            {
+                "title": row.headline,
+                "summary": row.body or "",
+                "url": row.source_url,
+                "source": row.source or "Unknown",
+                "source_feed": self._extract_source_feed(row.keywords),
+                "published_at": self._ensure_utc_datetime(row.published_at),
+                "sentiment": (row.sentiment_label or "neutral").lower(),
+                "sentiment_confidence": float(row.sentiment_score) if row.sentiment_score is not None else 0.0,
+                "categories": self._extract_categories(row.keywords),
+            }
+            for row in rows
+        ]
+
+    def _fetch_from_news_table(self, query: str, limit: int) -> List[Dict[str, Any]]:
+        """Search stored NewsArticle rows by headline/body keyword — used as RSS fallback."""
+        assert self.db is not None
+        from sqlalchemy import or_
+
+        cutoff = datetime.utcnow() - timedelta(days=30)
+        pattern = f"%{query}%"
+
+        rows = (
+            self.db.query(NewsArticle)
+            .filter(
+                or_(
+                    NewsArticle.headline.ilike(pattern),
+                    NewsArticle.body.ilike(pattern),
+                ),
+                NewsArticle.published_at >= cutoff,
+            )
+            .order_by(NewsArticle.published_at.desc())
+            .limit(limit)
+            .all()
+        )
 
         return [
             {

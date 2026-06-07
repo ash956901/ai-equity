@@ -244,21 +244,24 @@ def get_portfolio_causal_analysis(portfolio_id: str) -> dict[str, Any]:
         logger.info("AnalysisCache HIT for portfolio_causal portfolio_id=%s", portfolio_id)
         return cached
 
-    from uuid import UUID
-
+    from src.agents.tools._utils import safe_uuid
     from src.db.database import SessionLocal
     from src.db.models import Company, Holding, Portfolio
+
+    pid = safe_uuid(portfolio_id)
+    if pid is None:
+        return {"error": f"'{portfolio_id}' is not a valid portfolio UUID."}
 
     db = SessionLocal()
 
     try:
-        portfolio = db.query(Portfolio).filter(Portfolio.id == UUID(portfolio_id)).first()
+        portfolio = db.query(Portfolio).filter(Portfolio.id == pid).first()
         if not portfolio:
             return {"error": "Portfolio not found"}
 
         holdings = (
             db.query(Holding)
-            .filter(Holding.portfolio_id == UUID(portfolio_id))
+            .filter(Holding.portfolio_id == pid)
             .all()
         )
 

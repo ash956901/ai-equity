@@ -20,18 +20,30 @@ from src.db.models import (
 
 logger = logging.getLogger(__name__)
 
-# Indian market sector to commodity mapping
+# Indian market sector to commodity mapping — must stay aligned with SectorExposure seed data
 SECTOR_COMMODITY_MAP = {
-    "Oil & Gas": ["WTI_USD", "BRENT_CRUDE_USD", "NATURAL_GAS_USD"],
-    "Power": ["COAL_USD", "NATURAL_GAS_USD"],
-    "Transportation": ["WTI_USD", "DIESEL_USD"],
-    "Aviation": ["WTI_USD", "JET_FUEL_USD"],
-    "Fertilizer": ["NATURAL_GAS_USD"],
-    "Sugar": ["sugar_11"],
-    "Jewellery": ["XAU"],
-    "Metals & Mining": ["copper", "XAG"],
-    "Automobile": ["WTI_USD"],
-    "Chemicals": ["WTI_USD", "NATURAL_GAS_USD"],
+    "Oil & Gas":       ["WTI_USD", "BRENT_CRUDE_USD", "NATURAL_GAS_USD"],
+    "Power":           ["COAL_USD", "NATURAL_GAS_USD"],
+    "Transportation":  ["WTI_USD", "DIESEL_USD"],
+    "Aviation":        ["WTI_USD", "JET_FUEL_USD"],
+    "Fertilizer":      ["NATURAL_GAS_USD"],
+    "Sugar":           ["sugar_11"],
+    "Jewellery":       ["XAU"],
+    "Metals & Mining": ["copper", "aluminum", "XAG", "COAL_USD"],
+    "Steel":           ["COAL_USD", "WTI_USD"],
+    "Cement":          ["COAL_USD", "WTI_USD"],
+    "Automobile":      ["WTI_USD", "aluminum", "COAL_USD"],
+    "Chemicals":       ["WTI_USD", "NATURAL_GAS_USD"],
+    "IT Services":     ["USDINR"],
+    "Healthcare":      ["USDINR", "NATURAL_GAS_USD"],
+    "Pharmaceuticals": ["USDINR", "NATURAL_GAS_USD"],
+    "Banking":         ["USDINR", "XAU"],
+    "Telecom":         ["WTI_USD", "USDINR"],
+    "Infrastructure":  ["COAL_USD", "WTI_USD"],
+    "Capital Goods":   ["COAL_USD", "WTI_USD"],
+    "FMCG":            ["WTI_USD", "sugar_11"],
+    "Real Estate":     ["WTI_USD", "COAL_USD"],
+    "Textiles":        ["NATURAL_GAS_USD", "WTI_USD"],
 }
 
 # Event categories mapped to commodities

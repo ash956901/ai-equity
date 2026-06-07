@@ -15,6 +15,9 @@ from src.agents.tools.web_search import internet_search
 from src.config import get_settings
 
 _agent = None
+_agent_fallback = None
+_react_agent = None
+_react_agent_fallback = None
 
 
 def _get_model_string() -> str:
@@ -36,10 +39,15 @@ def _get_model_string() -> str:
     return f"ollama:{model}"
 
 
-def _get_model_kwargs() -> dict[str, Any]:
+def _get_model_kwargs(use_fallback_key: bool = False) -> dict[str, Any]:
     """Return extra keyword arguments needed for providers that require custom
     base URLs or API keys (Groq, DeepSeek) beyond what the ``provider:model``
-    string provides."""
+    string provides.
+
+    When ``use_fallback_key`` is True and a second DeepSeek/NVIDIA key is
+    configured, the DeepSeek model is built with that key instead — used for
+    automatic failover on timeout / rate-limit.
+    """
     s = get_settings()
     kwargs: dict[str, Any] = {}
 
@@ -56,13 +64,26 @@ def _get_model_kwargs() -> dict[str, Any]:
     elif s.llm_provider == "deepseek":
         from src.agents.middleware_openai_compat import StrictOpenAICompatChatOpenAI
 
-        kwargs["model"] = StrictOpenAICompatChatOpenAI(
+        api_key = (
+            s.deepseek_api_key_2
+            if use_fallback_key and s.deepseek_api_key_2
+            else s.deepseek_api_key
+        ) or ""
+
+        model_params: dict[str, Any] = dict(
             model=s.get_llm_model(),
-            api_key=s.deepseek_api_key or "",
+            api_key=api_key,
             base_url=s.deepseek_base_url,
             temperature=s.llm_temperature,
             request_timeout=s.deepseek_timeout,
+            max_tokens=s.llm_max_tokens,
         )
+        # reasoning_effort applies to gpt-oss / o-series models; "low" keeps the
+        # model from spending minutes "thinking" before answering.
+        if s.llm_reasoning_effort:
+            model_params["reasoning_effort"] = s.llm_reasoning_effort
+
+        kwargs["model"] = StrictOpenAICompatChatOpenAI(**model_params)
     elif s.llm_provider == "claude":
         from langchain_anthropic import ChatAnthropic
 
@@ -75,7 +96,7 @@ def _get_model_kwargs() -> dict[str, Any]:
     return kwargs
 
 
-def build_research_agent():
+def build_research_agent(use_fallback_key: bool = False):
     """Build and return the compiled orchestrator deep agent.
 
     The orchestrator has two lightweight tools (``resolve_company`` and
@@ -85,37 +106,30 @@ def build_research_agent():
     - **Skills** (progressive disclosure) for Indian equity, annual-report,
       and portfolio-strategy domain knowledge
     - **Checkpointer** for conversation continuity within a session
+
+    When ``use_fallback_key`` is True, a separate agent is built/cached using the
+    second DeepSeek/NVIDIA key — used for automatic failover on timeout / rate-limit.
     """
-    print(f"[ORCHESTRATOR] build_research_agent() called")
-    
-    global _agent
-    if _agent is not None:
-        print(f"[ORCHESTRATOR] Returning cached agent instance")
-        return _agent
+    global _agent, _agent_fallback
+    cached = _agent_fallback if use_fallback_key else _agent
+    if cached is not None:
+        return cached
 
-    print(f"[ORCHESTRATOR] Building new research agent...")
-    print(f"[ORCHESTRATOR] Model string: {_get_model_string()}")
-
-    extra = _get_model_kwargs()
+    extra = _get_model_kwargs(use_fallback_key=use_fallback_key)
 
     if "model" in extra:
         model = extra.pop("model")
     else:
         model = _get_model_string()
 
-    print(f"[ORCHESTRATOR] Model configured: {model}")
-        
     memory_cfg = get_memory_config()
-    
-    print(f"[ORCHESTRATOR] Memory config keys: {list(memory_cfg.keys())}")
-    print(f"[ORCHESTRATOR] System prompt (first 500 chars): {ORCHESTRATOR_PROMPT[:500]}...")
-    
     subagents = get_all_subagents()
-    print(f"[ORCHESTRATOR] Subagents: {list(subagents.keys()) if hasattr(subagents, 'keys') else subagents}")
-    print(f"[ORCHESTRATOR] Tools: resolve_company, internet_search")
 
-    print(f"[ORCHESTRATOR] Calling create_deep_agent...")
-    _agent = create_deep_agent(
+    print(
+        f"[ORCHESTRATOR] Building research agent "
+        f"(model={model}, fallback_key={use_fallback_key})"
+    )
+    agent = create_deep_agent(
         model=model,
         tools=[resolve_company, internet_search],
         system_prompt=ORCHESTRATOR_PROMPT,
@@ -123,6 +137,89 @@ def build_research_agent():
         **memory_cfg,
     )
 
-    print(f"[ORCHESTRATOR] Agent built successfully!")
-    print(f"[ORCHESTRATOR] Agent type: {type(_agent)}")
-    return _agent
+    if use_fallback_key:
+        _agent_fallback = agent
+    else:
+        _agent = agent
+    return agent
+
+
+def build_react_agent(use_fallback_key: bool = False):
+    """Build and return a single-agent LangGraph ReAct agent.
+
+    Unlike the deep agent, this is ONE agent with a flat set of all tools and no
+    sub-agent delegation, so a query resolves in a short reason→tool→reason loop
+    (typically 2-4 LLM calls) instead of the deep agent's many nested sub-agent
+    runs. It uses the same model/keys and the shared checkpointer for
+    conversation continuity. Long-term `/memories/` filesystem and skills (deep
+    agent only) are not available in this mode.
+    """
+    from langgraph.prebuilt import create_react_agent
+
+    from src.agents.prompts.orchestrator import REACT_AGENT_PROMPT
+    from src.agents.tools import get_all_tools
+
+    global _react_agent, _react_agent_fallback
+    cached = _react_agent_fallback if use_fallback_key else _react_agent
+    if cached is not None:
+        return cached
+
+    extra = _get_model_kwargs(use_fallback_key=use_fallback_key)
+    model = extra.pop("model") if "model" in extra else _get_model_string()
+
+    memory_cfg = get_memory_config()
+
+    print(
+        f"[ORCHESTRATOR] Building ReAct agent "
+        f"(model={model}, fallback_key={use_fallback_key})"
+    )
+    agent = create_react_agent(
+        model=model,
+        tools=get_all_tools(),
+        prompt=REACT_AGENT_PROMPT,
+        checkpointer=memory_cfg.get("checkpointer"),
+        store=memory_cfg.get("store"),
+    )
+
+    if use_fallback_key:
+        _react_agent_fallback = agent
+    else:
+        _react_agent = agent
+    return agent
+
+
+def _get_agent(use_fallback_key: bool = False):
+    """Return the active agent for the configured ``AGENT_MODE``.
+
+    Defaults to the fast single ReAct agent; set ``AGENT_MODE=deep`` to use the
+    multi-subagent deepagents orchestrator instead.
+    """
+    if get_settings().agent_mode == "deep":
+        return build_research_agent(use_fallback_key=use_fallback_key)
+    return build_react_agent(use_fallback_key=use_fallback_key)
+
+
+def invoke_research_agent(payload: dict[str, Any], config: dict[str, Any]):
+    """Invoke the active agent with automatic failover to a second
+    DeepSeek/NVIDIA key on timeout / rate-limit / connection errors.
+
+    A read-timeout means the primary key authenticated fine but the model was
+    slow; the second key mainly helps against rate-limit (429) or soft
+    throttling, but we also retry it on timeout as a best-effort recovery.
+    The same ``thread_id`` config is reused — LangGraph does not checkpoint a
+    failed model step, so the fallback re-runs it cleanly.
+    """
+    from openai import APIConnectionError, APITimeoutError, RateLimitError
+
+    s = get_settings()
+    try:
+        return _get_agent().invoke(payload, config=config)
+    except (APITimeoutError, APIConnectionError, RateLimitError) as e:
+        key2 = s.deepseek_api_key_2
+        if s.llm_provider == "deepseek" and key2 and key2 != s.deepseek_api_key:
+            print(
+                f"[ORCHESTRATOR] Primary key failed ({type(e).__name__}); "
+                f"retrying with DEEPSEEK_API_KEY_2"
+            )
+            return _get_agent(use_fallback_key=True).invoke(payload, config=config)
+        raise

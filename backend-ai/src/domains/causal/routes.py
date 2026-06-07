@@ -144,6 +144,102 @@ def get_portfolio_causal(user_id: UUID, db: Session = Depends(get_db)) -> dict[s
     }
 
 
+# ── Portfolio company-level exposures (no threshold filter) ─────────────────
+
+@router.get("/portfolio/companies")
+def get_portfolio_company_exposures(user_id: UUID, db: Session = Depends(get_db)) -> dict[str, Any]:
+    """Return sector-based commodity exposures for every company in the user's portfolio.
+
+    Uses the same unfiltered get_sector_exposure() path as /company/{id}, so results
+    are always shown regardless of whether commodities crossed any change threshold.
+    """
+    from src.db.models import Holding
+
+    last_refreshed_at = _maybe_refresh_commodities(db)
+
+    portfolio = (
+        db.query(Portfolio)
+        .filter(Portfolio.user_id == user_id, Portfolio.is_primary.is_(True))
+        .first()
+    ) or (
+        db.query(Portfolio)
+        .filter(Portfolio.user_id == user_id)
+        .first()
+    )
+
+    if not portfolio:
+        return {
+            "companies": [],
+            "last_refreshed_at": last_refreshed_at.isoformat() if last_refreshed_at else None,
+        }
+
+    holdings = db.query(Holding).filter(Holding.portfolio_id == portfolio.id).all()
+
+    if not holdings:
+        return {
+            "companies": [],
+            "last_refreshed_at": last_refreshed_at.isoformat() if last_refreshed_at else None,
+        }
+
+    service = CausalService(db)
+    commodity_changes = service.get_commodity_changes(days=7)
+
+    companies_data = []
+    seen_companies: set[str] = set()
+
+    for holding in holdings:
+        company = db.query(Company).filter(Company.id == holding.company_id).first()
+        if not company or str(company.id) in seen_companies:
+            continue
+        seen_companies.add(str(company.id))
+
+        exposures = service.get_sector_exposure(company.sector or "")
+        news = (
+            db.query(ClassifiedNews)
+            .filter(
+                ClassifiedNews.sector == company.sector,
+                ClassifiedNews.impact_direction.isnot(None),
+            )
+            .order_by(ClassifiedNews.created_at.desc())
+            .limit(5)
+            .all()
+        )
+
+        companies_data.append({
+            "company_id": str(company.id),
+            "company_name": company.name,
+            "ticker": company.ticker_nse or company.ticker_bse or "",
+            "sector": company.sector or "Unknown",
+            "exposures": [
+                {
+                    "commodity": e.commodity,
+                    "dependency_type": e.dependency_type,
+                    "impact_direction": e.impact_direction,
+                    "impact_magnitude": e.impact_magnitude,
+                    "affected_companies": e.affected_companies or [],
+                    "current_change_pct": commodity_changes.get(e.commodity, {}).get("change_pct", 0.0) or 0.0,
+                    "commodity_direction": commodity_changes.get(e.commodity, {}).get("direction", "stable") or "stable",
+                }
+                for e in exposures
+            ],
+            "news_impacts": [
+                {
+                    "title": n.title,
+                    "source": n.source,
+                    "commodity": n.commodity,
+                    "impact_direction": n.impact_direction,
+                    "classification_confidence": n.classification_confidence,
+                }
+                for n in news
+            ],
+        })
+
+    return {
+        "companies": companies_data,
+        "last_refreshed_at": last_refreshed_at.isoformat() if last_refreshed_at else None,
+    }
+
+
 # ── Company-specific causal exposures ────────────────────────────────────────
 
 @router.get("/company/{company_id}")
@@ -195,6 +291,30 @@ def get_company_causal(company_id: UUID, db: Session = Depends(get_db)) -> dict[
             for n in news
         ],
     }
+
+
+# ── Admin: re-seed causal data and company sectors ───────────────────────────
+
+@router.post("/reseed")
+def reseed_causal_data(db: Session = Depends(get_db)) -> dict[str, Any]:
+    """Re-run the causal seed: sector exposures, commodity prices, and company sectors.
+
+    Safe to call at any time — it only adds missing rows and refreshes stale
+    commodity price seeds.  Call this whenever the Domino Effect view shows
+    empty or stale data.
+    """
+    try:
+        from src.etl.seed_causal_data import (
+            seed_sector_exposures,
+            seed_dev_commodity_prices,
+            seed_company_sectors,
+        )
+        seed_sector_exposures(db)
+        seed_dev_commodity_prices(db, force=True)
+        seed_company_sectors(db)
+        return {"status": "ok", "message": "Causal seed data refreshed successfully"}
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Reseed failed: {exc}") from exc
 
 
 # ── LLM deep-dive analysis ───────────────────────────────────────────────────

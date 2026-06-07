@@ -193,10 +193,51 @@ class CompaniesService:
         if not company:
             raise HTTPException(status_code=404, detail="Company not found")
 
-        query = self.db.query(Filing).filter(Filing.company_id == company_id)
-        if filing_type:
-            query = query.filter(Filing.filing_type == filing_type)
-        filings = query.order_by(Filing.filing_date.desc()).limit(limit).all()
+        def _query_filings():
+            q = self.db.query(Filing).filter(Filing.company_id == company_id)
+            if filing_type:
+                q = q.filter(Filing.filing_type == filing_type)
+            return q.order_by(Filing.filing_date.desc()).limit(limit).all()
+
+        filings = _query_filings()
+
+        # If no filings in DB, run a fast inline crawl synchronously then re-query.
+        if not filings:
+            since_date = (datetime.utcnow() - timedelta(days=365)).strftime("%Y-%m-%d")
+            try:
+                from src.etl.crawler_bse import BSECrawler
+                from src.etl.crawler_nse import NSECrawler
+                from src.etl.ingestion_service import DocumentIngestionService
+                import signal
+
+                svc = DocumentIngestionService(self.db)
+
+                # NSE first (reliable); BSE second (best-effort). Numeric NSE codes
+                # are not valid NSE symbols, so skip those for the NSE crawler.
+                nse_symbol = company.ticker_nse if (company.ticker_nse and not company.ticker_nse.isdigit()) else None
+                for crawler_cls, symbol in [
+                    (NSECrawler, nse_symbol),
+                    (BSECrawler, company.ticker_bse),
+                ]:
+                    if not symbol:
+                        continue
+                    try:
+                        crawler = crawler_cls()
+                        results = crawler.crawl(symbol=symbol, since_date=since_date)
+                        # Metadata-only ingest (download=False) keeps this request fast.
+                        for r in results[:40]:
+                            try:
+                                svc.ingest_filing(company.id, r, download=False)
+                            except Exception:
+                                pass
+                    except Exception as exc:
+                        logger.warning("Inline crawl failed for %s/%s: %s", crawler_cls.__name__, symbol, exc)
+
+                self.db.expire_all()
+                filings = _query_filings()
+            except Exception as exc:
+                logger.warning("get_filings inline crawl error for %s: %s", company_id, exc)
+
         return [
             {
                 "id": str(f.id),

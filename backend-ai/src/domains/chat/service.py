@@ -7,7 +7,7 @@ from uuid import UUID
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
-from src.agents import build_research_agent
+from src.agents import invoke_research_agent
 from src.db.models import ChatMessage, ChatSession, NewsArticle, User, Portfolio
 from src.utils.cache import get_analysis_cache
 from src.utils.data_sources import DataSource
@@ -165,9 +165,6 @@ class ChatService:
                     "cached": True,
                 }
 
-        print(f"[STAGE 3: AGENT] Building research agent...")
-        agent = build_research_agent()
-        print(f"[STAGE 3: AGENT] Research agent built")
 
         news_context = self._fetch_company_news_context(company_id) if company_id else None
         user_message = self._build_user_message(
@@ -189,9 +186,9 @@ class ChatService:
             try:
                 print(f"[STAGE 4: ATTEMPT {attempt}/{MAX_AGENT_RETRIES}] Invoking agent...")
 
-                result = agent.invoke(
+                result = invoke_research_agent(
                     {"messages": [{"role": "user", "content": user_message}]},
-                    config={"configurable": {"thread_id": str(resolved_session_id)}},
+                    {"configurable": {"thread_id": str(resolved_session_id)}},
                 )
 
                 print(f"[STAGE 4: ATTEMPT {attempt}] Agent invoke succeeded")

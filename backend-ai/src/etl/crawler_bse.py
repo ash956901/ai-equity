@@ -15,10 +15,15 @@ logger = logging.getLogger(__name__)
 
 BSE_ANNOUNCEMENTS_API = "https://api.bseindia.com/BseIndiaAPI/api/AnnGetData/w"
 BSE_HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
-    "Accept": "application/json",
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    ),
+    "Accept": "application/json,text/plain,*/*",
     "Accept-Language": "en-US,en;q=0.9",
     "X-Requested-With": "XMLHttpRequest",
+    "Referer": "https://www.bseindia.com/",
+    "Origin": "https://www.bseindia.com",
 }
 
 
@@ -71,31 +76,50 @@ class BSECrawler(BaseCrawler):
             
         # Try to get announcements
         try:
-            params = {"strCat": "-1"}
+            from datetime import datetime
+
+            # BSE AnnGetData expects YYYYMMDD for date params and the numeric
+            # scrip code in strScrip.
+            params: Dict[str, str] = {
+                "strCat": "-1",
+                "strSearch": "P",
+                "strType": "C",
+            }
+            if symbol and str(symbol).isdigit():
+                params["strScrip"] = str(symbol)
+
+            to_date = datetime.utcnow().strftime("%Y%m%d")
+            from_date = to_date
             if since_date:
-                # Format date for BSE API (DD-MM-YYYY)
-                if "-" in since_date and len(since_date) == 10:
-                    parts = since_date.split("-")
-                    if len(parts) == 3:
-                        bse_date = f"{parts[2]}-{parts[1]}-{parts[0]}"
-                        params["strFromDate"] = bse_date
-                        params["strToDate"] = bse_date
-                        
+                for fmt in ("%Y-%m-%d", "%d-%m-%Y"):
+                    try:
+                        from_date = datetime.strptime(since_date, fmt).strftime("%Y%m%d")
+                        break
+                    except ValueError:
+                        continue
+            params["strPrevDate"] = from_date
+            params["strToDate"] = to_date
+
             resp = session.get(
                 BSE_ANNOUNCEMENTS_API,
                 params=params,
                 timeout=30,
             )
-            
+
             if resp.status_code != 200:
                 logger.warning("BSE API returned status %d", resp.status_code)
                 return []
 
-            data = resp.json()
-            items = data.get("Table", [])
+            try:
+                data = resp.json()
+            except ValueError:
+                logger.warning("BSE API returned non-JSON body")
+                return []
+
+            items = data.get("Table", []) if isinstance(data, dict) else []
             if not isinstance(items, list):
                 items = []
-                
+
             results = []
             for item in items[:50]:  # Limit to first 50
                 # Extract filing metadata

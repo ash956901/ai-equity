@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 import random
 
 from src.db.database import SessionLocal
-from src.db.models import CausalChain, CommodityPrice, SectorExposure
+from src.db.models import CausalChain, CommodityPrice, Company, SectorExposure
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -403,6 +403,119 @@ def seed_sector_exposures(db):
             "impact_magnitude": "medium",
             "affected_companies": ["Raymond", "Trident", "Welspun", "Arvind"],
         },
+        # Healthcare (same as Pharmaceuticals — covers companies tagged "Healthcare")
+        {
+            "sector": "Healthcare",
+            "industry": "Generic Pharmaceuticals",
+            "commodity": "USDINR",
+            "dependency_type": "input_cost",
+            "impact_direction": "negative",
+            "impact_magnitude": "medium",
+            "affected_companies": ["SUNPHARMA", "DRREDDY", "CIPLA", "APOLLOHOSP"],
+        },
+        {
+            "sector": "Healthcare",
+            "industry": "Generic Pharmaceuticals",
+            "commodity": "NATURAL_GAS_USD",
+            "dependency_type": "input_cost",
+            "impact_direction": "negative",
+            "impact_magnitude": "medium",
+            "affected_companies": ["SUNPHARMA", "DRREDDY", "CIPLA", "DIVIS"],
+        },
+        # Banking / NBFC (USD/INR affects foreign borrowing costs)
+        {
+            "sector": "Banking",
+            "industry": "Commercial Banks",
+            "commodity": "USDINR",
+            "dependency_type": "macro_proxy",
+            "impact_direction": "negative",
+            "impact_magnitude": "medium",
+            "affected_companies": ["HDFCBANK", "ICICIBANK", "SBIN", "AXISBANK", "KOTAKBANK"],
+        },
+        {
+            "sector": "Banking",
+            "industry": "Commercial Banks",
+            "commodity": "XAU",
+            "dependency_type": "collateral_proxy",
+            "impact_direction": "positive",
+            "impact_magnitude": "low",
+            "affected_companies": ["HDFCBANK", "ICICIBANK", "SBIN", "BANKBARODA"],
+        },
+        # Telecom
+        {
+            "sector": "Telecom",
+            "industry": "Wireless Services",
+            "commodity": "WTI_USD",
+            "dependency_type": "input_cost",
+            "impact_direction": "negative",
+            "impact_magnitude": "low",
+            "affected_companies": ["BHARTIARTL", "VIL", "RJIL"],
+        },
+        {
+            "sector": "Telecom",
+            "industry": "Wireless Services",
+            "commodity": "USDINR",
+            "dependency_type": "debt_proxy",
+            "impact_direction": "negative",
+            "impact_magnitude": "medium",
+            "affected_companies": ["BHARTIARTL", "VIL"],
+        },
+        # Infrastructure / Capital Goods
+        {
+            "sector": "Infrastructure",
+            "industry": "EPC Contracts",
+            "commodity": "COAL_USD",
+            "dependency_type": "input_cost",
+            "impact_direction": "negative",
+            "impact_magnitude": "medium",
+            "affected_companies": ["LT", "NCC", "KEC", "KALPATARU"],
+        },
+        {
+            "sector": "Infrastructure",
+            "industry": "EPC Contracts",
+            "commodity": "WTI_USD",
+            "dependency_type": "input_cost",
+            "impact_direction": "negative",
+            "impact_magnitude": "medium",
+            "affected_companies": ["LT", "IRB_INFRA", "ASHOKA_BUILD", "GMR"],
+        },
+        {
+            "sector": "Capital Goods",
+            "industry": "Heavy Engineering",
+            "commodity": "WTI_USD",
+            "dependency_type": "input_cost",
+            "impact_direction": "negative",
+            "impact_magnitude": "medium",
+            "affected_companies": ["LT", "BEL", "BHEL", "SIEMENS"],
+        },
+        {
+            "sector": "Capital Goods",
+            "industry": "Heavy Engineering",
+            "commodity": "COAL_USD",
+            "dependency_type": "input_cost",
+            "impact_direction": "negative",
+            "impact_magnitude": "medium",
+            "affected_companies": ["LT", "BEL", "BHEL"],
+        },
+        # Chemicals
+        {
+            "sector": "Chemicals",
+            "industry": "Specialty Chemicals",
+            "commodity": "WTI_USD",
+            "dependency_type": "input_cost",
+            "impact_direction": "negative",
+            "impact_magnitude": "high",
+            "affected_companies": ["PIDILITIND", "ATUL", "FINEORG", "DEEPAKNITRITE"],
+        },
+        {
+            "sector": "Chemicals",
+            "industry": "Specialty Chemicals",
+            "commodity": "NATURAL_GAS_USD",
+            "dependency_type": "input_cost",
+            "impact_direction": "negative",
+            "impact_magnitude": "medium",
+            "affected_companies": ["PIDILITIND", "GNFC", "AARTI"],
+        },
     ]
 
     for exp_data in exposures:
@@ -424,47 +537,63 @@ def seed_sector_exposures(db):
     logger.info("Sector exposures seeding complete")
 
 
-def seed_dev_commodity_prices(db):
-    """Seed realistic commodity prices for dev/demo (no API keys required)."""
-    now = datetime.utcnow()
+def seed_dev_commodity_prices(db, force: bool = False):
+    """Seed realistic commodity prices for dev/demo (no API keys required).
 
-    # (symbol, name, base_price, currency)
+    Refreshes if the latest seed price is older than 6 hours (or force=True).
+    Each commodity is guaranteed a non-trivial change (±3–8%) so the Domino
+    Effect view always has visible signals for the demo.
+    """
+    now = datetime.utcnow()
+    stale_cutoff = now - timedelta(hours=6)
+
+    # (symbol, name, base_price, currency, min_change_pct, max_change_pct)
     commodities = [
-        ("WTI_USD",          "Crude Oil WTI",        78.50,  "USD"),
-        ("BRENT_CRUDE_USD",  "Brent Crude Oil",      82.30,  "USD"),
-        ("NATURAL_GAS_USD",  "Natural Gas",           2.85,  "USD"),
-        ("JET_FUEL_USD",     "Jet Fuel",             93.20,  "USD"),
-        ("DIESEL_USD",       "Diesel",               95.40,  "USD"),
-        ("COAL_USD",         "Coal",                148.00,  "USD"),
-        ("XAU",              "Gold",               2340.00,  "USD"),
-        ("XAG",              "Silver",               27.50,  "USD"),
-        ("copper",           "Copper",                4.52,  "USD"),
-        ("aluminum",         "Aluminum",              2410,  "USD"),
-        ("sugar_11",         "Sugar No.11",           19.80, "USD"),
-        ("USDINR",           "USD/INR",               83.50, "INR"),
+        ("WTI_USD",          "Crude Oil WTI",        78.50,  "USD",  -8.0,  8.0),
+        ("BRENT_CRUDE_USD",  "Brent Crude Oil",      82.30,  "USD",  -7.0,  7.0),
+        ("NATURAL_GAS_USD",  "Natural Gas",           2.85,  "USD",  -6.0,  9.0),
+        ("JET_FUEL_USD",     "Jet Fuel",             93.20,  "USD",  -5.0,  6.0),
+        ("DIESEL_USD",       "Diesel",               95.40,  "USD",  -4.0,  5.0),
+        ("COAL_USD",         "Coal",                148.00,  "USD",  -5.0,  7.0),
+        ("XAU",              "Gold",               2340.00,  "USD",  -3.0,  5.0),
+        ("XAG",              "Silver",               27.50,  "USD",  -4.0,  6.0),
+        ("copper",           "Copper",                4.52,  "USD",  -5.0,  7.0),
+        ("aluminum",         "Aluminum",           2410.00,  "USD",  -4.0,  5.0),
+        ("sugar_11",         "Sugar No.11",           19.80, "USD",  -6.0,  8.0),
+        ("USDINR",           "USD/INR",               83.50, "INR",  -1.5,  2.0),
     ]
 
-    for symbol, name, base_price, currency in commodities:
-        # Check if we already have recent data (within 2 days)
-        recent = (
-            db.query(CommodityPrice)
-            .filter(
-                CommodityPrice.symbol == symbol,
-                CommodityPrice.timestamp >= now - timedelta(days=2),
+    for symbol, name, base_price, currency, min_chg, max_chg in commodities:
+        # Skip if we have a recent-enough price and not forcing
+        if not force:
+            recent = (
+                db.query(CommodityPrice)
+                .filter(
+                    CommodityPrice.symbol == symbol,
+                    CommodityPrice.timestamp >= stale_cutoff,
+                )
+                .first()
             )
-            .first()
-        )
-        if recent:
-            continue
+            if recent:
+                continue
 
-        # Seed two data points: 7 days ago and now, with a realistic move
-        change_pct = random.uniform(-6.0, 8.0)
-        old_price = base_price / (1 + change_pct / 100)
+        # Guarantee a non-trivial move (abs >= 3%) so domino signals show up
+        sign = random.choice([-1, 1])
+        magnitude = random.uniform(3.0, abs(max_chg if sign > 0 else min_chg))
+        change_pct = round(sign * magnitude, 2)
+
+        old_price = round(base_price / (1 + change_pct / 100), 2)
+
+        # Always write a fresh "old" price anchored to exactly 7 days ago
+        db.query(CommodityPrice).filter(
+            CommodityPrice.symbol == symbol,
+            CommodityPrice.source == "seed",
+        ).delete(synchronize_session=False)
 
         db.add(CommodityPrice(
             symbol=symbol,
             name=name,
-            price=round(old_price, 2),
+            price=old_price,
             change=0.0,
             change_pct=0.0,
             currency=currency,
@@ -476,7 +605,7 @@ def seed_dev_commodity_prices(db):
             name=name,
             price=round(base_price, 2),
             change=round(base_price - old_price, 2),
-            change_pct=round(change_pct, 2),
+            change_pct=change_pct,
             currency=currency,
             source="seed",
             timestamp=now,
@@ -487,6 +616,147 @@ def seed_dev_commodity_prices(db):
     logger.info("Dev commodity prices seeding complete")
 
 
+def seed_company_sectors(db):
+    """Patch sector field for well-known NSE-listed companies that come in with NULL sector.
+
+    Uses a hardcoded ticker → sector mapping that mirrors the sector names used in
+    `seed_sector_exposures()` so the Domino Effect page can find exposures.
+    """
+    # ticker_nse → (sector, industry)
+    SECTOR_MAP: dict[str, tuple[str, str]] = {
+        # Oil & Gas
+        "ONGC":       ("Oil & Gas", "Exploration & Production"),
+        "OIL":        ("Oil & Gas", "Exploration & Production"),
+        "GAIL":       ("Oil & Gas", "Natural Gas Distribution"),
+        "RELIANCE":   ("Oil & Gas", "Refining & Marketing"),
+        "IOC":        ("Oil & Gas", "Refining & Marketing"),
+        "BPCL":       ("Oil & Gas", "Refining & Marketing"),
+        "HPCL":       ("Oil & Gas", "Refining & Marketing"),
+        "MRPL":       ("Oil & Gas", "Refining & Marketing"),
+        # Power
+        "NTPC":       ("Power", "Thermal Power"),
+        "POWERGRID":  ("Power", "Transmission"),
+        "ADANIGREEN": ("Power", "Renewable Energy"),
+        "TATAPOWER":  ("Power", "Integrated Power"),
+        "NHPC":       ("Power", "Hydro Power"),
+        "TORNTPOWER": ("Power", "Integrated Power"),
+        # Automobile
+        "TATAMOTORS": ("Automobile", "Four Wheeler"),
+        "MARUTI":     ("Automobile", "Four Wheeler"),
+        "M&M":        ("Automobile", "Four Wheeler"),
+        "HEROMOTOCO": ("Automobile", "Two Wheeler"),
+        "BAJAJ-AUTO": ("Automobile", "Two Wheeler"),
+        "EICHERMOT":  ("Automobile", "Two Wheeler"),
+        "ASHOKLEY":   ("Automobile", "Commercial Vehicle"),
+        "TATAMTRDVR": ("Automobile", "Four Wheeler"),
+        # Steel
+        "TATASTEEL":  ("Steel", "Flat Steel"),
+        "JSWSTEEL":   ("Steel", "Flat Steel"),
+        "SAIL":       ("Steel", "Flat Steel"),
+        "NMDC":       ("Steel", "Iron Ore Mining"),
+        "HINDZINC":   ("Metals & Mining", "Zinc"),
+        # Metals & Mining
+        "HINDALCO":   ("Metals & Mining", "Aluminum"),
+        "VEDANTA":    ("Metals & Mining", "Diversified"),
+        "COALINDIA":  ("Metals & Mining", "Coal Mining"),
+        "MOIL":       ("Metals & Mining", "Manganese"),
+        # Cement
+        "ULTRACEMCO": ("Cement", "Portland Cement"),
+        "AMBUJACEM":  ("Cement", "Portland Cement"),
+        "ACC":        ("Cement", "Portland Cement"),
+        "SHREECEM":   ("Cement", "Portland Cement"),
+        "RAMCOCEM":   ("Cement", "Portland Cement"),
+        # IT Services
+        "TCS":        ("IT Services", "Software Services"),
+        "INFY":       ("IT Services", "Software Services"),
+        "WIPRO":      ("IT Services", "Software Services"),
+        "HCLTECH":    ("IT Services", "Software Services"),
+        "TECHM":      ("IT Services", "Software Services"),
+        "LTIM":       ("IT Services", "Software Services"),
+        "MPHASIS":    ("IT Services", "Software Services"),
+        # Banking
+        "HDFCBANK":   ("Banking", "Private Sector Bank"),
+        "ICICIBANK":  ("Banking", "Private Sector Bank"),
+        "AXISBANK":   ("Banking", "Private Sector Bank"),
+        "KOTAKBANK":  ("Banking", "Private Sector Bank"),
+        "SBIN":       ("Banking", "Public Sector Bank"),
+        "BANKBARODA": ("Banking", "Public Sector Bank"),
+        "CANBK":      ("Banking", "Public Sector Bank"),
+        "IDBI":       ("Banking", "Public Sector Bank"),
+        "FEDERALBNK": ("Banking", "Private Sector Bank"),
+        "INDUSINDBK": ("Banking", "Private Sector Bank"),
+        # Healthcare / Pharmaceuticals
+        "DRREDDY":    ("Healthcare", "Generic Pharmaceuticals"),
+        "SUNPHARMA":  ("Healthcare", "Generic Pharmaceuticals"),
+        "CIPLA":      ("Healthcare", "Generic Pharmaceuticals"),
+        "DIVISLAB":   ("Healthcare", "API Manufacturing"),
+        "BIOCON":     ("Healthcare", "Biosimilars"),
+        "APOLLOHOSP": ("Healthcare", "Hospital"),
+        "FORTIS":     ("Healthcare", "Hospital"),
+        # FMCG
+        "HINDUNILVR": ("FMCG", "Consumer Staples"),
+        "ITC":        ("FMCG", "Consumer Staples"),
+        "NESTLEIND":  ("FMCG", "Consumer Staples"),
+        "BRITANNIA":  ("FMCG", "Consumer Staples"),
+        "DABUR":      ("FMCG", "Consumer Staples"),
+        "MARICO":     ("FMCG", "Consumer Staples"),
+        "GODREJCP":   ("FMCG", "Consumer Staples"),
+        "COLPAL":     ("FMCG", "Consumer Staples"),
+        # Telecom
+        "BHARTIARTL": ("Telecom", "Wireless Services"),
+        "VIL":        ("Telecom", "Wireless Services"),
+        "TATACOMM":   ("Telecom", "Enterprise Telecom"),
+        # Infrastructure / Capital Goods
+        "LT":         ("Infrastructure", "EPC Contracts"),
+        "IRCTC":      ("Infrastructure", "Railway Services"),
+        "ADANIPORTS": ("Infrastructure", "Ports"),
+        "NCC":        ("Infrastructure", "EPC Contracts"),
+        "BEL":        ("Capital Goods", "Defence Electronics"),
+        "BHEL":       ("Capital Goods", "Heavy Engineering"),
+        "SIEMENS":    ("Capital Goods", "Heavy Engineering"),
+        "ABB":        ("Capital Goods", "Heavy Engineering"),
+        # Chemicals
+        "PIDILITIND": ("Chemicals", "Specialty Chemicals"),
+        "ATUL":       ("Chemicals", "Specialty Chemicals"),
+        "DEEPAKFERT": ("Chemicals", "Fertilizer"),
+        "GNFC":       ("Chemicals", "Fertilizer"),
+        # Jewellery
+        "TITAN":      ("Jewellery", "Retail"),
+        "KALYANKJIL": ("Jewellery", "Retail"),
+        # Fertilizer
+        "NFL":        ("Fertilizer", "Nitrogenous"),
+        "RCF":        ("Fertilizer", "Nitrogenous"),
+        "FACT":       ("Fertilizer", "Phosphatic"),
+        "CHAMBAL":    ("Fertilizer", "Nitrogenous"),
+        # Real Estate
+        "DLF":        ("Real Estate", "Residential"),
+        "GODREJPROP": ("Real Estate", "Residential"),
+        "PRESTIGE":   ("Real Estate", "Diversified"),
+        "OBEROIRLTY": ("Real Estate", "Residential"),
+        # Aviation
+        "INDIGO":     ("Aviation", "Airlines"),
+        "SPICEJET":   ("Aviation", "Airlines"),
+        # Sugar
+        "BALRAMCHIN": ("Sugar", "Sugar Manufacturing"),
+        "DWARIKESH":  ("Sugar", "Sugar Manufacturing"),
+        "TRIVENI":    ("Sugar", "Sugar Manufacturing"),
+    }
+
+    updated = 0
+    for ticker, (sector, industry) in SECTOR_MAP.items():
+        company = db.query(Company).filter(Company.ticker_nse == ticker).first()
+        if company and (not company.sector or company.sector.strip().lower() in ("unknown", "")):
+            company.sector = sector
+            if not company.industry:
+                company.industry = industry
+            updated += 1
+            logger.info("Set sector for %s: %s", ticker, sector)
+
+    if updated:
+        db.commit()
+    logger.info("Company sector patch complete — updated %d companies", updated)
+
+
 def main():
     db = SessionLocal()
     try:
@@ -495,6 +765,7 @@ def main():
         seed_causal_chains(db)
         seed_sector_exposures(db)
         seed_dev_commodity_prices(db)
+        seed_company_sectors(db)
 
         logger.info("Seed data complete!")
 

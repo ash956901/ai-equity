@@ -8,7 +8,7 @@ from uuid import UUID
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
-from src.agents import build_research_agent
+from src.agents import invoke_research_agent
 from src.db.models import Company, Holding, Portfolio, User
 from src.services.portfolio_service import PortfolioService
 from src.utils.data_sources import portfolio_sources
@@ -54,9 +54,6 @@ class PortfoliosService:
         # Get causal insights first
         causal_context = self._get_causal_context(portfolio_id)
 
-        # We use the research agent to generate a summary/suggestion
-        agent = build_research_agent()
-        
         # Enhanced task with causal context
         task = (
             f"Analyse the portfolio {portfolio_id} and recent market news. "
@@ -76,9 +73,9 @@ class PortfoliosService:
 
 
         try:
-            result = agent.invoke(
+            result = invoke_research_agent(
                 {"messages": [{"role": "user", "content": task}]},
-                config={"configurable": {"thread_id": f"suggestions-{user_id}"}},
+                {"configurable": {"thread_id": f"suggestions-{user_id}"}},
             )
             response_text = result["messages"][-1].content
             return {"suggestions": response_text}

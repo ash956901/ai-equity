@@ -55,11 +55,14 @@ export function NewsView(props: NewsViewProps) {
     try {
       const data = await fetchNewsRadar(50, symbol, "intermediate", forceRefresh);
       setArticles(data);
+      if (data.length === 0) {
+        setError(`No recent news indexed for ${symbol}. Click Refresh Data to fetch the latest articles.`);
+      }
     } catch (err) {
       if (err instanceof ApiError && err.status === 401) {
         setError("News API is not configured on backend yet (401).");
       } else {
-        setError(`Could not load news and sentiment for ${symbol}.`);
+        setError(`Could not load news for ${symbol}. Check your network or try Refresh Data.`);
       }
       setArticles([]);
     } finally {
@@ -121,7 +124,9 @@ export function NewsView(props: NewsViewProps) {
         </div>
       </div>
 
-      {error ? <div className="notice warning">{error}</div> : null}
+      {error ? (
+        <div className={`notice ${articles.length === 0 ? "" : "warning"}`}>{error}</div>
+      ) : null}
 
       <div className="split-grid" style={{ gridTemplateColumns: "1fr" }}>
         <article className="feature-card news-panel" style={{ width: "100%" }}>

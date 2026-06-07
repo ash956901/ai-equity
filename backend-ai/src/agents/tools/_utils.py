@@ -1,11 +1,26 @@
 """Shared helpers for agent tools."""
 
 import logging
+from typing import Optional
 from uuid import UUID
 
 from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
+
+
+def safe_uuid(value: object) -> Optional[UUID]:
+    """Parse *value* as a UUID, returning None instead of raising on bad input.
+
+    The LLM sometimes passes a label, name, or malformed id where a UUID is
+    expected; without this guard a stray ``UUID(bad)`` raises
+    ``ValueError: badly formed hexadecimal UUID string`` and crashes the whole
+    agent run. Tools should use this and return a friendly error instead.
+    """
+    try:
+        return UUID(str(value).strip())
+    except (ValueError, AttributeError, TypeError):
+        return None
 
 
 def resolve_company_id(company_id: str, db: Session) -> UUID:

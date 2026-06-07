@@ -86,8 +86,9 @@ export async function fetchPortfolioMetrics(
 export async function fetchPortfolioSuggestions(
   userId: string
 ): Promise<{ suggestions: string }> {
-  // AI suggestions can take time, so we use a 90s timeout
-  return aiGet<{ suggestions: string }>(`/portfolios/suggestions?user_id=${userId}`, 90000);
+  // AI suggestions run the full research agent (slow 120B reasoning model, plus a
+  // possible second-key retry), so allow up to 300s to match the chat budget.
+  return aiGet<{ suggestions: string }>(`/portfolios/suggestions?user_id=${userId}`, 300000);
 }
 
 
@@ -275,6 +276,10 @@ export async function fetchCausalMarket(): Promise<CausalMarketData> {
 
 export async function fetchCausalPortfolio(userId: string): Promise<CausalPortfolioData> {
   return aiGet<CausalPortfolioData>(`/causal/portfolio?user_id=${userId}`);
+}
+
+export async function fetchCausalPortfolioCompanies(userId: string): Promise<{ companies: CausalCompanyData[]; last_refreshed_at?: string | null }> {
+  return aiGet(`/causal/portfolio/companies?user_id=${userId}`);
 }
 
 export async function fetchCausalCompany(companyId: string): Promise<CausalCompanyData> {
