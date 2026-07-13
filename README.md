@@ -2,6 +2,9 @@
 
 AI-native equity research platform for Indian equities (NSE/BSE). Provides institutional-grade research capabilities to retail investors via LLM-powered agents, RAG over financial filings, and automated analysis.
 
+### Medium Article
+https://medium.com/@sanchiitvijay/meet-minerva-the-ai-native-equity-research-platform-revolutionizing-indian-markets-8f4447aa54b6
+
 ## Services
 
 | Service | Port | Tech |
