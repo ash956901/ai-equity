@@ -7,6 +7,7 @@ from typing import Any
 
 from deepagents import create_deep_agent
 
+from src.app.telemetry import traceable
 from src.agents.memory import get_memory_config
 from src.agents.prompts.orchestrator import ORCHESTRATOR_PROMPT
 from src.agents.subagents import get_all_subagents
@@ -199,6 +200,7 @@ def _get_agent(use_fallback_key: bool = False):
     return build_react_agent(use_fallback_key=use_fallback_key)
 
 
+@traceable(name="agents.invoke_research_agent")
 def invoke_research_agent(payload: dict[str, Any], config: dict[str, Any]):
     """Invoke the active agent with automatic failover to a second
     DeepSeek/NVIDIA key on timeout / rate-limit / connection errors.

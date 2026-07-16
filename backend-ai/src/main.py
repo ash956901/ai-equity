@@ -1,9 +1,19 @@
 """FastAPI application entrypoint."""
 
-from src.app import create_app
+from src.app.telemetry import configure_observability
 from src.config import get_settings
 
-app = create_app()
+
+def _build_app():
+    settings = get_settings()
+    configure_observability(settings)
+
+    from src.app import create_app
+
+    return create_app()
+
+
+app = _build_app()
 
 
 if __name__ == "__main__":

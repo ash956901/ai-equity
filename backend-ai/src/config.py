@@ -94,6 +94,18 @@ class Settings(BaseSettings):
     celery_broker_url: str = "redis://localhost:6379/0"
     celery_result_backend: Optional[str] = None
 
+    # Observability
+    observability_enabled: bool = False
+    observability_service_name: str = "ai-equity-backend"
+    observability_service_version: str = "0.2.0"
+    otel_exporter_otlp_endpoint: Optional[str] = None
+    otel_exporter_otlp_headers: Optional[str] = None
+    otel_exporter_otlp_protocol: str = "http/protobuf"
+    langsmith_tracing: bool = False
+    langsmith_project: str = "ai-equity-backend"
+    langsmith_endpoint: str = "https://api.smith.langchain.com"
+    langsmith_api_key: Optional[str] = None
+
     # Deep multi-agent orchestration
     workflow_runs_dir: str = "workflow_runs"
     deep_agent_max_steps: int = 6

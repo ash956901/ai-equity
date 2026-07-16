@@ -8,8 +8,10 @@ from fastapi.staticfiles import StaticFiles
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from src.app.lifespan import app_lifespan
+from src.app.telemetry import instrument_fastapi
 from src.app.middleware import register_middleware
 from src.app.routers import register_routers
+from src.config import get_settings
 
 
 class ForceCORSHeadersMiddleware(BaseHTTPMiddleware):
@@ -45,6 +47,8 @@ class ForceCORSHeadersMiddleware(BaseHTTPMiddleware):
 
 def create_app() -> FastAPI:
     """Create and configure the FastAPI application."""
+    settings = get_settings()
+
     app = FastAPI(
         title="AI Equity Research Platform",
         description="Backend-only AI-native equity research system for Indian equities.",
@@ -55,6 +59,8 @@ def create_app() -> FastAPI:
     register_middleware(app)
     app.add_middleware(ForceCORSHeadersMiddleware)
     register_routers(app)
+    if settings.observability_enabled or settings.otel_exporter_otlp_endpoint:
+        instrument_fastapi(app)
 
     uploads_dir = Path("uploads")
     uploads_dir.mkdir(exist_ok=True)

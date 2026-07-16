@@ -7,6 +7,7 @@ from uuid import UUID
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
+from src.app.telemetry import traceable
 from src.db.models import ChatMessage, ChatSession, NewsArticle, User, Portfolio
 from src.domains.chat.research_pipeline import ResearchPipeline
 from src.utils.cache import get_analysis_cache
@@ -83,6 +84,7 @@ class ChatService:
         except Exception:
             return None
 
+    @traceable(name="chat.process_query")
     def process_query(
         self,
         user_id: UUID,
