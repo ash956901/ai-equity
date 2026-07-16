@@ -154,6 +154,7 @@ def get_portfolio_company_exposures(user_id: UUID, db: Session = Depends(get_db)
     are always shown regardless of whether commodities crossed any change threshold.
     """
     from src.db.models import Holding
+    from src.db.models import CausalChain
 
     last_refreshed_at = _maybe_refresh_commodities(db)
 
@@ -194,6 +195,32 @@ def get_portfolio_company_exposures(user_id: UUID, db: Session = Depends(get_db)
         seen_companies.add(str(company.id))
 
         exposures = service.get_sector_exposure(company.sector or "")
+        chains = []
+        for exposure in exposures:
+            matched_chains = (
+                db.query(CausalChain)
+                .filter(
+                    CausalChain.is_active.is_(True),
+                    CausalChain.hop1_target == exposure.commodity,
+                )
+                .all()
+            )
+            for chain in matched_chains:
+                chains.append(
+                    {
+                        "id": str(chain.id),
+                        "name": chain.name,
+                        "trigger_type": chain.trigger_type,
+                        "trigger_value": chain.trigger_value,
+                        "hop1_target": chain.hop1_target,
+                        "hop1_relationship": chain.hop1_relationship,
+                        "hop2_target": chain.hop2_target,
+                        "hop2_relationship": chain.hop2_relationship,
+                        "hop3_target": chain.hop3_target,
+                        "hop3_relationship": chain.hop3_relationship,
+                        "confidence": chain.confidence,
+                    }
+                )
         news = (
             db.query(ClassifiedNews)
             .filter(
@@ -235,6 +262,7 @@ def get_portfolio_company_exposures(user_id: UUID, db: Session = Depends(get_db)
         })
 
     return {
+        "chains": chains,
         "companies": companies_data,
         "last_refreshed_at": last_refreshed_at.isoformat() if last_refreshed_at else None,
     }

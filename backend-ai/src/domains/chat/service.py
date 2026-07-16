@@ -7,8 +7,8 @@ from uuid import UUID
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
-from src.agents import invoke_research_agent
 from src.db.models import ChatMessage, ChatSession, NewsArticle, User, Portfolio
+from src.domains.chat.research_pipeline import ResearchPipeline
 from src.utils.cache import get_analysis_cache
 from src.utils.data_sources import DataSource
 
@@ -25,6 +25,7 @@ class ChatService:
 
     def __init__(self, db: Session):
         self.db = db
+        self._research_pipeline = ResearchPipeline()
 
     def _build_user_message(
         self,
@@ -178,27 +179,30 @@ class ChatService:
 
         print(f"[STAGE 3: USER_MESSAGE] Built message (full): {user_message}")
 
-        print(f"[STAGE 4: AGENT_INVOKE] Invoking agent with session_id={resolved_session_id}")
-        print(f"[STAGE 4: INPUT_TO_LLM] messages = [{{'role': 'user', 'content': '{user_message}'}}]")
+        print(f"[STAGE 4: PIPELINE] Running planner/task-queue/worker-pool flow for session_id={resolved_session_id}")
         result: Optional[dict[str, Any]] = None
         last_err = None
         for attempt in range(1, MAX_AGENT_RETRIES + 1):
             try:
-                print(f"[STAGE 4: ATTEMPT {attempt}/{MAX_AGENT_RETRIES}] Invoking agent...")
+                print(f"[STAGE 4: ATTEMPT {attempt}/{MAX_AGENT_RETRIES}] Running research pipeline...")
 
-                result = invoke_research_agent(
-                    {"messages": [{"role": "user", "content": user_message}]},
-                    {"configurable": {"thread_id": str(resolved_session_id)}},
+                result = self._research_pipeline.run(
+                    query=query,
+                    user_id=user_id,
+                    company_id=company_id,
+                    upload_id=upload_id,
+                    primary_portfolio_id=primary_portfolio_id,
+                    session_id=resolved_session_id,
+                    context_note=user_message,
                 )
 
-                print(f"[STAGE 4: ATTEMPT {attempt}] Agent invoke succeeded")
-
+                print(f"[STAGE 4: ATTEMPT {attempt}] Pipeline succeeded")
                 last_err = None
                 break
             except Exception as invoke_err:
                 last_err = invoke_err
                 err_msg = str(invoke_err)
-                print(f"[STAGE 4: ATTEMPT {attempt}] Agent invoke failed: {err_msg[:200]}")
+                print(f"[STAGE 4: ATTEMPT {attempt}] Pipeline failed: {err_msg[:200]}")
 
                 if "output_parse_failed" in err_msg or "BadRequestError" in type(invoke_err).__name__:
                     print(f"[STAGE 4: RETRY] Retrying after {RETRY_BACKOFF_SECONDS * attempt}s...")
@@ -210,22 +214,16 @@ class ChatService:
         if last_err is not None:
             raise last_err
         if result is None:
-            raise RuntimeError("Agent returned no result")
+            raise RuntimeError("Pipeline returned no result")
 
         print(f"[STAGE 4: RESULT_FULL] result keys = {list(result.keys())}")
 
-        response_text = result["messages"][-1].content
+        response_text = result["response"]
         print(f"[STAGE 4: LLM_RESPONSE_FULL] response_text = {response_text}")
 
-        tokens_used = 0
-        if hasattr(result["messages"][-1], "response_metadata"):
-            tokens_used = (
-                result["messages"][-1]
-                .response_metadata.get("token_usage", {})
-                .get("total_tokens", 0)
-            )
+        tokens_used = int(result.get("tokens_used", 0))
+        if tokens_used:
             print(f"[STAGE 4: TOKENS_USED] tokens_used = {tokens_used}")
-            print(f"[STAGE 4: METADATA_FULL] response_metadata = {result['messages'][-1].response_metadata}")
 
         self.db.add(
             ChatMessage(
@@ -246,9 +244,9 @@ class ChatService:
 
         print(f"[STAGE 5: DB] Messages saved to DB, session={resolved_session_id}")
 
-        data_sources = [
+        data_sources = result.get("data_sources") or [
             DataSource(
-                name="EquityAI Research Agent",
+                name="Planner-driven research pipeline",
                 url=f"/chat/sessions/{user_id}",
                 data_type="ai_response",
             ).model_dump(),
@@ -266,6 +264,8 @@ class ChatService:
             "response": response_text,
             "tokens_used": tokens_used,
             "session_id": str(resolved_session_id),
+            "sources": result.get("sources", []),
+            "visualizations": result.get("visualizations", []),
             "data_sources": data_sources,
         }
 

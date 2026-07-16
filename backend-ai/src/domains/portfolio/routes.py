@@ -10,6 +10,9 @@ from sqlalchemy.orm import Session
 from src.db.database import get_db
 from src.domains.portfolio.service import PortfoliosService
 
+from src.utils.cache import get_analysis_cache
+
+
 router = APIRouter(prefix="/portfolios", tags=["portfolios"])
 
 
@@ -36,6 +39,7 @@ def list_portfolios(
     return service.list_portfolios(user_id)
 
 
+
 @router.post("/", status_code=201)
 def create_portfolio(
     request: CreatePortfolioRequest,
@@ -57,8 +61,16 @@ def get_ai_suggestions(
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
     """Get AI-generated investment suggestions for the user's primary portfolio."""
+    cache = get_analysis_cache()
+    cache_key = cache.make_key("portfolio_suggestions", str(user_id))
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return cached
+
     service = PortfoliosService(db)
-    return service.get_ai_suggestions(user_id)
+    suggestions = service.get_ai_suggestions(user_id)
+    cache.set(cache_key, suggestions)
+    return suggestions
 
 
 @router.get("/{portfolio_id}")

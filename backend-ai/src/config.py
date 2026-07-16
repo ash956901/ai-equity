@@ -24,7 +24,7 @@ class Settings(BaseSettings):
     database_url: str = "postgresql://postgres:postgres@localhost:5432/equity_research"
 
     # Redis (optional)
-    redis_url: Optional[str] = None
+    redis_url: Optional[str] = "redis://localhost:6379"
 
     # Qdrant
     qdrant_url: str = "http://localhost:6333"
@@ -97,6 +97,7 @@ class Settings(BaseSettings):
     # Deep multi-agent orchestration
     workflow_runs_dir: str = "workflow_runs"
     deep_agent_max_steps: int = 6
+    chat_worker_pool_size: int = 4
 
     # Optional web search augmentation
     tavily_api_key: Optional[str] = None

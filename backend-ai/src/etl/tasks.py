@@ -537,6 +537,7 @@ def refresh_commodity_prices(self):
                 currency=currency,
                 unit=unit,
                 timestamp=now,
+                source="AlphaVantage" if api_key else "YahooFinance",
             )
             db.add(row)
             updated += 1
