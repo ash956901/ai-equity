@@ -824,3 +824,50 @@ class SimulatorStats(Base):
     daily_challenge_last: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     daily_challenge_done: Mapped[bool] = mapped_column(Boolean, default=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class UserSession(Base):
+    """Server-side session for JWT revocation and tracking."""
+
+    __tablename__ = "user_sessions"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    access_token_jti: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    refresh_token_jti: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    user_agent: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    ip_address: Mapped[Optional[str]] = mapped_column(String(45), nullable=True)
+    is_revoked: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    expires_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+
+    __table_args__ = (
+        Index("ix_user_sessions_user", "user_id"),
+        Index("ix_user_sessions_access_jti", "access_token_jti"),
+        Index("ix_user_sessions_refresh_jti", "refresh_token_jti"),
+    )
+
+
+class OTP(Base):
+    """One-time password for email verification (signup/login)."""
+
+    __tablename__ = "otps"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    email: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    otp_code: Mapped[str] = mapped_column(String(10), nullable=False)
+    purpose: Mapped[str] = mapped_column(String(20), nullable=False)  # signup | login
+    expires_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    is_used: Mapped[bool] = mapped_column(Boolean, default=False)
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    __table_args__ = (
+        Index("ix_otps_email_purpose", "email", "purpose"),
+    )

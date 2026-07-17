@@ -3,6 +3,7 @@
 from fastapi import FastAPI
 
 from src.domains.alerts import alerts_router
+from src.domains.auth import auth_router
 from src.domains.causal import causal_router
 from src.domains.chat import chat_router, upload_router
 from src.domains.companies import companies_router
@@ -19,6 +20,7 @@ from src.domains.watchlists import watchlists_router
 
 def register_routers(app: FastAPI) -> None:
     """Attach all API routers to the application."""
+    app.include_router(auth_router)
     app.include_router(chat_router)
     app.include_router(upload_router)
     app.include_router(companies_router)

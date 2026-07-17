@@ -139,6 +139,36 @@ class Settings(BaseSettings):
     kite_api_secret: Optional[str] = None
     kite_access_token: Optional[str] = None
 
+    # Auth / JWT
+    jwt_secret_key: str = "change-me-in-production-use-a-real-secret"
+    jwt_algorithm: str = "HS256"
+    jwt_access_token_expire_minutes: int = 30
+    jwt_refresh_token_expire_days: int = 7
+
+    # OTP
+    otp_expiry_minutes: int = 5
+    otp_length: int = 6
+    otp_max_attempts: int = 3
+    otp_rate_limit_per_hour: int = 5
+
+    # SMTP / Email
+    smtp_host: Optional[str] = None
+    smtp_port: int = 587
+    smtp_user: Optional[str] = None
+    smtp_password: Optional[str] = None
+    smtp_from: Optional[str] = "noreply@equityai.com"
+    smtp_use_tls: bool = True
+
+    # Cookie config (cross-domain)
+    cookie_domain: Optional[str] = None
+    cookie_secure: bool = False  # True for production cross-domain
+    cookie_samesite: str = "lax"  # "none" for production cross-domain
+    cookie_access_max_age: int = 1800
+    cookie_refresh_max_age: int = 604800
+
+    # Frontend URL (for OTP email links / redirects)
+    frontend_url: str = "http://localhost:5173"
+
     # Additional CORS configuration for allowed origins
     allowed_origins: Optional[str] = None
 

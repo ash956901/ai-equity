@@ -29,7 +29,7 @@ class ForceCORSHeadersMiddleware(BaseHTTPMiddleware):
                     headers={
                         "Access-Control-Allow-Origin": origin if origin else allowed_origins[0],
                         "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-                        "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Request-ID, ngrok-skip-browser-warning",
+                        "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Request-ID, X-CSRF-Token, ngrok-skip-browser-warning",
                         "Access-Control-Allow-Credentials": "true",
                         "Access-Control-Max-Age": "3600",
                     },
@@ -40,7 +40,7 @@ class ForceCORSHeadersMiddleware(BaseHTTPMiddleware):
         if origin in allowed_origins or "*" in allowed_origins:
             response.headers["Access-Control-Allow-Origin"] = origin if origin else allowed_origins[0]
             response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
-            response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, X-Request-ID, ngrok-skip-browser-warning"
+            response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, X-Request-ID, X-CSRF-Token, ngrok-skip-browser-warning"
             response.headers["Access-Control-Allow-Credentials"] = "true"
         return response
 

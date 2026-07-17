@@ -5,7 +5,7 @@ import time
 import os
 from uuid import uuid4
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 
@@ -41,12 +41,55 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
             clear_request_context()
 
 
+class CSRFMiddleware(BaseHTTPMiddleware):
+    """Validate CSRF double-submit cookie on mutating requests."""
+
+    EXEMPT_PATHS = {
+        "/auth/send-otp",
+        "/auth/verify-otp",
+        "/auth/refresh",
+        "/health",
+        "/",
+        "/api/v1/status",
+    }
+
+    async def dispatch(self, request: Request, call_next):
+        if request.method in ("GET", "HEAD", "OPTIONS"):
+            return await call_next(request)
+
+        path = request.url.path
+        if path in self.EXEMPT_PATHS or path.startswith("/uploads"):
+            return await call_next(request)
+
+        cookie_token = request.cookies.get("csrf_token")
+        header_token = request.headers.get("x-csrf-token")
+
+        if not cookie_token or not header_token:
+            return Response(
+                content='{"detail":"Missing CSRF token"}',
+                status_code=403,
+                media_type="application/json",
+            )
+
+        import secrets
+
+        if not secrets.compare_digest(cookie_token, header_token):
+            return Response(
+                content='{"detail":"Invalid CSRF token"}',
+                status_code=403,
+                media_type="application/json",
+            )
+
+        return await call_next(request)
+
+
 def register_middleware(app: FastAPI) -> None:
     """Attach middleware stack to the FastAPI app."""
     app.add_middleware(RequestContextMiddleware)
-    
+    app.add_middleware(CSRFMiddleware)
+
     allowed_origins = os.getenv("ALLOWED_ORIGINS", "*").split(",")
-    
+
     if os.getenv("APP_ENV") == "development":
         app.add_middleware(
             CORSMiddleware,
