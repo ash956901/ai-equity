@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { AuthProvider, useAuth, LoginPage, SignupPage } from "./features/auth";
+import "./features/auth/auth.css";
 import { ProfilePickerScreen } from "./features/profiles/ProfilePickerScreen";
 import { DashboardView } from "./features/dashboard/DashboardView";
 import { SettingsView } from "./features/settings/SettingsView";
@@ -95,7 +97,17 @@ function getInitialDashboardPreferences(): DashboardPreferences {
   }
 }
 
-export default function App() {
+function AuthScreen() {
+  const [authView, setAuthView] = useState<"login" | "signup">("login");
+
+  if (authView === "signup") {
+    return <SignupPage onGoToLogin={() => setAuthView("login")} />;
+  }
+  return <LoginPage onGoToSignup={() => setAuthView("signup")} />;
+}
+
+function AppShell() {
+  const { user, isAuthenticated, isLoading, logout } = useAuth();
   const [activeProfile, setActiveProfile] = useState<AppProfile | null>(getStoredProfile);
   const [activeView, setActiveView] = useState<ViewKey>("dashboard");
   const [theme, setTheme] = useState<Theme>(getInitialTheme);
@@ -163,7 +175,23 @@ export default function App() {
     );
   }, [dashboardPreferences]);
 
- 
+  // Sync auth user to profile storage
+  useEffect(() => {
+    if (user) {
+      const profile: AppProfile = {
+        id: user.id,
+        name: user.full_name || user.email.split("@")[0],
+      };
+      window.localStorage.setItem(ACTIVE_PROFILE_KEY, JSON.stringify(profile));
+      window.localStorage.setItem("equityai-user-id", user.id);
+      setActiveProfile(profile);
+    } else {
+      window.localStorage.removeItem(ACTIVE_PROFILE_KEY);
+      window.localStorage.removeItem("equityai-user-id");
+      setActiveProfile(null);
+    }
+  }, [user]);
+
   const toggleTheme = useCallback(() => {
     const root = document.documentElement;
     const startViewTransition = (document as unknown as ViewTransitionCapable)
@@ -212,22 +240,17 @@ export default function App() {
   }, []);
 
   const handleLogout = useCallback(() => {
+    logout();
     window.localStorage.removeItem(ACTIVE_PROFILE_KEY);
     setActiveProfile(null);
     setActiveView("dashboard");
-  }, []);
+  }, [logout]);
 
-  const toggleDataMode = useCallback(() => {
-    // Disabled in UI
-  }, []);
+  const toggleDataMode = useCallback(() => {}, []);
 
-  const addFavorite = useCallback(() => {
-    // Disabled in UI
-  }, []);
+  const addFavorite = useCallback(() => {}, []);
 
-  const isFavorited = useCallback(() => {
-    return false;
-  }, []);
+  const isFavorited = useCallback(() => false, []);
 
   const goToView = useCallback(
     (view: ViewKey) => {
@@ -468,7 +491,27 @@ export default function App() {
     toggleTheme,
     unreadCount,
     createInitialThread,
+    activePerformanceThreadId,
+    createInitialPerformanceThread,
+    performanceThreads,
+    setActivePerformanceThreadId,
+    setPerformanceThreads,
+    handleLogout,
   ]);
+
+  // Show auth loading spinner
+  if (isLoading) {
+    return (
+      <div className="auth-loading">
+        <div className="auth-loading-spinner" />
+      </div>
+    );
+  }
+
+  // Not authenticated — show login/signup
+  if (!isAuthenticated) {
+    return <AuthScreen />;
+  }
 
   if (!activeProfile) {
     return <ProfilePickerScreen onProfileSelected={handleProfileSelected} />;
@@ -500,5 +543,13 @@ export default function App() {
 
       <ToastStack toasts={toasts} onRemove={removeToast} />
     </div>
+  );
+}
+
+export default function App() {
+  return (
+    <AuthProvider>
+      <AppShell />
+    </AuthProvider>
   );
 }
