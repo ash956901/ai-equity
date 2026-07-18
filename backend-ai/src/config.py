@@ -30,10 +30,6 @@ class Settings(BaseSettings):
     qdrant_url: str = "http://localhost:6333"
     qdrant_api_key: Optional[str] = None
 
-    # Agent architecture: "react" = single fast LangGraph ReAct agent (flat tool
-    # set, far fewer LLM round-trips, fits UI timeouts); "deep" = multi-subagent
-    # deepagents orchestrator (richer but many sequential LLM calls = slow).
-    agent_mode: Literal["deep", "react"] = "react"
 
     # LLM
     llm_provider: Literal["ollama", "deepseek", "openai", "groq", "claude"] = "groq"

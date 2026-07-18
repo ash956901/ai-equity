@@ -14,7 +14,6 @@ from src.agents.guardrails import (
 )
 from src.app.telemetry import traceable
 from src.db.models import ChatMessage, ChatSession, NewsArticle, User, Portfolio
-from src.domains.chat.research_pipeline import ResearchPipeline
 from src.utils.cache import get_analysis_cache
 from src.utils.data_sources import DataSource
 
@@ -31,7 +30,6 @@ class ChatService:
 
     def __init__(self, db: Session):
         self.db = db
-        self._research_pipeline = ResearchPipeline()
 
     def _build_user_message(
         self,
@@ -197,14 +195,18 @@ class ChatService:
             try:
                 print(f"[STAGE 4: ATTEMPT {attempt}/{MAX_AGENT_RETRIES}] Running research pipeline...")
 
-                result = self._research_pipeline.run(
-                    query=query,
-                    user_id=user_id,
-                    company_id=company_id,
-                    upload_id=upload_id,
-                    primary_portfolio_id=primary_portfolio_id,
-                    session_id=resolved_session_id,
-                    context_note=user_message,
+                from src.agents.graph import run_research
+
+                result = run_research(
+                    {
+                        "query": query,
+                        "user_id": str(user_id),
+                        "company_id": str(company_id) if company_id else None,
+                        "upload_id": str(upload_id) if upload_id else None,
+                        "portfolio_id": str(primary_portfolio_id) if primary_portfolio_id else None,
+                        "context_note": user_message,
+                    },
+                    {"configurable": {"thread_id": str(resolved_session_id)}},
                 )
 
                 print(f"[STAGE 4: ATTEMPT {attempt}] Pipeline succeeded")
@@ -296,7 +298,7 @@ class ChatService:
         """
         import json
 
-        from src.agents import stream_research_agent
+        from src.agents.graph import build_research_graph, stream_research
 
         def sse(event: str, data: dict[str, Any]) -> str:
             return f"event: {event}\ndata: {json.dumps(data, default=str)}\n\n"
@@ -350,30 +352,23 @@ class ChatService:
                 news_context=news_context,
             )
 
-            yield sse("stage", {"stage": "planning", "detail": "Planning research tasks"})
+            inputs = {
+                "query": query,
+                "user_id": str(user_id),
+                "company_id": str(company_id) if company_id else None,
+                "upload_id": str(upload_id) if upload_id else None,
+                "portfolio_id": str(primary_portfolio_id) if primary_portfolio_id else None,
+                "context_note": user_message,
+            }
+            config = {"configurable": {"thread_id": str(resolved_session_id)}}
 
-            prepared = self._research_pipeline.prepare(
-                query=query,
-                user_id=user_id,
-                company_id=company_id,
-                upload_id=upload_id,
-                primary_portfolio_id=primary_portfolio_id,
-                session_id=resolved_session_id,
-                context_note=user_message,
-            )
-            yield sse(
-                "stage",
-                {"stage": "evidence", "detail": "Gathered evidence", "tasks": [t.kind for t in prepared["tasks"]]},
-            )
-
-            yield sse("stage", {"stage": "synthesizing", "detail": "Writing answer"})
             parts: list[str] = []
-            for token in stream_research_agent(
-                {"messages": [{"role": "user", "content": prepared["prompt"]}]},
-                {"configurable": {"thread_id": str(resolved_session_id)}},
-            ):
-                parts.append(token)
-                yield sse("token", {"text": token})
+            for kind, data in stream_research(inputs, config):
+                if kind == "stage":
+                    yield sse("stage", data)
+                elif kind == "token":
+                    parts.append(data)
+                    yield sse("token", {"text": data})
 
             raw_text = "".join(parts)
             response_text = apply_output_guardrail(raw_text)
@@ -392,7 +387,9 @@ class ChatService:
             )
             self.db.commit()
 
-            sources = self._research_pipeline.aggregator.build_sources(prepared["results"])
+            # Sources come from the graph's final persisted state.
+            gstate = build_research_graph().get_state(config)
+            sources = gstate.values.get("sources", []) if gstate else []
             yield sse("done", {"session_id": str(resolved_session_id), "sources": sources})
         except Exception as e:
             try:

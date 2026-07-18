@@ -13,7 +13,6 @@ from dataclasses import dataclass
 from typing import Any, Literal, Optional
 from uuid import UUID
 
-from src.agents import invoke_research_agent
 from src.agents.tools.causal_tools import (
     analyze_causal_chain_with_llm,
     get_market_hidden_patterns,
@@ -434,96 +433,3 @@ class ResultAggregator:
             return text
         return text[: limit - 20] + "\n... [truncated]"
 
-
-class ResearchPipeline:
-    """High-level planner/worker/aggregator pipeline for chat queries."""
-
-    def __init__(self) -> None:
-        settings = get_settings()
-        self.planner = ResearchPlanner()
-        self.worker_pool = ResearchWorkerPool(settings.chat_worker_pool_size)
-        self.aggregator = ResultAggregator()
-
-    def prepare(
-        self,
-        query: str,
-        user_id: UUID,
-        company_id: Optional[UUID],
-        upload_id: Optional[UUID],
-        primary_portfolio_id: Optional[UUID],
-        session_id: UUID,
-        context_note: Optional[str] = None,
-    ) -> dict[str, Any]:
-        """Plan tasks and gather evidence, returning the synthesis prompt.
-
-        This is the non-streaming part of the pipeline, factored out so both
-        ``run`` (blocking) and the SSE streaming path can reuse it before the
-        final LLM synthesis.
-        """
-        tasks = self.planner.plan(
-            query=query,
-            user_id=user_id,
-            company_id=company_id,
-            upload_id=upload_id,
-            primary_portfolio_id=primary_portfolio_id,
-        )
-
-        logger.info("Planned %s research tasks for session %s", len(tasks), session_id)
-        results = self.worker_pool.run(tasks)
-        prompt = self.aggregator.build_prompt_with_context(
-            query=query,
-            tasks=tasks,
-            results=results,
-            context_note=context_note,
-        )
-        return {"prompt": prompt, "tasks": tasks, "results": results}
-
-    def run(
-        self,
-        query: str,
-        user_id: UUID,
-        company_id: Optional[UUID],
-        upload_id: Optional[UUID],
-        primary_portfolio_id: Optional[UUID],
-        session_id: UUID,
-        context_note: Optional[str] = None,
-    ) -> dict[str, Any]:
-        prepared = self.prepare(
-            query=query,
-            user_id=user_id,
-            company_id=company_id,
-            upload_id=upload_id,
-            primary_portfolio_id=primary_portfolio_id,
-            session_id=session_id,
-            context_note=context_note,
-        )
-        prompt = prepared["prompt"]
-        results = prepared["results"]
-
-        result = invoke_research_agent(
-            {"messages": [{"role": "user", "content": prompt}]},
-            {"configurable": {"thread_id": str(session_id)}},
-        )
-
-        response_text = result["messages"][-1].content
-        tokens_used = 0
-        if hasattr(result["messages"][-1], "response_metadata"):
-            tokens_used = (
-                result["messages"][-1]
-                .response_metadata.get("token_usage", {})
-                .get("total_tokens", 0)
-            )
-
-        return {
-            "response": response_text,
-            "tokens_used": tokens_used,
-            "sources": self.aggregator.build_sources(results),
-            "data_sources": [
-                {
-                    "name": "Planner-driven research pipeline",
-                    "url": f"/chat/sessions/{session_id}",
-                    "data_type": "ai_response",
-                }
-            ],
-            "visualizations": [],
-        }

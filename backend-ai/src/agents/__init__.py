@@ -1,9 +1,5 @@
-"""AI Equity research agents powered by the deepagents library."""
+"""AI Equity research agents — native LangGraph pipeline.
 
-from src.agents.orchestrator import (
-    build_research_agent,
-    invoke_research_agent,
-    stream_research_agent,
-)
-
-__all__ = ["build_research_agent", "invoke_research_agent", "stream_research_agent"]
+The research flow lives in :mod:`src.agents.graph` (a ``StateGraph``); import
+``build_research_graph`` / ``run_research`` / ``stream_research`` from there.
+"""

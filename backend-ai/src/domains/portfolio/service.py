@@ -8,7 +8,6 @@ from uuid import UUID
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
-from src.agents import invoke_research_agent
 from src.db.models import Company, Holding, Portfolio, User
 from src.services.portfolio_service import PortfolioService
 from src.utils.data_sources import portfolio_sources
@@ -75,11 +74,11 @@ class PortfoliosService:
             return {"suggestions": "No primary portfolio found. Add one to get AI insights."}
 
         try:
-            result = invoke_research_agent(
-                {"messages": [{"role": "user", "content": task}]},
-                {"configurable": {"thread_id": f"suggestions-{user_id}"}},
-            )
-            response_text = result["messages"][-1].content
+            from langchain_core.messages import HumanMessage
+
+            from src.llm import get_llm
+
+            response_text = get_llm(temperature=0.3).invoke([HumanMessage(content=task)]).content
             return {"suggestions": response_text}
         except Exception as e:
             logger.error(f"Failed to generate AI suggestions: {e}")
@@ -89,7 +88,7 @@ class PortfoliosService:
         """Yield SSE events (stage / token / done / error) for streaming suggestions."""
         import json
 
-        from src.agents import stream_research_agent
+        from src.agents.graph import stream_prompt
         from src.agents.guardrails import apply_output_guardrail
 
         def sse(event: str, data: dict[str, Any]) -> str:
@@ -104,10 +103,7 @@ class PortfoliosService:
         try:
             yield sse("stage", {"stage": "analyzing", "detail": "Analyzing portfolio & market signals"})
             parts: list[str] = []
-            for token in stream_research_agent(
-                {"messages": [{"role": "user", "content": task}]},
-                {"configurable": {"thread_id": f"suggestions-{user_id}"}},
-            ):
+            for token in stream_prompt(task, {"configurable": {"thread_id": f"suggestions-{user_id}"}}):
                 parts.append(token)
                 yield sse("token", {"text": token})
 

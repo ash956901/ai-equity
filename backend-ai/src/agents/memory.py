@@ -1,21 +1,15 @@
-"""Long-term memory and skills configuration for the deep agent orchestrator.
+"""Persistent memory for the LangGraph research pipeline.
 
-Uses CompositeBackend to route:
-  /memories/*  -> StoreBackend (persistent across threads / sessions)
-  everything else -> StateBackend (ephemeral, single thread)
-
-Skills are pre-loaded into the store so every thread can discover them via
-progressive disclosure.
+Provides a Postgres-backed checkpointer (conversation continuity across restarts
+and workers) and store (long-term ``/memories/``), with in-memory fallbacks when
+Postgres is unavailable. Both share one psycopg3 connection pool.
 """
 
 from __future__ import annotations
 
 import logging
-from pathlib import Path
 from typing import Any
 
-from deepagents.backends import CompositeBackend, StateBackend, StoreBackend
-from deepagents.backends.utils import create_file_data
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.store.memory import InMemoryStore
 
@@ -69,17 +63,9 @@ def _get_pool():
         _pool = None
     return _pool
 
-SKILLS_DIR = Path(__file__).parent / "skills"
-SKILLS_VIRTUAL_ROOT = "/skills/"
-
 
 def _get_store():
-    """Return a singleton long-term-memory store.
-
-    Prefers a Postgres-backed store (persists across restarts and is shared
-    across workers) and falls back to ``InMemoryStore`` when Postgres is
-    unavailable.
-    """
+    """Return a singleton long-term-memory store (Postgres-backed, in-memory fallback)."""
     global _store
     if _store is None:
         pool = _get_pool()
@@ -97,7 +83,6 @@ def _get_store():
         else:
             _store = InMemoryStore()
             logger.info("Using InMemoryStore for long-term memory (no Postgres pool)")
-        _seed_skills(_store)
     return _store
 
 
@@ -127,60 +112,6 @@ def _get_checkpointer():
     return _checkpointer
 
 
-def _seed_skills(store: Any) -> None:
-    """Pre-populate the store with SKILL.md files from disk.
-
-    Each skill lives under ``src/agents/skills/<name>/SKILL.md`` on disk and is
-    stored at ``/skills/<name>/SKILL.md`` in the store so the agent can find it
-    via the ``skills=["/skills/"]`` parameter.
-    """
-    if not SKILLS_DIR.is_dir():
-        logger.warning("Skills directory not found: %s", SKILLS_DIR)
-        return
-
-    loaded = 0
-    for skill_dir in sorted(SKILLS_DIR.iterdir()):
-        if not skill_dir.is_dir():
-            continue
-        skill_file = skill_dir / "SKILL.md"
-        if not skill_file.exists():
-            continue
-        virtual_path = f"/skills/{skill_dir.name}/SKILL.md"
-        content = skill_file.read_text(encoding="utf-8")
-        store.put(
-            namespace=("filesystem",),
-            key=virtual_path,
-            value=create_file_data(content),
-        )
-        loaded += 1
-        logger.debug("Loaded skill: %s -> %s", skill_dir.name, virtual_path)
-
-    logger.info("Seeded %d skill(s) into the store", loaded)
-
-
-def make_backend(runtime):
-    """Factory passed to ``create_deep_agent(backend=...)``.
-
-    Routes ``/memories/*`` to persistent StoreBackend; everything else
-    (including ``/skills/``) goes through StoreBackend as well since we
-    pre-seeded skills there.
-    """
-    return CompositeBackend(
-        default=StateBackend(runtime),
-        routes={
-            "/memories/": StoreBackend(runtime),
-        },
-    )
-
-
 def get_memory_config() -> dict[str, Any]:
-    """Return the kwargs to pass to ``create_deep_agent`` for memory + skills.
-
-    Returns a dict with keys: ``store``, ``backend``, ``checkpointer``, ``skills``.
-    """
-    return {
-        "store": _get_store(),
-        "backend": make_backend,
-        "checkpointer": _get_checkpointer(),
-        "skills": [SKILLS_VIRTUAL_ROOT],
-    }
+    """Return ``{store, checkpointer}`` for compiling the LangGraph pipeline."""
+    return {"store": _get_store(), "checkpointer": _get_checkpointer()}

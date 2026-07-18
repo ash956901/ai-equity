@@ -5,7 +5,6 @@ pydantic>=2.10.0
 pydantic-settings>=2.7.0
 
 # Deep agents + LangChain ecosystem
-deepagents>=0.4.12
 langchain-ollama>=0.2.0
 langchain-core>=0.3.0
 langchain-openai>=0.3.0
