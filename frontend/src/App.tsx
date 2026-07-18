@@ -4,6 +4,7 @@ import { NAV, type ViewKey } from "./routes";
 import { DashboardView } from "./views/DashboardView";
 import { DominoView } from "./views/DominoView";
 import { MinervaView } from "./views/MinervaView";
+import { PortfolioView } from "./views/PortfolioView";
 import { Placeholder } from "./views/Placeholder";
 
 export default function App() {
@@ -16,6 +17,8 @@ export default function App() {
         return <DashboardView onNavigate={setView} />;
       case "minerva":
         return <MinervaView />;
+      case "portfolio":
+        return <PortfolioView />;
       case "domino":
         return <DominoView />;
       default:
