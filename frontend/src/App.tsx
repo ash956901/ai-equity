@@ -3,6 +3,7 @@ import { AppShell } from "./components/shell/AppShell";
 import { NAV, type ViewKey } from "./routes";
 import { DashboardView } from "./views/DashboardView";
 import { DominoView } from "./views/DominoView";
+import { MinervaView } from "./views/MinervaView";
 import { Placeholder } from "./views/Placeholder";
 
 export default function App() {
@@ -13,6 +14,8 @@ export default function App() {
     switch (view) {
       case "dashboard":
         return <DashboardView onNavigate={setView} />;
+      case "minerva":
+        return <MinervaView />;
       case "domino":
         return <DominoView />;
       default:
