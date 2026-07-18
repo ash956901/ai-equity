@@ -43,9 +43,25 @@ function exposureSeverity(e: CausalExposure): Severity {
 }
 
 function chainSeverity(c: CausalChainItem): Severity {
-  if (c.confidence >= 0.75 && Math.abs(c.current_commodity_change_pct) >= 3) return "serious";
-  if (c.confidence >= 0.5 || Math.abs(c.current_commodity_change_pct) >= 1) return "moderate";
+  const move = Math.abs(c.current_commodity_change_pct ?? 0);
+  if (c.confidence >= 0.75 && move >= 3) return "serious";
+  if (c.confidence >= 0.5 || move >= 1) return "moderate";
   return "neutral";
+}
+
+function chainToCard(c: CausalChainItem): CardGroup {
+  const move = c.current_commodity_change_pct;
+  const moveText = move === undefined || move === null
+    ? ""
+    : ` Current commodity move: ${move >= 0 ? "+" : ""}${move.toFixed(1)}%.`;
+  return {
+    severity: chainSeverity(c),
+    title: c.name,
+    hops: [c.trigger_value, c.hop1_target, c.hop2_target, c.hop3_target].filter(Boolean) as string[],
+    reasoning: `${c.trigger_value} → ${c.hop1_target} (${c.hop1_relationship?.replace(/_/g, " ")})${c.hop2_target ? ` → ${c.hop2_target} (${c.hop2_relationship?.replace(/_/g, " ")})` : ""}${c.hop3_target ? ` → ${c.hop3_target} (${c.hop3_relationship?.replace(/_/g, " ")})` : ""}.${moveText}`,
+    confidence: c.confidence,
+    tags: [c.trigger_type.replace(/_/g, " ")],
+  };
 }
 
 function llmSeverity(i: CausalLLMImpact): Severity {
@@ -194,6 +210,7 @@ export function DominoEffectView({ dataMode, pushToast }: DominoEffectViewProps)
 
   const [marketData, setMarketData] = useState<CausalMarketData | null>(null);
   const [portfolioCompanies, setPortfolioCompanies] = useState<CausalCompanyData[]>([]);
+  const [portfolioChains, setPortfolioChains] = useState<CausalChainItem[]>([]);
   const [portfolioRefreshedAt, setPortfolioRefreshedAt] = useState<string | null>(null);
   const [companyData, setCompanyData] = useState<CausalCompanyData | null>(null);
   const [selectedCompany, setSelectedCompany] = useState<{ id: string; name: string } | null>(null);
@@ -210,6 +227,7 @@ export function DominoEffectView({ dataMode, pushToast }: DominoEffectViewProps)
     try {
       const data = await fetchCausalPortfolioCompanies(userId);
       setPortfolioCompanies(data.companies ?? []);
+      setPortfolioChains(data.chains ?? []);
       setPortfolioRefreshedAt(data.last_refreshed_at ?? null);
     } catch {
       setError("Could not load portfolio causal data.");
@@ -243,8 +261,12 @@ export function DominoEffectView({ dataMode, pushToast }: DominoEffectViewProps)
     setLoading(true);
     setError(null);
     try {
-      const data = await fetchCausalCompany(company.id);
+      const [data, market] = await Promise.all([
+        fetchCausalCompany(company.id),
+        marketData ? Promise.resolve(marketData) : fetchCausalMarket(),
+      ]);
       setCompanyData(data);
+      if (!marketData) setMarketData(market);
     } catch {
       setError(`Could not load causal data for ${company.name}.`);
     } finally {
@@ -317,15 +339,13 @@ export function DominoEffectView({ dataMode, pushToast }: DominoEffectViewProps)
     })),
   ];
 
-  // ── Market chain cards ───────────────────────────────────────────────────
-  const marketCards: CardGroup[] = (marketData?.causal_chains ?? []).map((c) => ({
-    severity: chainSeverity(c),
-    title: c.name,
-    hops: [c.trigger_value, c.hop1_target, c.hop2_target, c.hop3_target].filter(Boolean) as string[],
-    reasoning: `${c.trigger_value} → ${c.hop1_target} (${c.hop1_relationship?.replace(/_/g, " ")})${c.hop2_target ? ` → ${c.hop2_target} (${c.hop2_relationship?.replace(/_/g, " ")})` : ""}${c.hop3_target ? ` → ${c.hop3_target} (${c.hop3_relationship?.replace(/_/g, " ")})` : ""}. Current commodity move: ${c.current_commodity_change_pct >= 0 ? "+" : ""}${c.current_commodity_change_pct.toFixed(1)}%.`,
-    confidence: c.confidence,
-    tags: [c.trigger_type.replace(/_/g, " ")],
-  }));
+  // ── Chain cards (shared across Market + Portfolio tabs) ──────────────────
+  const marketCards: CardGroup[] = (marketData?.causal_chains ?? []).map(chainToCard);
+  const portfolioChainCards: CardGroup[] = portfolioChains.map(chainToCard);
+  const companyCommodities = new Set((companyData?.exposures ?? []).map((e) => e.commodity));
+  const companyChainCards: CardGroup[] = (marketData?.causal_chains ?? [])
+    .filter((c) => companyCommodities.has(c.hop1_target))
+    .map(chainToCard);
 
   const SEVERITY_FILTERS: { key: SeverityFilter; label: string }[] = [
     { key: "all", label: "All" },
@@ -405,6 +425,14 @@ export function DominoEffectView({ dataMode, pushToast }: DominoEffectViewProps)
       {/* ── PORTFOLIO TAB ── */}
       {mode === "portfolio" && !loading && !error && (
         <>
+          {portfolioChainCards.length > 0 && (
+            <div style={{ marginBottom: 24 }}>
+              <div style={{ fontSize: "0.82rem", fontWeight: 700, color: "var(--brand)", padding: "4px 0 8px", borderBottom: "1px solid var(--border)", marginBottom: 8 }}>
+                Active causal chains affecting your holdings
+              </div>
+              <CardList cards={portfolioChainCards} filter={severityFilter} />
+            </div>
+          )}
           {portfolioCardGroups.length === 0 ? (
             <div className="notice">
               <GitBranch size={14} style={{ display: "inline", marginRight: 6 }} />
@@ -466,6 +494,15 @@ export function DominoEffectView({ dataMode, pushToast }: DominoEffectViewProps)
                 <strong>{companyData.company_name}</strong> — {companyData.sector} — {companyData.exposures.length} commodity exposure{companyData.exposures.length !== 1 ? "s" : ""} found
               </div>
               <CardList cards={[...exposureCards, ...llmCards]} filter={severityFilter} />
+
+              {companyChainCards.length > 0 && (
+                <div style={{ marginTop: 20 }}>
+                  <div style={{ fontSize: "0.82rem", fontWeight: 700, color: "var(--brand)", padding: "4px 0 8px", borderBottom: "1px solid var(--border)", marginBottom: 8 }}>
+                    Active causal chains touching {companyData.company_name}
+                  </div>
+                  <CardList cards={companyChainCards} filter={severityFilter} />
+                </div>
+              )}
 
               {/* LLM opportunities, risks & recommendations summary */}
               {llmData && (

@@ -1,18 +1,11 @@
 import {
   type AICompany,
   type EnrichedNewsItem,
-  type TimelineEvent,
   type CompanySearchResult,
   type NewsDataResponse,
   type SecFiling,
-  type SentimentFeedResponse,
-  type UpstoxHolding,
 } from "../types/api";
-import { aiGet, aiPost, getJson } from "./core";
-
-interface UpstoxHoldingsResponse {
-  data?: UpstoxHolding[];
-}
+import { aiGet, aiPost } from "./core";
 
 function mapEnrichedToArticle(item: EnrichedNewsItem, index: number) {
   return {
@@ -67,56 +60,6 @@ export async function fetchMarketHeadlines(limit = 20, symbolOrName?: string): P
   };
 }
 
-export async function fetchHoldingsCount(): Promise<number> {
-  const payload = await getJson<UpstoxHoldingsResponse | UpstoxHolding[]>(
-    "/upstox/portfolio/holdings"
-  );
-
-  if (Array.isArray(payload)) {
-    return payload.length;
-  }
-
-  return Array.isArray(payload.data) ? payload.data.length : 0;
-}
-
-export async function fetchTickerSentiment(
-  symbol: string,
-  hoursBack = 24,
-  size = 8
-): Promise<SentimentFeedResponse> {
-  const normalizedSymbol = symbol.trim().toUpperCase();
-  const query = symbol.trim();
-  const cappedSize = Math.max(1, size);
-  const normalizedHoursBack = Math.max(1, Math.min(hoursBack, 72));
-  const requested = Math.min(Math.max(cappedSize * Math.ceil(normalizedHoursBack / 8), 12), 36);
-  const params = new URLSearchParams();
-  params.set("limit", String(requested));
-  if (query) {
-    params.set("query", query);
-  }
-
-  let feed: EnrichedNewsItem[] = [];
-  try {
-    feed = await aiGet<EnrichedNewsItem[]>(`/get-news?${params.toString()}`, 90000);
-  } catch {
-    feed = await aiGet<EnrichedNewsItem[]>(`/get-news?limit=${requested}`, 90000);
-  }
-
-  if (query && feed.length === 0) {
-    feed = await aiGet<EnrichedNewsItem[]>(`/get-news?limit=${requested}`, 90000);
-  }
-
-  const selected = feed.slice(0, cappedSize);
-
-  return {
-    symbol: normalizedSymbol,
-    total_results: selected.length,
-    articles: selected.map((item, index) => ({
-      ...mapEnrichedToArticle(item, index),
-      sentiment: item.sentiment,
-    })),
-  };
-}
 
 interface FilingRecord {
   id: string;

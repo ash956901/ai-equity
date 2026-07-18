@@ -4,6 +4,8 @@ import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
 
 import {
   ApiError,
+  addHolding,
+  deleteHolding,
   fetchPortfolioDetail,
   fetchPortfolios,
   type AIHoldingDetail,
@@ -11,11 +13,13 @@ import {
   type AIPortfolioDetail,
   type DataSourceInfo,
 } from "../../lib/api";
+import { CompanySearchInput } from "../../shared/components/CompanySearchInput";
 import { PageHeader } from "../../shared/ui/PageHeader";
 import { SourceBadges } from "../../shared/ui/SourceBadges";
 import { HoldingDetailPanel } from "./HoldingDetailPanel";
 
 interface PortfolioHolding {
+  holdingId: string;
   companyId: string;
   symbol: string;
   company: string;
@@ -73,6 +77,7 @@ export function PortfolioView(props: PortfolioViewProps) {
         setDataSources(detail.data_sources ?? []);
         const sourceHoldings = detail.metrics?.holdings ?? detail.holdings ?? [];
         const mapped: PortfolioHolding[] = sourceHoldings.map((h: any) => ({
+          holdingId: h.id ?? h.holding_id ?? "",
           companyId: h.company_id,
           symbol: h.ticker_nse ?? h.company_id.slice(0, 6),
           company: h.company_name ?? "Unknown",
@@ -101,6 +106,43 @@ export function PortfolioView(props: PortfolioViewProps) {
   useEffect(() => {
     void loadPortfolio();
   }, [loadPortfolio]);
+
+  const [addCompany, setAddCompany] = useState<{ id: string; name: string } | null>(null);
+  const [addQty, setAddQty] = useState("");
+  const [mutating, setMutating] = useState(false);
+
+  const handleAddHolding = useCallback(async () => {
+    if (!activePortfolio || !addCompany) return;
+    const qty = Number(addQty);
+    if (!qty || qty <= 0) {
+      setError("Enter a valid quantity.");
+      return;
+    }
+    setMutating(true);
+    try {
+      await addHolding(activePortfolio.id, addCompany.id, qty);
+      setAddCompany(null);
+      setAddQty("");
+      await loadPortfolio();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Could not add holding.");
+    } finally {
+      setMutating(false);
+    }
+  }, [activePortfolio, addCompany, addQty, loadPortfolio]);
+
+  const handleRemoveHolding = useCallback(async (holdingId: string) => {
+    if (!activePortfolio || !holdingId) return;
+    setMutating(true);
+    try {
+      await deleteHolding(activePortfolio.id, holdingId);
+      await loadPortfolio();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Could not remove holding.");
+    } finally {
+      setMutating(false);
+    }
+  }, [activePortfolio, loadPortfolio]);
 
   const totalWeight = useMemo(() => holdings.reduce((acc, h) => acc + h.weight, 0) || 100, [holdings]);
 
@@ -286,6 +328,39 @@ export function PortfolioView(props: PortfolioViewProps) {
         </div>
       )}
 
+      {activePortfolio && (
+        <div className="table-card" style={{ marginBottom: 16 }}>
+          <div className="table-head">
+            <h3>Add Holding</h3>
+          </div>
+          <div style={{ display: "flex", gap: 10, alignItems: "center", padding: "10px 12px", flexWrap: "wrap" }}>
+            <CompanySearchInput
+              placeholder="Search a company to add…"
+              onSelect={(c) => setAddCompany({ id: c.id, name: c.name })}
+              className="w-72"
+            />
+            <input
+              type="number"
+              min="0"
+              step="any"
+              value={addQty}
+              onChange={(e) => setAddQty(e.target.value)}
+              placeholder="Quantity"
+              style={{ width: 120 }}
+            />
+            <button
+              type="button"
+              className="primary-btn"
+              onClick={() => void handleAddHolding()}
+              disabled={mutating || !addCompany || !addQty}
+            >
+              {mutating ? <Loader2 size={13} className="spin" /> : "Add"}
+            </button>
+            {addCompany && <span style={{ color: "var(--muted)", fontSize: "0.85rem" }}>{addCompany.name}</span>}
+          </div>
+        </div>
+      )}
+
       {holdings.length > 0 && (
         <div className="table-card">
           <div className="table-head">
@@ -308,6 +383,21 @@ export function PortfolioView(props: PortfolioViewProps) {
                 {holding.returnPct >= 0 ? "+" : ""}
                 {holding.returnPct.toFixed(1)}%
               </span>
+              {holding.holdingId && (
+                <button
+                  type="button"
+                  aria-label={`Remove ${holding.company}`}
+                  className="icon-btn"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    void handleRemoveHolding(holding.holdingId);
+                  }}
+                  disabled={mutating}
+                  style={{ marginLeft: "auto" }}
+                >
+                  ✕
+                </button>
+              )}
             </div>
           ))}
         </div>

@@ -61,7 +61,7 @@ import {
   searchCompaniesDB,
   fetchTimeline,
   enrichCompany,
-  sendChatQuery,
+  streamChatQuery,
   type SecFiling,
   type AICompany,
   type AIRatios,
@@ -1281,13 +1281,22 @@ export function CompanyWorkspaceView(props: CompanyWorkspaceViewProps) {
     setAiReportBody(null);
     setReportGeneratedAt(new Date().toISOString());
     try {
-      const res = await sendChatQuery({
-        user_id: userId,
-        query: prompt,
-        expertise_level: reportAudience === "analyst" ? "advanced" : "beginner",
-        ...(activeCompanyId ? { company_id: activeCompanyId } : {}),
-      });
-      setAiReportBody(res.response ?? "");
+      let acc = "";
+      await streamChatQuery(
+        {
+          user_id: userId,
+          query: prompt,
+          expertise_level: reportAudience === "analyst" ? "advanced" : "beginner",
+          ...(activeCompanyId ? { company_id: activeCompanyId } : {}),
+        },
+        {
+          onToken: (t) => {
+            acc += t;
+            setAiReportBody(acc);
+          },
+          onError: () => pushToast("AI report generation failed. Showing structured preview.", "warning"),
+        },
+      );
       pushToast("Report generated", "success");
     } catch {
       pushToast("AI report generation failed. Showing structured preview.", "warning");

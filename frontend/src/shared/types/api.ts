@@ -433,7 +433,7 @@ export interface CausalChainItem {
   hop3_target: string | null;
   hop3_relationship: string | null;
   confidence: number;
-  current_commodity_change_pct: number;
+  current_commodity_change_pct?: number;
 }
 
 export interface CausalMarketData {

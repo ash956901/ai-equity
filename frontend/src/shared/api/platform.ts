@@ -8,23 +8,18 @@ import {
   type AIPortfolioDetail,
   type AIRatios,
   type AIQuote,
-  type AlertRule,
   type AppProfile,
   type ChatQueryRequest,
   type ChatQueryResponse,
   type ChatSessionItem,
   type CompareRequest,
   type CompareResponse,
-  type CreateAlertRequest,
-  type HealthResponse,
   type PortfolioMetrics,
-  type ProfileData,
   type ThematicResult,
   type TimelineEvent,
   type UserTransaction,
-  type Watchlist,
   type CausalMarketData,
-  type CausalPortfolioData,
+  type CausalChainItem,
   type CausalCompanyData,
   type CausalLLMData,
 } from "../types/api";
@@ -48,25 +43,6 @@ export async function createProfile(
   });
 }
 
-export async function loadProfileData(profileId: string): Promise<ProfileData> {
-  return aiGet<ProfileData>(`/profiles/${profileId}/data`);
-}
-
-export async function syncProfile(
-  profileId: string,
-  data: Partial<Omit<ProfileData, "profile">> & { profile?: Partial<AppProfile> }
-): Promise<{ status: string }> {
-  return aiPost<{ status: string }>(`/profiles/${profileId}/sync`, data);
-}
-
-export async function deleteProfile(profileId: string): Promise<void> {
-  return aiDelete(`/profiles/${profileId}`);
-}
-
-export async function fetchAIHealth(): Promise<HealthResponse> {
-  return aiGet<HealthResponse>("/health");
-}
-
 export async function fetchThematicScreen(
   query: string,
   limit = 15
@@ -81,14 +57,6 @@ export async function fetchPortfolioMetrics(
   portfolioId: string
 ): Promise<PortfolioMetrics> {
   return aiGet<PortfolioMetrics>(`/portfolios/${portfolioId}/metrics`);
-}
-
-export async function fetchPortfolioSuggestions(
-  userId: string
-): Promise<{ suggestions: string }> {
-  // AI suggestions run the full research agent (slow 120B reasoning model, plus a
-  // possible second-key retry), so allow up to 300s to match the chat budget.
-  return aiGet<{ suggestions: string }>(`/portfolios/suggestions?user_id=${userId}`, 300000);
 }
 
 /** Stream AI portfolio suggestions over SSE (stage/token/done/error). */
@@ -260,38 +228,6 @@ export async function compareCompanies(req: CompareRequest): Promise<CompareResp
   return aiPost<CompareResponse>("/compare/", req, 300000);
 }
 
-export async function createAlertRule(req: CreateAlertRequest): Promise<AlertRule> {
-  return aiPost<AlertRule>("/alerts/", req);
-}
-
-export async function fetchAlerts(userId: string): Promise<AlertRule[]> {
-  return aiGet<AlertRule[]>(`/alerts/?user_id=${userId}`);
-}
-
-export async function createAlert(alert: Omit<AlertRule, "id" | "created_at">): Promise<AlertRule> {
-  return aiPost<AlertRule>("/alerts/", alert);
-}
-
-export async function deleteAlert(id: string): Promise<void> {
-  return aiDelete(`/alerts/${id}`);
-}
-
-export async function fetchWatchlists(userId: string): Promise<Watchlist[]> {
-  return aiGet<Watchlist[]>(`/watchlists/?user_id=${userId}`);
-}
-
-export async function createWatchlist(userId: string, name: string): Promise<Watchlist> {
-  return aiPost<Watchlist>("/watchlists/", { user_id: userId, name });
-}
-
-export async function addToWatchlist(watchlistId: string, companyId: string): Promise<void> {
-  await aiPost(`/watchlists/${watchlistId}/companies`, { company_id: companyId });
-}
-
-export async function removeFromWatchlist(watchlistId: string, companyId: string): Promise<void> {
-  return aiDelete(`/watchlists/${watchlistId}/companies/${companyId}`);
-}
-
 export async function fetchTimeline(
   userId?: string,
   companyId?: string,
@@ -332,11 +268,7 @@ export async function fetchCausalMarket(): Promise<CausalMarketData> {
   return aiGet<CausalMarketData>("/causal/market");
 }
 
-export async function fetchCausalPortfolio(userId: string): Promise<CausalPortfolioData> {
-  return aiGet<CausalPortfolioData>(`/causal/portfolio?user_id=${userId}`);
-}
-
-export async function fetchCausalPortfolioCompanies(userId: string): Promise<{ companies: CausalCompanyData[]; last_refreshed_at?: string | null }> {
+export async function fetchCausalPortfolioCompanies(userId: string): Promise<{ companies: CausalCompanyData[]; chains?: CausalChainItem[]; last_refreshed_at?: string | null }> {
   return aiGet(`/causal/portfolio/companies?user_id=${userId}`);
 }
 

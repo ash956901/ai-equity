@@ -12,7 +12,7 @@ import {
 import {
   fetchHistoricalPrices,
   fetchTimeline,
-  sendChatQuery,
+  streamChatQuery,
   type AIHistoricalPrices,
   type TimelineEvent,
 } from "../../lib/api";
@@ -53,12 +53,25 @@ export function HoldingDetailPanel({ holding, onClose }: Props) {
 
     const userId = localStorage.getItem("equityai-user-id") ?? "11111111-1111-1111-1111-111111111111";
     setRecLoading(true);
-    sendChatQuery({
-      user_id: userId,
-      query: `Should I buy, sell, or hold ${holding.company} (${holding.symbol})? Give me a concise 3-line recommendation with reasons based on current market conditions.`,
-      expertise_level: expertiseLevel,
-    })
-      .then((res) => setRecommendation(res.response))
+    let acc = "";
+    streamChatQuery(
+      {
+        user_id: userId,
+        query: `Should I buy, sell, or hold ${holding.company} (${holding.symbol})? Give me a concise 3-line recommendation with reasons based on current market conditions.`,
+        expertise_level: expertiseLevel,
+      },
+      {
+        onToken: (t) => {
+          acc += t;
+          setRecommendation(acc);
+          setRecLoading(false);
+        },
+        onError: (d) => {
+          setRecommendation(`Could not fetch recommendation: ${d}`);
+          setRecLoading(false);
+        },
+      },
+    )
       .catch(() => setRecommendation("Could not fetch recommendation. Try again later."))
       .finally(() => setRecLoading(false));
   }, [holding.companyId, holding.company, holding.symbol, expertiseLevel]);

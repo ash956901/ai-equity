@@ -66,11 +66,6 @@ export async function submitKyc(
   });
 }
 
-export async function fetchKycStatus(
-  userId: string
-): Promise<{ kyc_status: string; kyc_submitted_at: string | null; pan_card_number: string | null }> {
-  return aiGet(`/users/${userId}/kyc/status`);
-}
 
 export async function verifyKyc(
   userId: string

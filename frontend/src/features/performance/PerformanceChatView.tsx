@@ -15,7 +15,7 @@ import {
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
-import { sendChatQuery, type ChatQueryRequest } from "../../lib/api";
+import { streamChatQuery, type ChatQueryRequest } from "../../lib/api";
 import { PageHeader } from "../../shared/ui/PageHeader";
 import { ThinkingIndicator } from "../chat/components/ThinkingIndicator";
 import { ThinkingDropdown } from "../chat/components/ThinkingDropdown";
@@ -248,29 +248,34 @@ export function PerformanceChatView(props: PerformanceChatViewProps) {
           expertise_level: expertiseLevel,
           session_id: activeThread.backendSessionId,
         };
-        const resp = await sendChatQuery(req);
-        const elapsedSec = Math.round((performance.now() - startTime) / 1000);
-        const assistantMsg: ChatMessage = {
-          id: `assistant-${Date.now()}`,
-          role: "assistant",
-          text: resp.response,
-          isThinking: false,
-          thinkingDurationSec: elapsedSec,
-          toolCalls: resp.tool_call_log as ChatMessage["toolCalls"],
-          sources: resp.sources?.map((s: Record<string, unknown>) => String(s.title || s.source || "")),
-        };
-        props.setThreads((cur) =>
-          cur.map((t) =>
-            t.id !== activeThread.id
-              ? t
-              : {
-                  ...t,
-                  backendSessionId: resp.session_id ?? t.backendSessionId,
-                  updatedAt: new Date().toISOString(),
-                  messages: t.messages.map((m) => (m.id === thinkingMsg.id ? assistantMsg : m)),
-                }
-          )
-        );
+        let acc = "";
+        const patch = (partial: Partial<ChatMessage>) =>
+          props.setThreads((cur) =>
+            cur.map((t) =>
+              t.id !== activeThread.id
+                ? t
+                : {
+                    ...t,
+                    updatedAt: new Date().toISOString(),
+                    messages: t.messages.map((m) => (m.id === thinkingMsg.id ? { ...m, ...partial } : m)),
+                  }
+            )
+          );
+        await streamChatQuery(req, {
+          onToken: (tok) => {
+            acc += tok;
+            patch({ text: acc, isThinking: false });
+          },
+          onDone: (data) => {
+            patch({ isThinking: false, thinkingDurationSec: Math.round((performance.now() - startTime) / 1000) });
+            if (data.session_id) {
+              props.setThreads((cur) =>
+                cur.map((t) => (t.id === activeThread.id ? { ...t, backendSessionId: data.session_id } : t))
+              );
+            }
+          },
+          onError: (d) => patch({ isThinking: false, text: `Error: ${d}` }),
+        });
       } catch (err) {
         props.pushToast("Performance analysis failed — check backend connection.", "warning");
         props.setThreads((cur) =>
