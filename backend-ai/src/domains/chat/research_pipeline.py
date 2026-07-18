@@ -14,6 +14,11 @@ from typing import Any, Literal, Optional
 from uuid import UUID
 
 from src.agents import invoke_research_agent
+from src.agents.tools.causal_tools import (
+    analyze_causal_chain_with_llm,
+    get_market_hidden_patterns,
+    get_portfolio_causal_analysis,
+)
 from src.agents.tools.financial import calculate_ratios, detect_risk_flags, get_latest_financials
 from src.agents.tools.news import get_recent_news
 from src.agents.tools.portfolio import calculate_portfolio_metrics, get_portfolio_holdings
@@ -31,6 +36,7 @@ TaskKind = Literal[
     "filings_snapshot",
     "portfolio_snapshot",
     "thematic_snapshot",
+    "causal_snapshot",
     "web_snapshot",
 ]
 
@@ -55,7 +61,29 @@ class TaskResult:
 
 
 class ResearchPlanner:
-    """Convert a chat request into a bounded task plan."""
+    """Convert a chat request into a bounded task plan.
+
+    Intent detection uses a fast LLM classifier when available and falls back to
+    keyword heuristics on any failure. ID-driven tasks (company / upload) are
+    added deterministically regardless of intent, since they depend on request
+    context rather than phrasing.
+    """
+
+    # Intents the classifier may return. ``causal`` routes to the Causal
+    # Detective, which was previously unreachable from the chat pipeline.
+    _INTENTS = ("news", "filings", "portfolio", "thematic", "causal", "web")
+
+    _KEYWORDS = {
+        "news": ("news", "sentiment", "headline", "quarter", "annual report", "latest"),
+        "filings": ("filing", "10-k", "annual report", "disclosure", "prospectus"),
+        "portfolio": ("portfolio", "holdings", "exposure", "allocation", "my stocks"),
+        "thematic": ("theme", "sector", "industry", "related companies", "similar companies"),
+        "causal": (
+            "causal", "hidden", "domino", "ripple", "knock-on", "second-order",
+            "second order", "not obvious", "what's not", "supply chain",
+            "commodity impact", "downstream", "cascade", "affected by",
+        ),
+    }
 
     def plan(
         self,
@@ -65,80 +93,101 @@ class ResearchPlanner:
         upload_id: Optional[UUID],
         primary_portfolio_id: Optional[UUID],
     ) -> list[PlannedTask]:
-        query_lower = query.lower()
         tasks: list[PlannedTask] = []
 
+        # ── ID-driven deterministic tasks ─────────────────────────────────
         if company_id:
-            tasks.append(
-                PlannedTask(
-                    name="company_snapshot",
-                    kind="company_snapshot",
-                    params={"company_id": str(company_id)},
-                )
-            )
-
-        if company_id and any(
-            keyword in query_lower
-            for keyword in ("news", "sentiment", "headline", "filing", "quarter", "annual report")
-        ):
-            tasks.append(
-                PlannedTask(
-                    name="news_snapshot",
-                    kind="news_snapshot",
-                    params={"company_id": str(company_id)},
-                )
-            )
-
+            tasks.append(PlannedTask("company_snapshot", "company_snapshot", {"company_id": str(company_id)}))
         if upload_id:
             tasks.append(
                 PlannedTask(
-                    name="filings_snapshot",
-                    kind="filings_snapshot",
-                    params={"upload_id": str(upload_id), "user_id": str(user_id), "query": query},
+                    "filings_snapshot",
+                    "filings_snapshot",
+                    {"upload_id": str(upload_id), "user_id": str(user_id), "query": query},
                 )
             )
         elif company_id:
             tasks.append(
-                PlannedTask(
-                    name="filings_snapshot",
-                    kind="filings_snapshot",
-                    params={"company_id": str(company_id), "query": query},
-                )
+                PlannedTask("filings_snapshot", "filings_snapshot", {"company_id": str(company_id), "query": query})
             )
 
-        if primary_portfolio_id and any(
-            keyword in query_lower for keyword in ("portfolio", "holdings", "exposure", "risk", "allocation")
-        ):
-            tasks.append(
-                PlannedTask(
-                    name="portfolio_snapshot",
-                    kind="portfolio_snapshot",
-                    params={"portfolio_id": str(primary_portfolio_id)},
-                )
-            )
+        # ── Intent-driven tasks ───────────────────────────────────────────
+        intents = self._detect_intents(query)
 
-        if any(
-            keyword in query_lower
-            for keyword in ("theme", "sector", "industry", "related companies", "similar companies")
-        ) and not company_id:
+        if "news" in intents and company_id:
+            tasks.append(PlannedTask("news_snapshot", "news_snapshot", {"company_id": str(company_id)}))
+        if "portfolio" in intents and primary_portfolio_id:
             tasks.append(
-                PlannedTask(
-                    name="thematic_snapshot",
-                    kind="thematic_snapshot",
-                    params={"query": query},
-                )
+                PlannedTask("portfolio_snapshot", "portfolio_snapshot", {"portfolio_id": str(primary_portfolio_id)})
             )
+        if "thematic" in intents and not company_id:
+            tasks.append(PlannedTask("thematic_snapshot", "thematic_snapshot", {"query": query}))
+        if "causal" in intents:
+            params: dict[str, Any] = {"query": query}
+            if primary_portfolio_id:
+                params["portfolio_id"] = str(primary_portfolio_id)
+            tasks.append(PlannedTask("causal_snapshot", "causal_snapshot", params))
 
         if not tasks:
-            tasks.append(
-                PlannedTask(
-                    name="web_snapshot",
-                    kind="web_snapshot",
-                    params={"query": query},
-                )
-            )
+            tasks.append(PlannedTask("web_snapshot", "web_snapshot", {"query": query}))
 
         return self._dedupe(tasks)
+
+    def _detect_intents(self, query: str) -> set[str]:
+        """Return the set of intents for a query (LLM first, keyword fallback)."""
+        llm_intents = self._llm_intents(query)
+        if llm_intents is not None:
+            return llm_intents
+        return self._keyword_intents(query)
+
+    def _keyword_intents(self, query: str) -> set[str]:
+        query_lower = query.lower()
+        return {
+            intent
+            for intent, keywords in self._KEYWORDS.items()
+            if any(k in query_lower for k in keywords)
+        }
+
+    def _llm_intents(self, query: str) -> Optional[set[str]]:
+        """Classify a query into intents with one cached LLM call.
+
+        Returns ``None`` on any failure so the caller falls back to keywords.
+        """
+        from src.utils.cache import get_analysis_cache
+
+        cache = get_analysis_cache()
+        cache_key = cache.make_key("intent_v1", query.strip().lower())
+        cached = cache.get(cache_key)
+        if cached is not None:
+            return set(cached)
+
+        prompt = (
+            "Classify this equity-research query into zero or more intents. "
+            "Return ONLY a JSON array of strings from this exact set: "
+            '["news","filings","portfolio","thematic","causal","web"].\n'
+            "- news: recent news/sentiment/results for a company\n"
+            "- filings: content inside regulatory filings/annual reports\n"
+            "- portfolio: the user's own holdings, exposure, or allocation\n"
+            "- thematic: sector/industry/theme or finding similar companies\n"
+            "- causal: hidden/second-order/domino effects, commodity or supply-chain impacts\n"
+            "- web: general knowledge needing a web search\n"
+            f"\nQuery: {query}\nJSON:"
+        )
+        try:
+            from src.llm import get_llm
+            from langchain_core.messages import HumanMessage
+
+            resp = get_llm(temperature=0.0).invoke([HumanMessage(content=prompt)])
+            content = resp.content.strip()
+            if content.startswith("```"):
+                content = content.split("```")[1].lstrip("json").strip()
+            parsed = json.loads(content)
+            intents = {i for i in parsed if i in self._INTENTS}
+            cache.set(cache_key, sorted(intents))
+            return intents
+        except Exception as e:
+            logger.warning("LLM intent classification failed, using keywords: %s", e)
+            return None
 
     @staticmethod
     def _dedupe(tasks: list[PlannedTask]) -> list[PlannedTask]:
@@ -194,6 +243,8 @@ class ResearchWorkerPool:
             return self._run_portfolio_snapshot(task)
         if task.kind == "thematic_snapshot":
             return self._run_thematic_snapshot(task)
+        if task.kind == "causal_snapshot":
+            return self._run_causal_snapshot(task)
         return self._run_web_snapshot(task)
 
     @staticmethod
@@ -293,6 +344,28 @@ class ResearchWorkerPool:
             source={"name": task.name, "kind": task.kind, "status": "ok"},
         )
 
+    def _run_causal_snapshot(self, task: PlannedTask) -> TaskResult:
+        """Gather causal intelligence: market-wide hidden patterns, an LLM causal
+        chain for the query trigger, and portfolio exposures when available.
+
+        Causal tools are plain functions (not LangChain tools), so they are
+        called directly rather than via ``_tool_output``.
+        """
+        query = task.params["query"]
+        portfolio_id = task.params.get("portfolio_id")
+        payload: dict[str, Any] = {
+            "hidden_patterns": get_market_hidden_patterns(),
+            "causal_chain": analyze_causal_chain_with_llm(query),
+        }
+        if portfolio_id:
+            payload["portfolio_causal"] = get_portfolio_causal_analysis(portfolio_id)
+        return TaskResult(
+            name=task.name,
+            kind=task.kind,
+            payload=payload,
+            source={"name": task.name, "kind": task.kind, "status": "ok"},
+        )
+
     def _run_web_snapshot(self, task: PlannedTask) -> TaskResult:
         payload = self._tool_output(internet_search, {"query": task.params["query"]})
         return TaskResult(
@@ -371,7 +444,7 @@ class ResearchPipeline:
         self.worker_pool = ResearchWorkerPool(settings.chat_worker_pool_size)
         self.aggregator = ResultAggregator()
 
-    def run(
+    def prepare(
         self,
         query: str,
         user_id: UUID,
@@ -381,6 +454,12 @@ class ResearchPipeline:
         session_id: UUID,
         context_note: Optional[str] = None,
     ) -> dict[str, Any]:
+        """Plan tasks and gather evidence, returning the synthesis prompt.
+
+        This is the non-streaming part of the pipeline, factored out so both
+        ``run`` (blocking) and the SSE streaming path can reuse it before the
+        final LLM synthesis.
+        """
         tasks = self.planner.plan(
             query=query,
             user_id=user_id,
@@ -397,6 +476,29 @@ class ResearchPipeline:
             results=results,
             context_note=context_note,
         )
+        return {"prompt": prompt, "tasks": tasks, "results": results}
+
+    def run(
+        self,
+        query: str,
+        user_id: UUID,
+        company_id: Optional[UUID],
+        upload_id: Optional[UUID],
+        primary_portfolio_id: Optional[UUID],
+        session_id: UUID,
+        context_note: Optional[str] = None,
+    ) -> dict[str, Any]:
+        prepared = self.prepare(
+            query=query,
+            user_id=user_id,
+            company_id=company_id,
+            upload_id=upload_id,
+            primary_portfolio_id=primary_portfolio_id,
+            session_id=session_id,
+            context_note=context_note,
+        )
+        prompt = prepared["prompt"]
+        results = prepared["results"]
 
         result = invoke_research_agent(
             {"messages": [{"role": "user", "content": prompt}]},

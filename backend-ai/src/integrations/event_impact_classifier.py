@@ -226,8 +226,86 @@ class EventImpactClassifier:
                     "confidence": impact.confidence,
                 }
                 significant_events.append(event)
-        
+
         return significant_events
+
+    # Commodity symbols the causal system tracks (matches CommodityPrice seeds).
+    _KNOWN_COMMODITIES = [
+        "WTI_USD", "BRENT_CRUDE_USD", "NATURAL_GAS_USD", "COAL_USD",
+        "JET_FUEL_USD", "XAU", "XAG", "copper", "aluminum", "sugar_11",
+    ]
+
+    def classify_batch_llm(
+        self,
+        events: list[dict[str, Any]],
+        known_sectors: Optional[list[str]] = None,
+    ) -> list[dict[str, Any]]:
+        """Classify events semantically with a single grounded LLM call.
+
+        Unlike the keyword matcher, this understands meaning ("tensions ease in
+        the Gulf" → oil down) rather than literal token overlap. Affected sectors
+        are constrained to ``known_sectors`` (the SectorExposure ground truth) so
+        the model cannot invent linkages. Falls back to the keyword classifier on
+        any failure, so it never breaks ingestion.
+        """
+        if not events:
+            return []
+
+        import json
+
+        from langchain_core.messages import HumanMessage
+
+        from src.llm import get_llm
+
+        sectors = known_sectors or []
+        numbered = "\n".join(
+            f"{i}. {(e.get('title') or '')[:180]}" for i, e in enumerate(events)
+        )
+        prompt = (
+            "You are a commodity/geopolitical impact classifier for Indian equity markets.\n"
+            f"Commodities you may reference: {', '.join(self._KNOWN_COMMODITIES)}.\n"
+            f"Sectors you may reference (ground truth — use ONLY these): "
+            f"{', '.join(sectors) if sectors else 'general'}.\n\n"
+            "For each numbered event, decide whether it MATERIALLY moves any of the "
+            "commodities above. Reason about meaning, not keywords (e.g. a ceasefire "
+            "LOWERS oil).\n\n"
+            f"Events:\n{numbered}\n\n"
+            "Return ONLY a JSON array. Omit events with no material impact. For impactful ones:\n"
+            '[{"index": <int>, "commodity": "<one listed>", "direction": '
+            '"increase|decrease|neutral", "magnitude": "high|medium|low", '
+            '"affected_sectors": ["<from list>"], "confidence": 0.0-1.0}]'
+        )
+
+        try:
+            resp = get_llm(temperature=0.1).invoke([HumanMessage(content=prompt)])
+            content = resp.content.strip()
+            if content.startswith("```"):
+                content = content.split("```")[1].lstrip("json").strip()
+            parsed = json.loads(content)
+
+            out: list[dict[str, Any]] = []
+            for r in parsed:
+                idx = r.get("index")
+                if not isinstance(idx, int) or idx < 0 or idx >= len(events):
+                    continue
+                commodity = r.get("commodity")
+                if commodity not in self._KNOWN_COMMODITIES:
+                    continue
+                secs = [s for s in (r.get("affected_sectors") or []) if not sectors or s in sectors]
+                event = dict(events[idx])
+                event["impact"] = {
+                    "commodity": commodity,
+                    "direction": r.get("direction", "neutral"),
+                    "magnitude": r.get("magnitude", "low"),
+                    "affected_sectors": secs,
+                    "confidence": float(r.get("confidence", 0.5)),
+                }
+                out.append(event)
+            logger.info("LLM classified %d/%d events as impactful", len(out), len(events))
+            return out
+        except Exception as e:
+            logger.warning("LLM event classification failed (%s); using keyword fallback", e)
+            return self.classify_batch(events)
 
     def get_commodity_alert(
         self,

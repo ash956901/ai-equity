@@ -4,6 +4,7 @@ from typing import Any, Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -71,6 +72,20 @@ def get_ai_suggestions(
     suggestions = service.get_ai_suggestions(user_id)
     cache.set(cache_key, suggestions)
     return suggestions
+
+
+@router.get("/suggestions/stream")
+def stream_ai_suggestions(
+    user_id: UUID,
+    db: Session = Depends(get_db),
+) -> StreamingResponse:
+    """Stream AI investment suggestions as Server-Sent Events (stage/token/done/error)."""
+    service = PortfoliosService(db)
+    return StreamingResponse(
+        service.stream_ai_suggestions(user_id),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 @router.get("/{portfolio_id}")

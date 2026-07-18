@@ -173,6 +173,84 @@ export async function aiDelete(path: string): Promise<void> {
   }
 }
 
+export interface SseEvent {
+  event: string;
+  data: Record<string, unknown>;
+}
+
+/** Read a `text/event-stream` response body, invoking `onEvent` per SSE event. */
+async function consumeEventStream(
+  response: Response,
+  onEvent: (evt: SseEvent) => void,
+): Promise<void> {
+  if (!response.ok || !response.body) {
+    throw new ApiError(`Stream request failed with status ${response.status}`, response.status);
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+
+    let sep = buffer.indexOf("\n\n");
+    while (sep !== -1) {
+      const block = buffer.slice(0, sep);
+      buffer = buffer.slice(sep + 2);
+
+      let event = "message";
+      const dataLines: string[] = [];
+      for (const line of block.split("\n")) {
+        if (line.startsWith("event:")) event = line.slice(6).trim();
+        else if (line.startsWith("data:")) dataLines.push(line.slice(5).trim());
+      }
+      if (dataLines.length > 0) {
+        try {
+          onEvent({ event, data: JSON.parse(dataLines.join("\n")) as Record<string, unknown> });
+        } catch {
+          // ignore malformed event frame
+        }
+      }
+      sep = buffer.indexOf("\n\n");
+    }
+  }
+}
+
+/** POST a body and consume an SSE response (credentials + CSRF like other mutating helpers). */
+export async function postSse(
+  path: string,
+  body: unknown,
+  onEvent: (evt: SseEvent) => void,
+  signal?: AbortSignal,
+): Promise<void> {
+  const response = await fetch(`${BACKEND_URL}${path}`, {
+    method: "POST",
+    credentials: "include",
+    headers: buildHeaders({ "Content-Type": "application/json", Accept: "text/event-stream" }, "POST"),
+    body: JSON.stringify(body),
+    signal,
+  });
+  await consumeEventStream(response, onEvent);
+}
+
+/** GET an SSE endpoint and consume its event stream. */
+export async function getSse(
+  path: string,
+  onEvent: (evt: SseEvent) => void,
+  signal?: AbortSignal,
+): Promise<void> {
+  const response = await fetch(`${BACKEND_URL}${path}`, {
+    method: "GET",
+    credentials: "include",
+    headers: buildHeaders({ Accept: "text/event-stream" }, "GET"),
+    signal,
+  });
+  await consumeEventStream(response, onEvent);
+}
+
 export async function fetchBackendHealth(): Promise<HealthResponse> {
   return getJson<HealthResponse>("/health");
 }

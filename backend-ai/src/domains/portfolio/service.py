@@ -45,17 +45,14 @@ class PortfoliosService:
         self.db = db
         self._portfolio_service = PortfolioService(db)
 
-    def get_ai_suggestions(self, user_id: UUID) -> dict[str, Any]:
-        """Generate AI-driven investment suggestions for the user's primary portfolio."""
+    def _build_suggestions_task(self, user_id: UUID) -> Optional[str]:
+        """Build the causal-aware suggestions prompt, or None if no portfolio."""
         portfolio_id = self._portfolio_service.get_primary_portfolio(user_id)
         if not portfolio_id:
-            return {"suggestions": "No primary portfolio found. Add one to get AI insights."}
+            return None
 
-        # Get causal insights first
         causal_context = self._get_causal_context(portfolio_id)
-
-        # Enhanced task with causal context
-        task = (
+        return (
             f"Analyse the portfolio {portfolio_id} and recent market news. "
             "Also consider the following commodity price trends and market signals:\n\n"
             f"{causal_context}\n\n"
@@ -71,6 +68,11 @@ class PortfoliosService:
             "Do NOT return JSON or structured lists, just formatted text."
         )
 
+    def get_ai_suggestions(self, user_id: UUID) -> dict[str, Any]:
+        """Generate AI-driven investment suggestions for the user's primary portfolio."""
+        task = self._build_suggestions_task(user_id)
+        if task is None:
+            return {"suggestions": "No primary portfolio found. Add one to get AI insights."}
 
         try:
             result = invoke_research_agent(
@@ -80,9 +82,43 @@ class PortfoliosService:
             response_text = result["messages"][-1].content
             return {"suggestions": response_text}
         except Exception as e:
-            import logging
-            logging.getLogger(__name__).error(f"Failed to generate AI suggestions: {e}")
+            logger.error(f"Failed to generate AI suggestions: {e}")
             return {"suggestions": "AI insights are temporarily unavailable. Please try again later."}
+
+    def stream_ai_suggestions(self, user_id: UUID):
+        """Yield SSE events (stage / token / done / error) for streaming suggestions."""
+        import json
+
+        from src.agents import stream_research_agent
+        from src.agents.guardrails import apply_output_guardrail
+
+        def sse(event: str, data: dict[str, Any]) -> str:
+            return f"event: {event}\ndata: {json.dumps(data, default=str)}\n\n"
+
+        task = self._build_suggestions_task(user_id)
+        if task is None:
+            yield sse("token", {"text": "No primary portfolio found. Add one to get AI insights."})
+            yield sse("done", {})
+            return
+
+        try:
+            yield sse("stage", {"stage": "analyzing", "detail": "Analyzing portfolio & market signals"})
+            parts: list[str] = []
+            for token in stream_research_agent(
+                {"messages": [{"role": "user", "content": task}]},
+                {"configurable": {"thread_id": f"suggestions-{user_id}"}},
+            ):
+                parts.append(token)
+                yield sse("token", {"text": token})
+
+            raw_text = "".join(parts)
+            guarded = apply_output_guardrail(raw_text)
+            if guarded.startswith(raw_text) and len(guarded) > len(raw_text):
+                yield sse("token", {"text": guarded[len(raw_text):]})
+            yield sse("done", {})
+        except Exception as e:
+            logger.error(f"Failed to stream AI suggestions: {e}")
+            yield sse("error", {"detail": "AI insights are temporarily unavailable."})
 
     def _get_causal_context(self, portfolio_id: UUID) -> str:
         """Get causal context for portfolio analysis."""

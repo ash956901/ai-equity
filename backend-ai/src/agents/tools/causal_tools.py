@@ -66,6 +66,41 @@ def get_all_active_sectors() -> list[str]:
         db.close()
 
 
+def _get_verified_links_context() -> str:
+    """Summarize empirically-verified sector↔commodity links for LLM grounding.
+
+    Each link carries a 2-year price-return correlation and a market-agreement
+    verdict, so the causal reasoner can weight strong/confirmed links over weak
+    or contradicted ones instead of treating every seeded edge as equally true.
+    """
+    from src.db.database import SessionLocal
+    from src.db.models import SectorExposure
+    from src.services.causal_verification import direction_agreement
+
+    db = SessionLocal()
+    try:
+        rows = (
+            db.query(SectorExposure)
+            .filter(SectorExposure.verified_confidence.isnot(None))
+            .order_by(SectorExposure.verified_confidence.desc())
+            .limit(20)
+            .all()
+        )
+        if not rows:
+            return "No empirically verified relationships yet."
+        lines = []
+        for e in rows:
+            agree = direction_agreement(e.impact_direction, e.verified_correlation)
+            strength = "strong" if (e.verified_confidence or 0) >= 0.2 else "weak"
+            lines.append(
+                f"- {e.sector} <-> {e.commodity}: correlation {e.verified_correlation:+.2f} "
+                f"({strength}, {agree})"
+            )
+        return "\n".join(lines)
+    finally:
+        db.close()
+
+
 # ---------------------------------------------------------------------------
 # Existing tools (commodity, events, news, portfolio, patterns)
 # ---------------------------------------------------------------------------
@@ -73,39 +108,71 @@ def get_all_active_sectors() -> list[str]:
 def get_commodity_price_summary(days: int = 7) -> dict[str, Any]:
     """Get summary of commodity price changes.
 
+    Uses the clean ``price_history`` series (daily yfinance closes) for the change
+    computation, and falls back to ``CommodityPrice`` only for symbols with no
+    history (e.g. COAL, JET_FUEL). This avoids mixing stale seed prices with live
+    ones, which previously produced spurious swings (gold "+66%").
+
     Returns:
         Dict with commodity symbol -> {price, change_pct, direction}
     """
     from src.db.database import SessionLocal
-    from src.db.models import CommodityPrice
+    from src.db.models import CommodityPrice, PriceHistory
 
     db = SessionLocal()
-    results = {}
+    results: dict[str, Any] = {}
 
     try:
+        cutoff_date = (datetime.utcnow() - timedelta(days=days)).date()
+
+        # 1) Clean changes from price_history (2y daily closes).
+        ph_symbols = [
+            r[0]
+            for r in db.query(PriceHistory.symbol)
+            .filter(PriceHistory.series_type == "commodity")
+            .distinct()
+            .all()
+        ]
+        for symbol in ph_symbols:
+            latest = (
+                db.query(PriceHistory)
+                .filter(PriceHistory.symbol == symbol)
+                .order_by(PriceHistory.price_date.desc())
+                .first()
+            )
+            old = (
+                db.query(PriceHistory)
+                .filter(PriceHistory.symbol == symbol, PriceHistory.price_date <= cutoff_date)
+                .order_by(PriceHistory.price_date.desc())
+                .first()
+            )
+            if latest and old and old.close:
+                change_pct = ((latest.close - old.close) / old.close) * 100
+                results[symbol] = {
+                    "current_price": round(latest.close, 2),
+                    "change_pct": round(change_pct, 2),
+                    "direction": "up" if change_pct > 0 else "down",
+                    "name": symbol,
+                }
+
+        # 2) Fallback for symbols only in commodity_prices (no yfinance history).
         cutoff = datetime.utcnow() - timedelta(days=days)
-
-        symbols = db.query(CommodityPrice.symbol).distinct().all()
-        symbols = [s[0] for s in symbols]
-
-        for symbol in symbols:
+        cp_symbols = [s[0] for s in db.query(CommodityPrice.symbol).distinct().all()]
+        for symbol in cp_symbols:
+            if symbol in results:
+                continue
             latest = (
                 db.query(CommodityPrice)
                 .filter(CommodityPrice.symbol == symbol)
                 .order_by(CommodityPrice.timestamp.desc())
                 .first()
             )
-
             old_price = (
                 db.query(CommodityPrice)
-                .filter(
-                    CommodityPrice.symbol == symbol,
-                    CommodityPrice.timestamp <= cutoff,
-                )
+                .filter(CommodityPrice.symbol == symbol, CommodityPrice.timestamp <= cutoff)
                 .order_by(CommodityPrice.timestamp.desc())
                 .first()
             )
-
             if latest and old_price and old_price.price:
                 change_pct = ((latest.price - old_price.price) / old_price.price) * 100
                 results[symbol] = {
@@ -435,6 +502,9 @@ def analyze_causal_chain_with_llm(trigger: str) -> dict[str, Any]:
     known_sectors = get_all_active_sectors()
     sectors_str = ", ".join(known_sectors) if known_sectors else "general sectors"
 
+    # Empirically-verified links (2y price correlation) to weight the reasoning.
+    verified_context = _get_verified_links_context()
+
     # Also pull current commodity context for grounding
     commodity_data = get_commodity_price_summary(days=3)
     commodity_context = ", ".join(
@@ -453,7 +523,11 @@ KNOWN SECTORS (grounded in database — ONLY reason about these):
 
 RECENT COMMODITY CONTEXT: {commodity_context}
 
+EMPIRICALLY VERIFIED RELATIONSHIPS (2-year price correlation — prioritise 'strong/confirmed' links, and LOWER confidence for 'weak' or 'contradicted' ones):
+{verified_context}
+
 STRICT RULE: Do NOT invent sector connections. Every impact you assert must map to one of the known sectors listed above. If a sector is not in the list, do not mention it.
+When a relationship above is marked 'contradicted', explicitly note the market data disagrees; when 'strong/confirmed', you may assert higher confidence.
 
 REASONING FRAMEWORK:
 1. PRIMARY IMPACTS — obvious, direct, likely already priced in by the market

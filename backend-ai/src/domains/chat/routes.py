@@ -6,9 +6,11 @@ from typing import Any, Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
+from src.agents.guardrails import GuardrailError
 from src.db.database import get_db
 from src.domains.chat.service import ChatService
 
@@ -70,12 +72,34 @@ def process_query(request: QueryRequest, db: Session = Depends(get_db)) -> Query
         return QueryResponse(**result)
     except HTTPException:
         raise
+    except GuardrailError as e:
+        headers = {"Retry-After": str(e.retry_after)} if e.retry_after else None
+        raise HTTPException(status_code=e.status, detail=e.detail, headers=headers)
     except Exception as e:
         db.rollback()
         print(f"[ERROR] Chat query failed: {e}")
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/query/stream")
+def stream_query(request: QueryRequest, db: Session = Depends(get_db)) -> StreamingResponse:
+    """Stream a research query as Server-Sent Events (stage/token/done/error)."""
+    service = ChatService(db)
+    generator = service.stream_query(
+        user_id=request.user_id,
+        query=request.query,
+        expertise_level=request.expertise_level,
+        session_id=request.session_id,
+        upload_id=request.upload_id,
+        company_id=request.company_id,
+    )
+    return StreamingResponse(
+        generator,
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 @router.get("/sessions/{user_id}")

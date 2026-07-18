@@ -17,8 +17,9 @@ from sqlalchemy import (
     Numeric,
     String,
     Text,
+    UniqueConstraint,
 )
-from sqlalchemy.dialects.postgresql import ARRAY, UUID
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src.db.database import Base
@@ -703,10 +704,42 @@ class SectorExposure(Base):
     impact_magnitude: Mapped[str] = mapped_column(String(20), default="medium")
     affected_companies: Mapped[Optional[list]] = mapped_column(ARRAY(String), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    # Provenance: 'seed' (hand-curated) vs 'filing_mined' (derived from filings).
+    source: Mapped[str] = mapped_column(String(30), default="seed", server_default="seed")
+    # Data-backed verification: correlation between commodity returns and the
+    # sector index over history. Turns LLM/seed confidence into empirical evidence.
+    verified_correlation: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    verified_confidence: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    verified_sample_size: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    verified_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     __table_args__ = (
         Index("ix_sector_exposures_sector_commodity", "sector", "commodity"),
+    )
+
+
+class PriceHistory(Base):
+    """Daily close-price history for commodities and NSE sector indices.
+
+    Backs the causal verification layer: commodity returns vs sector-index
+    returns are correlated to produce data-backed exposure confidence.
+    """
+
+    __tablename__ = "price_history"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    symbol: Mapped[str] = mapped_column(String(50), nullable=False)
+    series_type: Mapped[str] = mapped_column(String(20), nullable=False)  # commodity | sector_index
+    price_date: Mapped[date] = mapped_column(Date, nullable=False)
+    close: Mapped[float] = mapped_column(Float, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    __table_args__ = (
+        UniqueConstraint("symbol", "price_date", name="uq_price_history_symbol_date"),
+        Index("ix_price_history_symbol_date", "symbol", "price_date"),
     )
 
 
@@ -755,7 +788,7 @@ class ClassifiedNews(Base):
     url: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     source: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     published_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
-    topics: Mapped[Optional[list]] = mapped_column(ARRAY(String), nullable=True)
+    topics: Mapped[Optional[list]] = mapped_column(JSONB, nullable=True)
     location: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     importance_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     

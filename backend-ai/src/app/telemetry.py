@@ -126,6 +126,10 @@ def configure_observability(settings: Settings) -> None:
     _set_env("OTEL_SERVICE_VERSION", settings.observability_service_version, force=True)
     _set_env("OTEL_EXPORTER_OTLP_ENDPOINT", settings.otel_exporter_otlp_endpoint, force=True)
     _set_env("OTEL_EXPORTER_OTLP_PROTOCOL", settings.otel_exporter_otlp_protocol, force=True)
+    # A plaintext http:// gRPC endpoint (local collector) needs insecure mode,
+    # otherwise the exporter attempts TLS and every export fails silently.
+    if (settings.otel_exporter_otlp_endpoint or "").startswith("http://"):
+        _set_env("OTEL_EXPORTER_OTLP_INSECURE", "true", force=True)
 
     if not (settings.observability_enabled or settings.otel_exporter_otlp_endpoint):
         return

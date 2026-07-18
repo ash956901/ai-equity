@@ -51,8 +51,9 @@ def monitor_geopolitical_events(self):
     errors = []
     
     try:
-        # Try GDELT Cloud first (if API key available)
-        if settings.gdelt_api_key:
+        # GDELT Cloud (gdeltcloud.com) is defunct and hangs, so it is opt-in
+        # only. By default we go straight to the free public GDELT DOC API below.
+        if getattr(settings, "gdelt_use_cloud", False) and settings.gdelt_api_key:
             from src.integrations.gdelt_client import GDELTClient
             
             client = GDELTClient(settings.gdelt_api_key)
@@ -98,46 +99,48 @@ def monitor_geopolitical_events(self):
             
             logger.info(f"Saved {events_saved} new events from GDELT Cloud")
         
-        # Fallback: Use free GDELT API for broader coverage
-        else:
+        # Free GDELT is the reliable path: the paid GDELT Cloud endpoint is
+        # defunct (404) and silently returns nothing, so fall back whenever the
+        # paid branch produced no events.
+        if events_saved == 0:
             from src.integrations.gdelt_client import GDELTFreeClient
-            
+            from src.integrations.event_impact_classifier import get_event_classifier
+
             client = GDELTFreeClient()
-            
-            # Search for oil/conflict related news
-            queries = [
-                "oil price conflict Middle East",
-                "Russia Ukraine war energy",
-                "commodity supply disruption",
-            ]
-            
-            all_articles = []
-            for query in queries:
-                articles = client.search_mentions(query, max_results=10)
-                all_articles.extend(articles)
-            
-            # Store as basic events
-            for article in all_articles:
+            classifier = get_event_classifier()
+            from src.agents.tools.causal_tools import get_all_active_sectors
+
+            raw_events = client.get_geopolitical_events(hours=24, per_theme=15)
+            # Semantic LLM classification grounded to DB sectors (keyword fallback inside).
+            significant = classifier.classify_batch_llm(
+                raw_events, known_sectors=get_all_active_sectors()
+            )
+
+            for event_data in significant:
                 existing = db.query(GeopoliticalEvent).filter(
-                    GeopoliticalEvent.title == article.get("title")
+                    GeopoliticalEvent.event_id == event_data.get("event_id")
                 ).first()
-                
-                if not existing:
-                    event = GeopoliticalEvent(
-                        title=article.get("title"),
-                        summary=f"Source: {article.get('domain')}",
-                        event_date=datetime.fromisoformat(
-                            article.get("seendate", "").replace("Z", "+00:00")
-                        ) if article.get("seendate") else datetime.utcnow(),
-                        country="GLOBAL",
-                        category="news",
-                        source="gdelt_free",
-                        raw_data=article,
-                    )
-                    db.add(event)
-                    events_saved += 1
-            
-            logger.info(f"Saved {events_saved} events from free GDELT")
+                if existing:
+                    continue
+
+                impact = event_data.get("impact", {})
+                event = GeopoliticalEvent(
+                    event_id=event_data.get("event_id"),
+                    title=event_data.get("title"),
+                    summary=event_data.get("summary"),
+                    event_date=datetime.fromisoformat(event_data["event_date"])
+                    if event_data.get("event_date") else datetime.utcnow(),
+                    country=event_data.get("country"),
+                    region=event_data.get("region"),
+                    category=event_data.get("category"),
+                    confidence=impact.get("confidence"),
+                    source="gdelt_free",
+                    raw_data=event_data.get("raw_data"),
+                )
+                db.add(event)
+                events_saved += 1
+
+            logger.info(f"Saved {events_saved} classified events from free GDELT")
         
         db.commit()
         _finish_etl_run(db, run, records=events_saved)

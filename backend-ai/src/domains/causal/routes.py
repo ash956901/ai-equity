@@ -36,6 +36,7 @@ from sqlalchemy.orm import Session
 from src.db.database import get_db
 from src.db.models import CausalChain, ClassifiedNews, Company, Portfolio
 from src.services.causal_service import CausalService
+from src.services.causal_verification import direction_agreement
 
 router = APIRouter(prefix="/causal", tags=["causal"])
 
@@ -187,6 +188,9 @@ def get_portfolio_company_exposures(user_id: UUID, db: Session = Depends(get_db)
 
     companies_data = []
     seen_companies: set[str] = set()
+    # Accumulate chains across ALL holdings (deduped), not just the last one.
+    chains: list[dict[str, Any]] = []
+    seen_chain_ids: set[str] = set()
 
     for holding in holdings:
         company = db.query(Company).filter(Company.id == holding.company_id).first()
@@ -195,7 +199,6 @@ def get_portfolio_company_exposures(user_id: UUID, db: Session = Depends(get_db)
         seen_companies.add(str(company.id))
 
         exposures = service.get_sector_exposure(company.sector or "")
-        chains = []
         for exposure in exposures:
             matched_chains = (
                 db.query(CausalChain)
@@ -206,6 +209,9 @@ def get_portfolio_company_exposures(user_id: UUID, db: Session = Depends(get_db)
                 .all()
             )
             for chain in matched_chains:
+                if str(chain.id) in seen_chain_ids:
+                    continue
+                seen_chain_ids.add(str(chain.id))
                 chains.append(
                     {
                         "id": str(chain.id),
@@ -246,6 +252,9 @@ def get_portfolio_company_exposures(user_id: UUID, db: Session = Depends(get_db)
                     "affected_companies": e.affected_companies or [],
                     "current_change_pct": commodity_changes.get(e.commodity, {}).get("change_pct", 0.0) or 0.0,
                     "commodity_direction": commodity_changes.get(e.commodity, {}).get("direction", "stable") or "stable",
+                    "verified_confidence": e.verified_confidence,
+                    "verified_correlation": e.verified_correlation,
+                    "market_agreement": direction_agreement(e.impact_direction, e.verified_correlation),
                 }
                 for e in exposures
             ],
@@ -305,6 +314,9 @@ def get_company_causal(company_id: UUID, db: Session = Depends(get_db)) -> dict[
                 "affected_companies": e.affected_companies or [],
                 "current_change_pct": commodity_changes.get(e.commodity, {}).get("change_pct", 0.0) or 0.0,
                 "commodity_direction": commodity_changes.get(e.commodity, {}).get("direction", "stable") or "stable",
+                "verified_confidence": e.verified_confidence,
+                "verified_correlation": e.verified_correlation,
+                "market_agreement": direction_agreement(e.impact_direction, e.verified_correlation),
             }
             for e in exposures
         ],

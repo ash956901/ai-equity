@@ -21,7 +21,7 @@ import {
   fetchMarketHeadlines,
   fetchPortfolios,
   fetchPortfolioMetrics,
-  fetchPortfolioSuggestions,
+  streamPortfolioSuggestions,
   fetchTimeline,
   fetchCompanyQuote,
   createPortfolio,
@@ -147,8 +147,19 @@ export function DashboardView(props: DashboardViewProps) {
         const metrics = await fetchPortfolioMetrics(primary.id);
         setPortfolioMetrics(metrics);
         setSuggestionsLoading(true);
-        fetchPortfolioSuggestions(getUserId())
-          .then(res => setAiSuggestions(res.suggestions))
+        setAiSuggestions("");
+        let streamed = "";
+        streamPortfolioSuggestions(getUserId(), {
+          onToken: (token) => {
+            streamed += token;
+            setAiSuggestions(streamed);
+            setSuggestionsLoading(false);
+          },
+          onError: (detail) => {
+            setAiSuggestions(`AI insights unavailable: ${detail}`);
+            setSuggestionsLoading(false);
+          },
+        })
           .catch(err => console.error("Failed to load suggestions", err))
           .finally(() => setSuggestionsLoading(false));
       }

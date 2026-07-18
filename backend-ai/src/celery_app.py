@@ -15,6 +15,7 @@ app = Celery(
         "src.etl.tasks",
         "src.etl.news_sync_task",
         "src.etl.portfolio_news_task",
+        "src.etl.event_monitor_task",
     ],
 )
 
@@ -77,5 +78,30 @@ app.conf.beat_schedule = {
     "check-portfolio-news": {
         "task": "etl.check_portfolio_news",
         "schedule": crontab(minute="*/30"),
+    },
+    # Refresh commodity prices hourly so causal signals run on live data, not seeds
+    "refresh-commodity-prices-hourly": {
+        "task": "etl.refresh_commodity_prices",
+        "schedule": crontab(minute=5),
+    },
+    # Monitor geopolitical events (GDELT) hourly to populate the causal event feed
+    "monitor-geopolitical-events-hourly": {
+        "task": "etl.monitor_geopolitical_events",
+        "schedule": crontab(minute=15),
+    },
+    # Grow the causal graph from newly-enriched filings — daily after enrichment
+    "mine-causal-edges-daily": {
+        "task": "etl.mine_causal_edges",
+        "schedule": crontab(hour=8, minute=30),
+    },
+    # Backfill price history weekly (Sat 3 AM) — feeds the verification layer
+    "backfill-price-history-weekly": {
+        "task": "etl.backfill_price_history",
+        "schedule": crontab(hour=3, minute=0, day_of_week="saturday"),
+    },
+    # Re-verify causal exposures daily (correlation-backed confidence)
+    "verify-causal-exposures-daily": {
+        "task": "etl.verify_causal_exposures",
+        "schedule": crontab(hour=8, minute=45),
     },
 }

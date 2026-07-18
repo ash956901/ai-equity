@@ -7,6 +7,11 @@ from uuid import UUID
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
+from src.agents.guardrails import (
+    apply_output_guardrail,
+    check_rate_limit,
+    validate_input,
+)
 from src.app.telemetry import traceable
 from src.db.models import ChatMessage, ChatSession, NewsArticle, User, Portfolio
 from src.domains.chat.research_pipeline import ResearchPipeline
@@ -95,6 +100,10 @@ class ChatService:
         company_id: Optional[UUID] = None,
     ) -> dict[str, Any]:
         print(f"[STAGE 2: SERVICE] process_query called: user_id={user_id}, query='{query[:50]}...'")
+
+        # Guardrails: rate limit + input validation / prompt-injection defence
+        check_rate_limit(str(user_id))
+        validate_input(query)
 
         user = self.db.query(User).filter(User.id == user_id).first()
         if not user:
@@ -220,7 +229,7 @@ class ChatService:
 
         print(f"[STAGE 4: RESULT_FULL] result keys = {list(result.keys())}")
 
-        response_text = result["response"]
+        response_text = apply_output_guardrail(result["response"])
         print(f"[STAGE 4: LLM_RESPONSE_FULL] response_text = {response_text}")
 
         tokens_used = int(result.get("tokens_used", 0))
@@ -270,6 +279,127 @@ class ChatService:
             "visualizations": result.get("visualizations", []),
             "data_sources": data_sources,
         }
+
+    def stream_query(
+        self,
+        user_id: UUID,
+        query: str,
+        expertise_level: str,
+        session_id: Optional[UUID],
+        upload_id: Optional[UUID] = None,
+        company_id: Optional[UUID] = None,
+    ):
+        """Yield Server-Sent Events (stage / token / done / error) for a query.
+
+        Reuses the same planner/evidence step as ``process_query`` but streams
+        the synthesis tokens instead of blocking on the full answer.
+        """
+        import json
+
+        from src.agents import stream_research_agent
+
+        def sse(event: str, data: dict[str, Any]) -> str:
+            return f"event: {event}\ndata: {json.dumps(data, default=str)}\n\n"
+
+        try:
+            # Guardrails: rate limit + input validation / prompt-injection defence
+            check_rate_limit(str(user_id))
+            validate_input(query)
+
+            user = self.db.query(User).filter(User.id == user_id).first()
+            if not user:
+                user = User(
+                    id=user_id,
+                    email=f"{user_id}@auto.equityai.dev",
+                    expertise_level=expertise_level,
+                )
+                self.db.add(user)
+                self.db.flush()
+
+            resolved_session_id = session_id
+            if not resolved_session_id:
+                session = ChatSession(user_id=user_id, title=query[:50], context_type="general")
+                self.db.add(session)
+                self.db.commit()
+                self.db.refresh(session)
+                resolved_session_id = session.id
+            else:
+                session = (
+                    self.db.query(ChatSession)
+                    .filter(ChatSession.id == resolved_session_id, ChatSession.user_id == user_id)
+                    .first()
+                )
+                if not session:
+                    yield sse("error", {"detail": "Session not found"})
+                    return
+
+            primary_portfolio = (
+                self.db.query(Portfolio)
+                .filter(Portfolio.user_id == user_id, Portfolio.is_primary == True)
+                .first()
+            )
+            primary_portfolio_id = primary_portfolio.id if primary_portfolio else None
+
+            news_context = self._fetch_company_news_context(company_id) if company_id else None
+            user_message = self._build_user_message(
+                query=query,
+                user_id=user_id,
+                expertise_level=expertise_level,
+                upload_id=upload_id,
+                primary_portfolio_id=primary_portfolio_id,
+                news_context=news_context,
+            )
+
+            yield sse("stage", {"stage": "planning", "detail": "Planning research tasks"})
+
+            prepared = self._research_pipeline.prepare(
+                query=query,
+                user_id=user_id,
+                company_id=company_id,
+                upload_id=upload_id,
+                primary_portfolio_id=primary_portfolio_id,
+                session_id=resolved_session_id,
+                context_note=user_message,
+            )
+            yield sse(
+                "stage",
+                {"stage": "evidence", "detail": "Gathered evidence", "tasks": [t.kind for t in prepared["tasks"]]},
+            )
+
+            yield sse("stage", {"stage": "synthesizing", "detail": "Writing answer"})
+            parts: list[str] = []
+            for token in stream_research_agent(
+                {"messages": [{"role": "user", "content": prepared["prompt"]}]},
+                {"configurable": {"thread_id": str(resolved_session_id)}},
+            ):
+                parts.append(token)
+                yield sse("token", {"text": token})
+
+            raw_text = "".join(parts)
+            response_text = apply_output_guardrail(raw_text)
+            # Stream the appended disclaimer so the client shows the guarded text.
+            if response_text.startswith(raw_text) and len(response_text) > len(raw_text):
+                yield sse("token", {"text": response_text[len(raw_text):]})
+
+            self.db.add(ChatMessage(session_id=resolved_session_id, role="user", content=query))
+            self.db.add(
+                ChatMessage(
+                    session_id=resolved_session_id,
+                    role="assistant",
+                    content=response_text,
+                    tokens_used=0,
+                )
+            )
+            self.db.commit()
+
+            sources = self._research_pipeline.aggregator.build_sources(prepared["results"])
+            yield sse("done", {"session_id": str(resolved_session_id), "sources": sources})
+        except Exception as e:
+            try:
+                self.db.rollback()
+            except Exception:
+                pass
+            yield sse("error", {"detail": str(e)})
 
     def list_sessions(self, user_id: UUID, limit: int) -> list[dict[str, Any]]:
         sessions = (

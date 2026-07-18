@@ -564,6 +564,20 @@ def seed_dev_commodity_prices(db, force: bool = False):
     ]
 
     for symbol, name, base_price, currency, min_chg, max_chg in commodities:
+        # Seed is only a fallback: never seed over real data (e.g. AlphaVantage),
+        # otherwise stale placeholder prices mix with live ones and corrupt the
+        # change-percent calculations that the causal engine reasons over.
+        real = (
+            db.query(CommodityPrice)
+            .filter(
+                CommodityPrice.symbol == symbol,
+                CommodityPrice.source != "seed",
+            )
+            .first()
+        )
+        if real:
+            continue
+
         # Skip if we have a recent-enough price and not forcing
         if not force:
             recent = (

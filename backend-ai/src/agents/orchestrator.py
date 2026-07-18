@@ -200,6 +200,40 @@ def _get_agent(use_fallback_key: bool = False):
     return build_react_agent(use_fallback_key=use_fallback_key)
 
 
+def stream_research_agent(payload: dict[str, Any], config: dict[str, Any]):
+    """Yield synthesis tokens from the active agent as they are generated.
+
+    Uses LangGraph ``stream_mode="messages"`` to surface token-level chunks from
+    the final LLM. Failover is best-effort: if the primary key errors *before*
+    any token is emitted, we retry once with the second DeepSeek/NVIDIA key;
+    once streaming has started we cannot safely restart, so later errors
+    propagate to the caller.
+    """
+    from openai import APIConnectionError, APITimeoutError, RateLimitError
+
+    s = get_settings()
+
+    def _stream(use_fallback: bool):
+        for chunk, _meta in _get_agent(use_fallback_key=use_fallback).stream(
+            payload, config=config, stream_mode="messages"
+        ):
+            text = getattr(chunk, "content", None)
+            if text:
+                yield text
+
+    emitted = False
+    try:
+        for text in _stream(use_fallback=False):
+            emitted = True
+            yield text
+    except (APITimeoutError, APIConnectionError, RateLimitError):
+        key2 = s.deepseek_api_key_2
+        if emitted or not (s.llm_provider == "deepseek" and key2 and key2 != s.deepseek_api_key):
+            raise
+        print("[ORCHESTRATOR] Primary key failed mid-stream (pre-token); retrying with DEEPSEEK_API_KEY_2")
+        yield from _stream(use_fallback=True)
+
+
 @traceable(name="agents.invoke_research_agent")
 def invoke_research_agent(payload: dict[str, Any], config: dict[str, Any]):
     """Invoke the active agent with automatic failover to a second

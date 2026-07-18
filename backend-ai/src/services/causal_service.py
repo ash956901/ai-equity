@@ -88,31 +88,67 @@ class CausalService:
         self.db = db
 
     def get_commodity_changes(self, days: int = 7) -> dict[str, dict]:
-        """Get commodity price changes for the past N days."""
+        """Get commodity price changes for the past N days.
+
+        Uses the clean ``price_history`` series (daily yfinance closes) for the
+        change, falling back to ``CommodityPrice`` only for symbols with no
+        history. This prevents stale seed prices from mixing with live ones
+        (which previously produced spurious swings like gold "+66%").
+        """
+        from src.db.models import PriceHistory
+
+        changes: dict[str, dict] = {}
+        cutoff_date = (datetime.utcnow() - timedelta(days=days)).date()
+
+        # 1) Clean changes from price_history.
+        ph_symbols = [
+            r[0]
+            for r in self.db.query(PriceHistory.symbol)
+            .filter(PriceHistory.series_type == "commodity")
+            .distinct()
+            .all()
+        ]
+        for symbol in ph_symbols:
+            latest = (
+                self.db.query(PriceHistory)
+                .filter(PriceHistory.symbol == symbol)
+                .order_by(PriceHistory.price_date.desc())
+                .first()
+            )
+            old = (
+                self.db.query(PriceHistory)
+                .filter(PriceHistory.symbol == symbol, PriceHistory.price_date <= cutoff_date)
+                .order_by(PriceHistory.price_date.desc())
+                .first()
+            )
+            if latest and old and old.close:
+                change_pct = ((latest.close - old.close) / old.close) * 100
+                changes[symbol] = {
+                    "current_price": round(latest.close, 2),
+                    "previous_price": round(old.close, 2),
+                    "change_pct": round(change_pct, 2),
+                    "name": symbol,
+                    "direction": "up" if change_pct > 0 else "down",
+                }
+
+        # 2) Fallback for symbols only in commodity_prices (no yfinance history).
         cutoff = datetime.utcnow() - timedelta(days=days)
-        changes = {}
-
-        symbols = self.db.query(CommodityPrice.symbol).distinct().all()
-        symbols = [s[0] for s in symbols]
-
-        for symbol in symbols:
+        cp_symbols = [s[0] for s in self.db.query(CommodityPrice.symbol).distinct().all()]
+        for symbol in cp_symbols:
+            if symbol in changes:
+                continue
             latest = (
                 self.db.query(CommodityPrice)
                 .filter(CommodityPrice.symbol == symbol)
                 .order_by(CommodityPrice.timestamp.desc())
                 .first()
             )
-
             old_price = (
                 self.db.query(CommodityPrice)
-                .filter(
-                    CommodityPrice.symbol == symbol,
-                    CommodityPrice.timestamp <= cutoff,
-                )
+                .filter(CommodityPrice.symbol == symbol, CommodityPrice.timestamp <= cutoff)
                 .order_by(CommodityPrice.timestamp.desc())
                 .first()
             )
-
             if latest and old_price and old_price.price and latest.price:
                 change_pct = ((latest.price - old_price.price) / old_price.price) * 100
                 changes[symbol] = {

@@ -27,7 +27,7 @@ import {
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
-import { listChatSessions, sendChatQuery, uploadDocument, type ChatQueryRequest } from "../../lib/api";
+import { listChatSessions, streamChatQuery, uploadDocument, type ChatQueryRequest } from "../../lib/api";
 import { PageHeader } from "../../shared/ui/PageHeader";
 import { ThinkingDropdown } from "./components/ThinkingDropdown";
 import { ThinkingIndicator } from "./components/ThinkingIndicator";
@@ -238,6 +238,20 @@ export function ChatView(props: ChatViewProps) {
       );
 
       const startTime = performance.now();
+      // Stream into the placeholder message in place (reuse its id).
+      const streamId = thinkingMessage.id;
+      const patchMessage = (patch: Partial<ChatMessage>) => {
+        props.setThreads((current) =>
+          current.map((thread) => {
+            if (thread.id !== activeThread.id) return thread;
+            return {
+              ...thread,
+              updatedAt: new Date().toISOString(),
+              messages: thread.messages.map((m) => (m.id === streamId ? { ...m, ...patch } : m)),
+            };
+          })
+        );
+      };
 
       try {
         const userId = localStorage.getItem("equityai-user-id") || crypto.randomUUID();
@@ -251,57 +265,41 @@ export function ChatView(props: ChatViewProps) {
           session_id: activeThread.backendSessionId,
         };
         if (currentUploadId) chatReq.upload_id = currentUploadId;
-        const resp = await sendChatQuery(chatReq);
 
-        const elapsedSec = Math.round((performance.now() - startTime) / 1000);
-
-        const sources =
-          resp.sources?.map((s: Record<string, unknown>) => String(s.title || s.source || JSON.stringify(s))) ??
-          [];
-
-        const assistantMessage: ChatMessage = {
-          id: `assistant-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-          role: "assistant",
-          text: resp.response,
-          sources: sources.length > 0 ? sources : undefined,
-          thinkingDurationSec: elapsedSec,
-          executionPlan: resp.execution_plan?.length ? resp.execution_plan : undefined,
-          agentEvents: resp.agent_call_log?.length
-            ? (resp.agent_call_log as unknown as AgentEvent[])
-            : undefined,
-          toolCalls: resp.tool_call_log?.length ? (resp.tool_call_log as unknown as ToolCallEvent[]) : undefined,
-        };
-
-        props.setThreads((current) =>
-          current.map((thread) => {
-            if (thread.id !== activeThread.id) return thread;
-            const msgs = thread.messages.filter((m) => m.id !== thinkingMessage.id);
-            return {
-              ...thread,
-              updatedAt: new Date().toISOString(),
-              backendSessionId: resp.session_id,
-              messages: [...msgs, assistantMessage],
-            };
-          })
-        );
+        let accumulated = "";
+        await streamChatQuery(chatReq, {
+          onToken: (token) => {
+            accumulated += token;
+            patchMessage({ text: accumulated, isThinking: false });
+          },
+          onDone: (data) => {
+            const elapsedSec = Math.round((performance.now() - startTime) / 1000);
+            const sources =
+              data.sources?.map((s) => String(s.title || s.source || JSON.stringify(s))) ?? [];
+            patchMessage({
+              isThinking: false,
+              thinkingDurationSec: elapsedSec,
+              sources: sources.length > 0 ? sources : undefined,
+            });
+            if (data.session_id) {
+              props.setThreads((current) =>
+                current.map((thread) =>
+                  thread.id === activeThread.id
+                    ? { ...thread, backendSessionId: data.session_id }
+                    : thread
+                )
+              );
+            }
+          },
+          onError: (detail) => {
+            patchMessage({ text: `Error: ${detail}`, isThinking: false });
+          },
+        });
       } catch (err) {
-        const errorMessage: ChatMessage = {
-          id: `assistant-error-${Date.now()}`,
-          role: "assistant",
+        patchMessage({
           text: `Error: ${err instanceof Error ? err.message : "Failed to get AI response"}. The AI backend may be unavailable.`,
-        };
-
-        props.setThreads((current) =>
-          current.map((thread) => {
-            if (thread.id !== activeThread.id) return thread;
-            const msgs = thread.messages.filter((m) => m.id !== thinkingMessage.id);
-            return {
-              ...thread,
-              updatedAt: new Date().toISOString(),
-              messages: [...msgs, errorMessage],
-            };
-          })
-        );
+          isThinking: false,
+        });
       }
     } else {
       const assistantMessage: ChatMessage = {

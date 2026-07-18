@@ -403,6 +403,8 @@ def process_filing(self, filing_id: str):
         current_meta['timeline_summary'] = enrichment.get("timeline_summary", "")
         current_meta['red_flags'] = enrichment.get("red_flags", [])
         current_meta['extracted_metrics'] = enrichment.get("metrics", {})
+        # Persist causal signals so the graph-mining job can grow SectorExposure edges.
+        current_meta['causal_signals'] = enrichment.get("causal_signals", {})
         filing.metadata_ = current_meta
         
         db.commit()
@@ -548,6 +550,67 @@ def refresh_commodity_prices(self):
     except Exception as e:
         db.rollback()
         logger.exception("Commodity price refresh failed")
+        raise
+    finally:
+        db.close()
+
+
+@app.task(bind=True, name="etl.mine_causal_edges")
+def mine_causal_edges(self):
+    """Grow the SectorExposure graph from enriched filings' causal signals."""
+    db = SessionLocal()
+    run = _log_etl_run(db, "mine_causal_edges")
+    try:
+        from src.etl.causal_graph_miner import mine_sector_exposures_from_filings
+
+        result = mine_sector_exposures_from_filings(db)
+        _finish_etl_run(db, run, records=result.get("edges_added", 0))
+        logger.info("Causal edge mining complete: %s", result)
+        return result
+    except Exception as e:
+        db.rollback()
+        _finish_etl_run(db, run, status="failed", error=str(e))
+        logger.exception("Causal edge mining failed")
+        raise
+    finally:
+        db.close()
+
+
+@app.task(bind=True, name="etl.backfill_price_history")
+def backfill_price_history_task(self, period: str = "2y"):
+    """Backfill daily commodity + sector-index price history (for verification)."""
+    db = SessionLocal()
+    run = _log_etl_run(db, "backfill_price_history")
+    try:
+        from src.services.causal_verification import backfill_price_history
+
+        result = backfill_price_history(db, period=period)
+        _finish_etl_run(db, run, records=result.get("rows_upserted", 0))
+        return result
+    except Exception as e:
+        db.rollback()
+        _finish_etl_run(db, run, status="failed", error=str(e))
+        logger.exception("Price backfill failed")
+        raise
+    finally:
+        db.close()
+
+
+@app.task(bind=True, name="etl.verify_causal_exposures")
+def verify_causal_exposures_task(self):
+    """Recompute data-backed confidence for every SectorExposure."""
+    db = SessionLocal()
+    run = _log_etl_run(db, "verify_causal_exposures")
+    try:
+        from src.services.causal_verification import verify_all_exposures
+
+        result = verify_all_exposures(db)
+        _finish_etl_run(db, run, records=result.get("verified", 0))
+        return result
+    except Exception as e:
+        db.rollback()
+        _finish_etl_run(db, run, status="failed", error=str(e))
+        logger.exception("Exposure verification failed")
         raise
     finally:
         db.close()

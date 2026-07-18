@@ -28,7 +28,7 @@ import {
   type CausalCompanyData,
   type CausalLLMData,
 } from "../types/api";
-import { AI_BACKEND_URL, aiDelete, aiGet, aiPost, ApiError } from "./core";
+import { AI_BACKEND_URL, aiDelete, aiGet, aiPost, ApiError, getSse, postSse } from "./core";
 
 // ------------------------------------------------------------------ //
 //  Profile persistence API                                             //
@@ -91,10 +91,68 @@ export async function fetchPortfolioSuggestions(
   return aiGet<{ suggestions: string }>(`/portfolios/suggestions?user_id=${userId}`, 300000);
 }
 
+/** Stream AI portfolio suggestions over SSE (stage/token/done/error). */
+export async function streamPortfolioSuggestions(
+  userId: string,
+  handlers: ChatStreamHandlers,
+  signal?: AbortSignal,
+): Promise<void> {
+  await getSse(
+    `/portfolios/suggestions/stream?user_id=${userId}`,
+    (evt) => {
+      if (evt.event === "stage") {
+        handlers.onStage?.(String(evt.data.stage ?? ""), String(evt.data.detail ?? ""));
+      } else if (evt.event === "token") {
+        handlers.onToken?.(String(evt.data.text ?? ""));
+      } else if (evt.event === "done") {
+        handlers.onDone?.(evt.data as { session_id: string; sources?: Record<string, unknown>[] });
+      } else if (evt.event === "error") {
+        handlers.onError?.(String(evt.data.detail ?? "stream error"));
+      }
+    },
+    signal,
+  );
+}
+
 
 
 export async function sendChatQuery(req: ChatQueryRequest): Promise<ChatQueryResponse> {
   return aiPost<ChatQueryResponse>("/chat/query", req, 300000);
+}
+
+export interface ChatStreamHandlers {
+  onStage?: (stage: string, detail: string, tasks?: string[]) => void;
+  onToken?: (text: string) => void;
+  onDone?: (data: { session_id: string; sources?: Record<string, unknown>[] }) => void;
+  onError?: (detail: string) => void;
+}
+
+/** Stream a chat query over SSE, surfacing stage / token / done / error events. */
+export async function streamChatQuery(
+  req: ChatQueryRequest,
+  handlers: ChatStreamHandlers,
+  signal?: AbortSignal,
+): Promise<void> {
+  await postSse(
+    "/chat/query/stream",
+    req,
+    (evt) => {
+      if (evt.event === "stage") {
+        handlers.onStage?.(
+          String(evt.data.stage ?? ""),
+          String(evt.data.detail ?? ""),
+          evt.data.tasks as string[] | undefined,
+        );
+      } else if (evt.event === "token") {
+        handlers.onToken?.(String(evt.data.text ?? ""));
+      } else if (evt.event === "done") {
+        handlers.onDone?.(evt.data as { session_id: string; sources?: Record<string, unknown>[] });
+      } else if (evt.event === "error") {
+        handlers.onError?.(String(evt.data.detail ?? "stream error"));
+      }
+    },
+    signal,
+  );
 }
 
 export async function listChatSessions(userId: string): Promise<ChatSessionItem[]> {

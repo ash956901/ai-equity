@@ -193,44 +193,98 @@ class GDELTClient:
 
 # Alternative: Free GDELT raw API (no auth required for basic queries)
 class GDELTFreeClient:
-    """Free GDELT API without authentication.
-    
-    Use for basic event detection when API key unavailable.
+    """Free GDELT DOC 2.0 API (no auth).
+
+    This is the reliable path: the GDELT *Cloud* API (``gdeltcloud.com``) is
+    defunct, so event monitoring runs off this public endpoint. It is rate
+    limited to ~1 request / 5 seconds, so callers must space requests out.
     """
 
-    BASE_URL = "https://api.gdeltproject.org/api/v2"
+    # DOC 2.0 lives at /api/v2/doc/doc (the bare /doc path 301-redirects here).
+    DOC_URL = "https://api.gdeltproject.org/api/v2/doc/doc"
+    _MIN_INTERVAL_SECONDS = 6.0
 
-    def search_mentions(
-        self,
-        query: str,
-        max_results: int = 25,
-    ) -> list[dict[str, Any]]:
-        """Search GDELT for mentions matching query."""
+    # Themed queries -> (category, representative region) used to seed the
+    # keyword classifier downstream. OR-terms MUST be wrapped in parentheses.
+    EVENT_THEMES = [
+        ("(oil OR crude OR OPEC OR \"Middle East\" OR sanctions)", "conflict", "Middle East"),
+        ("(Russia OR Ukraine OR \"natural gas\" OR wheat OR grain)", "conflict", "Europe"),
+        ("(tariff OR \"trade war\" OR sanctions OR semiconductor)", "economic", "Global"),
+    ]
+
+    def _get(self, query: str, max_records: int, timespan: str) -> list[dict[str, Any]]:
+        """One rate-limited DOC artlist request, retried once on rate-limit.
+
+        Returns [] on any failure.
+        """
+        import time
+
+        for attempt in range(2):
+            try:
+                response = httpx.get(
+                    self.DOC_URL,
+                    params={
+                        "query": f"{query} sourcelang:english",
+                        "format": "json",
+                        "maxrecords": max_records,
+                        "mode": "artlist",
+                        "timespan": timespan,
+                        "sort": "hybridrel",
+                    },
+                    timeout=12.0,
+                    follow_redirects=True,
+                )
+                body = response.text.strip()
+                # GDELT signals rate-limit / query errors as plain text, not JSON.
+                if not body.startswith("{"):
+                    if "5 seconds" in body and attempt == 0:
+                        time.sleep(self._MIN_INTERVAL_SECONDS)
+                        continue
+                    logger.warning("GDELT free API non-JSON response: %s", body[:120])
+                    return []
+                return response.json().get("articles", [])
+            except Exception as e:
+                logger.error("GDELT free API error: %s", e)
+                return []
+        return []
+
+    @staticmethod
+    def _parse_seendate(seendate: str) -> datetime:
+        """GDELT seendate is compact UTC, e.g. '20260717T210000Z'."""
         try:
-            url = f"{self.BASE_URL}/doc"
-            params = {
-                "query": query,
-                "format": "json",
-                "maxresults": max_results,
-                "mode": "artlist",
-            }
+            return datetime.strptime(seendate, "%Y%m%dT%H%M%SZ")
+        except (ValueError, TypeError):
+            return datetime.utcnow()
 
-            response = httpx.get(url, params=params, timeout=30.0)
-            response.raise_for_status()
-            data = response.json()
+    def get_geopolitical_events(self, hours: int = 24, per_theme: int = 15) -> list[dict[str, Any]]:
+        """Fetch recent geopolitical/commodity articles as event-shaped dicts.
 
-            articles = data.get("articles", [])
-            return [
-                {
-                    "title": a.get("title", ""),
-                    "url": a.get("url", ""),
-                    "domain": a.get("domain", ""),
-                    "seendate": a.get("seendate", ""),
+        Runs one request per theme, spaced to respect the 5s rate limit, and
+        maps each article to the event schema expected by the monitor task and
+        the ``EventImpactClassifier`` (title/summary/country/category).
+        """
+        import hashlib
+        import time
+
+        timespan = f"{max(1, hours)}h"
+        events: list[dict[str, Any]] = []
+        for index, (query, category, region) in enumerate(self.EVENT_THEMES):
+            if index > 0:
+                time.sleep(self._MIN_INTERVAL_SECONDS)
+            for a in self._get(query, per_theme, timespan):
+                url = a.get("url", "")
+                title = a.get("title", "")
+                if not title or not url:
+                    continue
+                events.append({
+                    "event_id": hashlib.sha1(url.encode("utf-8")).hexdigest()[:32],
+                    "title": title,
+                    "summary": f"{title} (via {a.get('domain', 'gdelt')})",
+                    "event_date": self._parse_seendate(a.get("seendate", "")).isoformat(),
+                    "country": a.get("sourcecountry") or region,
+                    "region": region,
+                    "category": category,
                     "source": "gdelt_free",
-                }
-                for a in articles
-            ]
-
-        except Exception as e:
-            logger.error(f"GDELT free API error: {str(e)}")
-            return []
+                    "raw_data": a,
+                })
+        return events
