@@ -37,3 +37,7 @@ docs/research paper drafts
 
 # User profiles — local session data (gitignored, synced to MongoDB)
 user-profiles/
+# Design assets (local reference for the frontend rebuild)
+designs_1/
+designs_2/
+DESIGN.md
