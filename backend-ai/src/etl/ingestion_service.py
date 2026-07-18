@@ -50,6 +50,37 @@ def _parse_filing_date(value: Optional[str]):
         return datetime.utcnow().date()
 
 
+def _build_download_session(url: str) -> "requests.Session":
+    """Return a requests session primed to download from exchange archives.
+
+    NSE/BSE archives block generic bots — they require browser headers plus
+    session cookies obtained by first visiting the main site.
+    """
+    session = requests.Session()
+    session.headers.update(
+        {
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            ),
+            "Accept": "*/*",
+            "Accept-Language": "en-US,en;q=0.9",
+        }
+    )
+    try:
+        if "nseindia.com" in url:
+            session.headers["Referer"] = (
+                "https://www.nseindia.com/companies-listing/corporate-filings-announcements"
+            )
+            session.get("https://www.nseindia.com", timeout=10)
+        elif "bseindia.com" in url:
+            session.headers["Referer"] = "https://www.bseindia.com/"
+            session.get("https://www.bseindia.com", timeout=10)
+    except Exception:
+        pass  # priming is best-effort; the download will still be attempted
+    return session
+
+
 class DocumentIngestionService:
     """Handles downloading and persisting filing documents."""
 
@@ -121,7 +152,7 @@ class DocumentIngestionService:
                 from requests.adapters import HTTPAdapter
                 from urllib3.util.retry import Retry
 
-                session = requests.Session()
+                session = _build_download_session(source_url)
                 retry_strategy = Retry(
                     total=2,
                     backoff_factor=1,
@@ -131,11 +162,7 @@ class DocumentIngestionService:
                 session.mount("https://", adapter)
                 session.mount("http://", adapter)
 
-                resp = session.get(
-                    source_url,
-                    timeout=30,
-                    headers={"User-Agent": "EquityResearchBot/1.0"},
-                )
+                resp = session.get(source_url, timeout=30)
                 if resp.status_code != 200 or not resp.content:
                     logger.warning("Download failed (%d) for filing %s", resp.status_code, filing.id)
                     filing.status = "download_failed"

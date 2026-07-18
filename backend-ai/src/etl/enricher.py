@@ -16,7 +16,7 @@ class FilingEnricher:
 
     def enrich_filing(self, text: str, metadata: Dict[str, Any]) -> Dict[str, Any]:
         """Generate timeline summary, extract red flags, key metrics, and causal signals."""
-        safe_text = text[:8000]  # LLM context window safety
+        safe_text = text[:24000]  # cover more of the filing (cost/commodity sections run deep)
 
         prompt = f"""
 You are an expert financial analyst. Analyze the following excerpts from a company filing.

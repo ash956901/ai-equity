@@ -44,6 +44,12 @@ _SIGNAL_KEYS = (
 )
 
 
+_KNOWN_COMMODITIES = [
+    "WTI_USD", "BRENT_CRUDE_USD", "NATURAL_GAS_USD", "COAL_USD", "DIESEL_USD",
+    "JET_FUEL_USD", "XAU", "XAG", "copper", "aluminum", "sugar_11", "USDINR",
+]
+
+
 def _match_commodities(text: str) -> set[str]:
     lowered = text.lower()
     return {
@@ -51,6 +57,45 @@ def _match_commodities(text: str) -> set[str]:
         for symbol, aliases in _COMMODITY_ALIASES.items()
         if any(alias in lowered for alias in aliases)
     }
+
+
+def _llm_match_commodities(signal_text: str) -> set[str]:
+    """Map free-text filing dependencies to commodity symbols by MEANING.
+
+    Keyword matching misses industry terms ("solvents, resins" → crude
+    derivatives); the LLM understands them. Falls back to keyword matching on any
+    failure so mining never breaks.
+    """
+    if not signal_text.strip():
+        return set()
+
+    import json
+
+    from langchain_core.messages import HumanMessage
+
+    from src.llm import get_llm
+
+    prompt = (
+        "A company filing lists these input/supply-chain dependencies:\n"
+        f"{signal_text[:1500]}\n\n"
+        "Which of these tracked commodities does the company MATERIALLY depend on "
+        "(as an input cost)? Reason about meaning — e.g. paint solvents/resins derive "
+        "from crude oil.\n"
+        f"Commodities: {', '.join(_KNOWN_COMMODITIES)}\n\n"
+        "Return ONLY a JSON array of matching symbols (empty [] if none)."
+    )
+    try:
+        resp = get_llm(temperature=0.0).invoke([HumanMessage(content=prompt)])
+        content = resp.content.strip()
+        if content.startswith("```"):
+            content = content.split("```")[1].lstrip("json").strip()
+        parsed = json.loads(content)
+        matched = {c for c in parsed if c in _KNOWN_COMMODITIES}
+        # Union with cheap keyword hits for anything obvious the LLM missed.
+        return matched | _match_commodities(signal_text)
+    except Exception as e:
+        logger.warning("LLM commodity mapping failed (%s); using keywords", e)
+        return _match_commodities(signal_text)
 
 
 def _signal_text(signals: dict[str, Any]) -> str:
@@ -75,6 +120,9 @@ def mine_sector_exposures_from_filings(db: Session) -> dict[str, Any]:
     scanned = 0
     edges_added = 0
     companies_linked = 0
+    # Track (sector, commodity) added this run so multiple filings for the same
+    # company/sector don't create duplicate edges before the commit.
+    added_keys: set[tuple[str, str]] = set()
 
     for filing in filings:
         meta = filing.metadata_ or {}
@@ -86,7 +134,7 @@ def mine_sector_exposures_from_filings(db: Session) -> dict[str, Any]:
         if not company or not company.sector:
             continue
 
-        commodities = _match_commodities(_signal_text(signals))
+        commodities = _llm_match_commodities(_signal_text(signals))
         if not commodities:
             continue
         scanned += 1
@@ -107,6 +155,10 @@ def mine_sector_exposures_from_filings(db: Session) -> dict[str, Any]:
                     existing.affected_companies = companies
                     companies_linked += 1
                 continue
+
+            if (company.sector, commodity) in added_keys:
+                continue
+            added_keys.add((company.sector, commodity))
 
             db.add(
                 SectorExposure(
