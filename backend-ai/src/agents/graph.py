@@ -30,6 +30,19 @@ from langgraph.types import Send
 _graph = None
 
 
+MAX_AGENT_STEPS = 4
+
+AGENT_SYSTEM_PROMPT = (
+    "You are a senior Indian-equity research analyst coordinating specialist tools. "
+    "For the user's request, decide which specialists to call and in what order, using "
+    "their results to inform the next call. Call `causal_analysis` for hidden/second-order "
+    "impacts, `portfolio_analysis` for the user's holdings, `compare_companies` for peer "
+    "comparisons, `company_analysis`/`news_analysis`/`document_analysis` for single names, "
+    "and `thematic_discovery` for themes. Only assert facts returned by the tools; never "
+    "invent tickers or numbers. Stop calling tools once you have enough to answer."
+)
+
+
 class ResearchState(TypedDict, total=False):
     # inputs
     query: str
@@ -39,6 +52,7 @@ class ResearchState(TypedDict, total=False):
     portfolio_id: Optional[str]
     context_note: Optional[str]
     # working / outputs
+    route: str
     tasks: list[dict]
     evidence: Annotated[list[dict], operator.add]
     response: str
@@ -118,6 +132,97 @@ def _synthesize(state: ResearchState) -> dict:
     return {"response": "".join(parts), "sources": aggregator.build_sources(results)}
 
 
+def _router(state: ResearchState) -> dict:
+    """Classify the query as 'simple' (fast workflow) or 'complex' (agent loop)."""
+    from langchain_core.messages import HumanMessage
+
+    from src.llm import get_llm
+
+    writer = get_stream_writer()
+    query = state["query"]
+    route = "simple"
+    try:
+        prompt = (
+            "Classify this equity-research query as 'simple' or 'complex'.\n"
+            "simple = a direct lookup: one metric/fact, a single company, a definition, "
+            "one news or causal fact.\n"
+            "complex = needs multi-step reasoning, judgement, or several domains: "
+            "recommendations, 'should I', portfolio rebalancing, multi-company comparison "
+            "with a verdict, open-ended strategy.\n"
+            f"Query: {query}\n"
+            "Reply with ONLY one word: simple or complex."
+        )
+        answer = get_llm(temperature=0.0).invoke([HumanMessage(content=prompt)]).content.lower()
+        route = "complex" if "complex" in answer else "simple"
+    except Exception:
+        ql = query.lower()
+        route = "complex" if any(
+            k in ql for k in ("should i", "rebalance", "recommend", "strategy", " vs ",
+                              "versus", "compare", "better", "given the", "allocate")
+        ) else "simple"
+    writer({"stage": "routing", "detail": f"route={route}"})
+    return {"route": route}
+
+
+def _route_decision(state: ResearchState) -> str:
+    return "agent" if state.get("route") == "complex" else "plan"
+
+
+def _agent(state: ResearchState) -> dict:
+    """Bounded ReAct loop: the LLM dynamically calls specialist tools, using each
+    result to decide the next, until it has enough. Returns gathered evidence
+    (the shared ``synthesize`` node writes the streamed answer)."""
+    import json
+
+    from langchain_core.messages import HumanMessage, SystemMessage, ToolMessage
+
+    from src.agents.specialists import SPECIALIST_TOOLS, SPECIALISTS_BY_NAME
+    from src.llm import get_llm
+
+    writer = get_stream_writer()
+    writer({"stage": "reasoning", "detail": "Coordinating specialist agents"})
+
+    llm = get_llm(temperature=0.2).bind_tools(SPECIALIST_TOOLS)
+    tool_config = {"configurable": {"user_id": state.get("user_id"), "portfolio_id": state.get("portfolio_id")}}
+
+    context = state["query"]
+    if state.get("context_note"):
+        context += f"\n\n[Context: {state['context_note']}]"
+    messages: list = [SystemMessage(content=AGENT_SYSTEM_PROMPT), HumanMessage(content=context)]
+
+    evidence: list[dict] = []
+    for _ in range(MAX_AGENT_STEPS):
+        ai = llm.invoke(messages)
+        messages.append(ai)
+        tool_calls = getattr(ai, "tool_calls", None) or []
+        if not tool_calls:
+            break
+        for call in tool_calls:
+            name = call["name"]
+            writer({"stage": "specialist", "detail": name})
+            specialist = SPECIALISTS_BY_NAME.get(name)
+            if specialist is None:
+                result: Any = {"error": f"unknown specialist {name}"}
+            else:
+                try:
+                    result = specialist.invoke(call["args"], config=tool_config)
+                except Exception as exc:
+                    result = {"error": str(exc)}
+            evidence.append(
+                {
+                    "name": name,
+                    "kind": "specialist",
+                    "payload": result,
+                    "source": {"name": name, "kind": "specialist", "status": "ok"},
+                }
+            )
+            messages.append(
+                ToolMessage(content=json.dumps(result, default=str)[:6000], tool_call_id=call["id"])
+            )
+
+    return {"evidence": evidence}
+
+
 def build_research_graph():
     """Build (once) and return the compiled research StateGraph."""
     global _graph
@@ -127,13 +232,17 @@ def build_research_graph():
     from src.agents.memory import get_memory_config
 
     builder = StateGraph(ResearchState)
+    builder.add_node("router", _router)
     builder.add_node("plan", _plan)
     builder.add_node("gather", _gather)
+    builder.add_node("agent", _agent)
     builder.add_node("synthesize", _synthesize)
 
-    builder.add_edge(START, "plan")
+    builder.add_edge(START, "router")
+    builder.add_conditional_edges("router", _route_decision, ["plan", "agent"])
     builder.add_conditional_edges("plan", _route_to_workers, ["gather"])
     builder.add_edge("gather", "synthesize")
+    builder.add_edge("agent", "synthesize")
     builder.add_edge("synthesize", END)
 
     cfg = get_memory_config()
