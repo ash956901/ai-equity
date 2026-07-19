@@ -17,6 +17,9 @@ CSRF_SECRET = secrets.token_hex(32)
 PATHS_EXEMPT_FROM_CSRF: Set[str] = {
     "/auth/send-otp",
     "/auth/verify-otp",
+    "/auth/register",
+    "/auth/login",
+    "/auth/demo",
     "/auth/refresh",
     "/health",
     "/",
@@ -25,16 +28,24 @@ PATHS_EXEMPT_FROM_CSRF: Set[str] = {
 
 
 def set_csrf_cookie(response: Response) -> None:
-    """Set the CSRF token cookie on a response."""
+    """Set the CSRF token cookie on a response.
+
+    Uses the same secure/samesite policy as the session cookies so it is
+    reliably set on both localhost (http) and cross-domain production.
+    """
+    from src.config import get_settings
+
+    settings = get_settings()
     token = secrets.token_hex(32)
     response.set_cookie(
         key=CSRF_COOKIE_NAME,
         value=token,
         max_age=604800,
         httponly=False,
-        secure=True,
-        samesite="none",
+        secure=settings.cookie_secure,
+        samesite=settings.cookie_samesite,
         path="/",
+        domain=settings.cookie_domain,
     )
 
 

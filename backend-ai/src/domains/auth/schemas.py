@@ -20,6 +20,17 @@ class VerifyOtpRequest(BaseModel):
     full_name: Optional[str] = Field(None, min_length=1, max_length=255)
 
 
+class RegisterRequest(BaseModel):
+    full_name: str = Field(..., min_length=1, max_length=255)
+    email: EmailStr
+    password: str = Field(..., min_length=8, max_length=128)
+
+
+class LoginRequest(BaseModel):
+    email: EmailStr
+    password: str = Field(..., min_length=1, max_length=128)
+
+
 class RefreshTokenRequest(BaseModel):
     """Empty — refresh token is read from cookie."""
     pass

@@ -1,5 +1,6 @@
 import { NAV, type ViewKey } from "../../routes";
 import { Icon } from "../Icon";
+import { useAuth } from "../../lib/auth";
 
 interface Props {
   active: ViewKey;
@@ -37,6 +38,7 @@ function NavLink({
 }
 
 export function Sidebar({ active, collapsed, onNavigate, onToggleCollapse }: Props) {
+  const { user, logout } = useAuth();
   const groups: Array<(typeof NAV)[number][]> = [
     NAV.filter((n) => n.group === "main"),
     NAV.filter((n) => n.group === "research"),
@@ -76,6 +78,25 @@ export function Sidebar({ active, collapsed, onNavigate, onToggleCollapse }: Pro
         {footer.map((n) => (
           <NavLink key={n.key} item={n} active={active === n.key} collapsed={collapsed} onNavigate={onNavigate} />
         ))}
+
+        {/* Signed-in user + logout */}
+        {!collapsed && user && (
+          <div className="px-md pt-sm pb-xs">
+            <div className="text-label-caps font-label-caps text-on-surface-variant truncate">
+              {user.full_name || "Signed in"}
+            </div>
+            <div className="text-caption text-on-surface-variant truncate">{user.email}</div>
+          </div>
+        )}
+        <button
+          type="button"
+          onClick={() => logout()}
+          title={collapsed ? "Sign out" : undefined}
+          className={`w-full flex items-center gap-md ${collapsed ? "justify-center px-0" : "px-md"} py-sm rounded text-on-surface-variant hover:text-negative hover:bg-surface-container-low transition-colors`}
+        >
+          <Icon name="logout" className="text-[20px] shrink-0" />
+          {!collapsed && <span className="text-label-caps font-label-caps">Sign out</span>}
+        </button>
         {onToggleCollapse && (
           <button
             type="button"

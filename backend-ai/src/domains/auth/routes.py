@@ -13,7 +13,9 @@ from .dependencies import get_current_user
 from .email_service import send_otp_email
 from .schemas import (
     AuthResponse,
+    LoginRequest,
     OtpSentResponse,
+    RegisterRequest,
     SendOtpRequest,
     UpdateProfileRequest,
     UserResponse,
@@ -137,6 +139,8 @@ def verify_otp(
         db.commit()
         db.refresh(user)
 
+    svc.ensure_default_portfolio(user)
+
     tokens = svc.create_session(
         user,
         user_agent=request.headers.get("user-agent"),
@@ -150,6 +154,111 @@ def verify_otp(
         message="Authenticated successfully",
         user=_user_response(user),
         is_new_user=is_new,
+    )
+
+
+DEMO_USER_EMAIL = "test@equityai.dev"
+
+
+@router.post("/register", response_model=AuthResponse)
+def register(
+    body: RegisterRequest,
+    db: Session = Depends(get_db),
+):
+    """Create a password account and email a verification OTP.
+
+    Session cookies are NOT set here — the client must complete OTP
+    verification (`/auth/verify-otp` with purpose=signup) which sets them.
+    """
+    svc = AuthService(db)
+    try:
+        user = svc.register(body.email, body.full_name, body.password)
+    except ValueError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+
+    # Email-verification OTP.
+    try:
+        svc.send_otp(user.email, "signup")
+        otp_record = (
+            db.query(OTP)
+            .filter(OTP.email == user.email, OTP.purpose == "signup", OTP.is_used == False)
+            .order_by(OTP.created_at.desc())
+            .first()
+        )
+        if otp_record:
+            send_otp_email(user.email, otp_record.otp_code, "signup")
+    except ValueError:
+        pass  # rate-limited; the user can use "resend" on the verify screen
+
+    return AuthResponse(
+        message="Account created. Check your email for a verification code.",
+        user=_user_response(user),
+        is_new_user=True,
+    )
+
+
+@router.post("/login", response_model=AuthResponse)
+def login(
+    body: LoginRequest,
+    request: Request,
+    response: Response,
+    db: Session = Depends(get_db),
+):
+    """Authenticate with email + password and start a session."""
+    settings = get_settings()
+    svc = AuthService(db)
+    try:
+        user = svc.authenticate(body.email, body.password)
+    except ValueError as e:
+        raise HTTPException(status_code=401, detail=str(e))
+
+    svc.ensure_default_portfolio(user)
+
+    tokens = svc.create_session(
+        user,
+        user_agent=request.headers.get("user-agent"),
+        ip_address=request.client.host if request.client else None,
+    )
+    _set_session_cookies(response, tokens, settings.cookie_domain)
+    set_csrf_cookie(response)
+
+    return AuthResponse(
+        message="Authenticated successfully",
+        user=_user_response(user),
+        is_new_user=False,
+    )
+
+
+@router.post("/demo", response_model=AuthResponse)
+def demo_login(
+    request: Request,
+    response: Response,
+    db: Session = Depends(get_db),
+):
+    """One-click login as the seeded demo user (owns the sample portfolio)."""
+    settings = get_settings()
+    svc = AuthService(db)
+
+    from src.db.models import User as UserModel
+
+    user = db.query(UserModel).filter(UserModel.email == DEMO_USER_EMAIL).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Demo account is not provisioned.")
+
+    svc.ensure_default_portfolio(user)
+
+    tokens = svc.create_session(
+        user,
+        user_agent=request.headers.get("user-agent"),
+        ip_address=request.client.host if request.client else None,
+    )
+    _set_session_cookies(response, tokens, settings.cookie_domain)
+    set_csrf_cookie(response)
+
+    return AuthResponse(
+        message="Signed in as demo",
+        user=_user_response(user),
+        is_new_user=False,
     )
 
 

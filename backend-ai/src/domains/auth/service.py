@@ -9,9 +9,15 @@ import jwt
 from sqlalchemy.orm import Session
 
 from src.config import get_settings
-from src.db.models import OTP, User, UserSession
+from src.db.models import OTP, Holding, Portfolio, User, UserSession
+
+from .password import hash_password, verify_password
 
 logger = logging.getLogger(__name__)
+
+# New signups are seeded with a copy of this account's holdings so the
+# dashboard is never empty on first login.
+DEMO_SEED_EMAIL = "test@equityai.dev"
 
 
 def _now_utc() -> datetime:
@@ -114,6 +120,112 @@ class AuthService:
         self.db.commit()
         return otp
 
+    # ── Per-user provisioning ────────────────────────────────────────────
+
+    def ensure_default_portfolio(self, user: User) -> None:
+        """Give a user their own default portfolio if they have none.
+
+        Keeps every account self-contained: a fresh user lands on their own
+        portfolio scoped only to them, seeded with a copy of the demo holdings
+        so the dashboard is populated on first login. Runs only when the user
+        has no portfolio yet, so it never re-seeds or clobbers later edits.
+        """
+        exists = (
+            self.db.query(Portfolio.id).filter(Portfolio.user_id == user.id).first()
+        )
+        if exists:
+            return
+        portfolio = Portfolio(
+            user_id=user.id,
+            name="My Portfolio",
+            description="Your default portfolio",
+            is_primary=True,
+        )
+        self.db.add(portfolio)
+        self.db.commit()
+        self.db.refresh(portfolio)
+        self._seed_demo_holdings(portfolio, owner_id=user.id)
+
+    def _seed_demo_holdings(self, portfolio: Portfolio, owner_id) -> None:
+        """Copy the demo account's holdings into a freshly created portfolio."""
+        demo = self.db.query(User).filter(User.email == DEMO_SEED_EMAIL).first()
+        if not demo or demo.id == owner_id:
+            return  # nothing to seed, or this *is* the demo account
+        demo_pf = (
+            self.db.query(Portfolio)
+            .filter(Portfolio.user_id == demo.id, Portfolio.is_primary == True)  # noqa: E712
+            .first()
+        )
+        if not demo_pf:
+            return
+        src = self.db.query(Holding).filter(Holding.portfolio_id == demo_pf.id).all()
+        for h in src:
+            self.db.add(
+                Holding(
+                    portfolio_id=portfolio.id,
+                    company_id=h.company_id,
+                    quantity=h.quantity,
+                    average_price=h.average_price,
+                    current_price=h.current_price,
+                    currency=h.currency,
+                )
+            )
+        if src:
+            self.db.commit()
+
+    # ── Password auth ────────────────────────────────────────────────────
+
+    def register(self, email: str, full_name: str, password: str) -> User:
+        """Create a new account with a hashed password.
+
+        Raises ValueError if an account with a password already exists.
+        """
+        email = email.strip().lower()
+        existing = self.db.query(User).filter(User.email == email).first()
+
+        if existing and existing.password_hash:
+            raise ValueError("An account with this email already exists.")
+
+        if existing:
+            # Pre-existing passwordless row (e.g. seeded/OTP-only) — attach a password.
+            existing.password_hash = hash_password(password)
+            if full_name:
+                existing.full_name = full_name
+            self.db.commit()
+            self.db.refresh(existing)
+            return existing
+
+        username = email.split("@")[0]
+        if self.db.query(User).filter(User.username == username).first():
+            username = f"{username}_{secrets.token_hex(3)}"
+
+        user = User(
+            email=email,
+            username=username,
+            full_name=full_name,
+            password_hash=hash_password(password),
+            is_active=True,
+            expertise_level="beginner",
+        )
+        self.db.add(user)
+        self.db.commit()
+        self.db.refresh(user)
+        self.ensure_default_portfolio(user)
+        return user
+
+    def authenticate(self, email: str, password: str) -> User:
+        """Verify email + password. Raises ValueError on failure."""
+        email = email.strip().lower()
+        user = self.db.query(User).filter(User.email == email).first()
+
+        if not user or not user.password_hash or not verify_password(password, user.password_hash):
+            raise ValueError("Incorrect email or password.")
+
+        if not user.is_active:
+            raise ValueError("This account is inactive.")
+
+        return user
+
     # ── User ─────────────────────────────────────────────────────────────
 
     def get_or_create_user(self, email: str, purpose: str, full_name: str | None = None) -> tuple[User, bool]:
@@ -139,6 +251,7 @@ class AuthService:
         self.db.add(user)
         self.db.commit()
         self.db.refresh(user)
+        self.ensure_default_portfolio(user)
         return user, True
 
     # ── JWT tokens ───────────────────────────────────────────────────────

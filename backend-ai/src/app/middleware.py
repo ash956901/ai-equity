@@ -47,6 +47,9 @@ class CSRFMiddleware(BaseHTTPMiddleware):
     EXEMPT_PATHS = {
         "/auth/send-otp",
         "/auth/verify-otp",
+        "/auth/register",
+        "/auth/login",
+        "/auth/demo",
         "/auth/refresh",
         "/health",
         "/",
