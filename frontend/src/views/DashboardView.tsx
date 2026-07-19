@@ -138,7 +138,7 @@ export function DashboardView({ onNavigate }: { onNavigate: (v: ViewKey) => void
                 </span>
               }
             />
-            <StatTile label="Holdings" value={metrics?.holdings_count ?? 0} sub={<span className="flex items-center gap-xs"><Icon name="notifications" className="text-[15px]" /> live portfolio</span>} icon="account_balance_wallet" />
+            <StatTile label="Holdings" value={metrics?.holdings_count ?? 0} sub={<span className="flex items-center gap-xs"><Icon name="check_circle" className="text-[15px]" /> live portfolio</span>} icon="account_balance_wallet" />
             <StatTile label="Sim Balance" value={formatINR(simBalance ?? 0)} sub="Paper trading mode" icon="query_stats" />
           </>
         )}
@@ -240,7 +240,7 @@ export function DashboardView({ onNavigate }: { onNavigate: (v: ViewKey) => void
 
         {/* Activity */}
         <Card className="lg:col-span-3">
-          <CardHeader title="Activity & Alerts" right={<button className="text-body-sm text-primary" onClick={() => onNavigate("alerts")}>View All</button>} />
+          <CardHeader title="Recent Activity" />
           <div className="px-lg pb-lg">
             {loading ? (
               Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-12 my-sm" />)

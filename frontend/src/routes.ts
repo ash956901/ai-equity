@@ -10,7 +10,6 @@ export type ViewKey =
   | "filings"
   | "news"
   | "simulator"
-  | "alerts"
   | "profile"
   | "settings";
 
@@ -33,7 +32,6 @@ export const NAV: NavItem[] = [
   { key: "filings", label: "Filings", icon: "description", group: "research" },
   { key: "news", label: "News", icon: "newspaper", group: "research" },
   { key: "simulator", label: "Simulator", icon: "query_stats", group: "tools" },
-  { key: "alerts", label: "Alerts", icon: "notifications_active", group: "tools" },
   { key: "profile", label: "Profile", icon: "person", group: "footer" },
   { key: "settings", label: "Settings", icon: "settings", group: "footer" },
 ];

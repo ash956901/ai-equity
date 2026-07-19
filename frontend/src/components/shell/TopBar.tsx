@@ -32,9 +32,6 @@ export function TopBar({ leftClass, onOpenMobile }: Props) {
       {/* Right cluster */}
       <div className="flex items-center gap-md md:gap-lg shrink-0">
         <span className="hidden sm:inline text-label-caps font-label-caps text-on-surface-variant border border-outline-variant rounded px-sm py-xs">LIVE</span>
-        <button type="button" className="text-on-surface-variant hover:text-on-surface transition-colors" aria-label="Notifications">
-          <Icon name="notifications" className="text-[20px]" />
-        </button>
         <button type="button" onClick={toggle} className="text-on-surface-variant hover:text-on-surface transition-colors" aria-label="Toggle theme">
           <Icon name={theme === "dark" ? "light_mode" : "dark_mode"} className="text-[20px]" />
         </button>
