@@ -333,3 +333,109 @@ export async function fetchCompanyFilings(
   if (filingType) params.set("filing_type", filingType);
   return aiGet<CompanyFiling[]>(`/companies/${companyId}/filings?${params.toString()}`);
 }
+
+// ------------------------------------------------------------------ //
+//  Simulator (paper trading)                                           //
+// ------------------------------------------------------------------ //
+
+export interface SimTradeResult {
+  trade_type: string;
+  company_name: string;
+  ticker?: string | null;
+  quantity: number;
+  price: number;
+  total_value: number;
+  balance_after: number;
+  xp_earned: number;
+  badges_earned: string[];
+  pnl?: number;
+}
+
+export interface SimPosition {
+  trade_id: string;
+  company_id: string;
+  company_name: string;
+  ticker?: string | null;
+  quantity: number;
+  entry_price: number;
+  current_price?: number | null;
+  total_invested: number;
+  unrealised_pnl?: number | null;
+  return_pct?: number | null;
+}
+
+export interface SimClosedTrade {
+  trade_id: string;
+  company_name: string;
+  ticker?: string | null;
+  trade_type: string;
+  quantity: number;
+  entry_price: number;
+  total_value: number;
+  pnl?: number | null;
+  opened_at: string;
+  closed_at?: string | null;
+}
+
+export interface SimLevel {
+  level: number;
+  level_name: string;
+  xp: number;
+  next_level_xp: number;
+  progress_pct: number;
+}
+
+export interface SimBadge {
+  id: string;
+  name: string;
+  earned: boolean;
+}
+
+export interface SimDailyChallenge {
+  id?: string;
+  text?: string;
+  sector?: string;
+  done?: boolean;
+}
+
+export interface SimStats {
+  balance: number;
+  total_pnl: number;
+  total_trades: number;
+  winning_trades: number;
+  win_rate_pct: number;
+  best_trade_pnl: number;
+  worst_trade_pnl: number;
+  xp: number;
+  level: SimLevel;
+  badges: SimBadge[];
+  current_streak: number;
+  best_streak: number;
+  daily_challenge: SimDailyChallenge;
+}
+
+export async function executeSimTrade(
+  userId: string,
+  companyId: string,
+  tradeType: "buy" | "sell",
+  quantity: number
+): Promise<SimTradeResult> {
+  return aiPost<SimTradeResult>("/simulator/trade", {
+    user_id: userId,
+    company_id: companyId,
+    trade_type: tradeType,
+    quantity,
+  });
+}
+
+export async function fetchSimPositions(userId: string): Promise<{ positions: SimPosition[] }> {
+  return aiGet<{ positions: SimPosition[] }>(`/simulator/positions?user_id=${userId}`);
+}
+
+export async function fetchSimHistory(userId: string): Promise<{ trades: SimClosedTrade[] }> {
+  return aiGet<{ trades: SimClosedTrade[] }>(`/simulator/history?user_id=${userId}`);
+}
+
+export async function fetchSimStats(userId: string): Promise<SimStats> {
+  return aiGet<SimStats>(`/simulator/stats?user_id=${userId}`);
+}
