@@ -22,6 +22,7 @@ import {
   type CausalChainItem,
   type CausalCompanyData,
   type CausalLLMData,
+  type Watchlist,
 } from "../types/api";
 import { AI_BACKEND_URL, aiDelete, aiGet, aiPost, ApiError, getSse, postSse } from "./core";
 
@@ -278,4 +279,57 @@ export async function fetchCausalCompany(companyId: string): Promise<CausalCompa
 
 export async function analyzeCausalTrigger(trigger: string, companyId?: string): Promise<CausalLLMData> {
   return aiPost<CausalLLMData>("/causal/llm-analyze", { trigger, company_id: companyId ?? null }, 300000);
+}
+
+// ------------------------------------------------------------------ //
+//  Watchlists                                                          //
+// ------------------------------------------------------------------ //
+
+export async function fetchWatchlists(userId: string): Promise<Watchlist[]> {
+  return aiGet<Watchlist[]>(`/watchlists/?user_id=${userId}`);
+}
+
+export async function createWatchlist(userId: string, name: string): Promise<Watchlist> {
+  return aiPost<Watchlist>("/watchlists/", { user_id: userId, name });
+}
+
+export async function addWatchlistCompany(
+  watchlistId: string,
+  companyId: string
+): Promise<{ status: string }> {
+  return aiPost<{ status: string }>(`/watchlists/${watchlistId}/companies`, {
+    company_id: companyId,
+  });
+}
+
+export async function removeWatchlistCompany(
+  watchlistId: string,
+  companyId: string
+): Promise<void> {
+  return aiDelete(`/watchlists/${watchlistId}/companies/${companyId}`);
+}
+
+// ------------------------------------------------------------------ //
+//  Company filings (by id)                                             //
+// ------------------------------------------------------------------ //
+
+export interface CompanyFiling {
+  id: string;
+  filing_type: string;
+  title: string;
+  filing_date: string;
+  source_url?: string | null;
+  status?: string;
+  period_start?: string | null;
+  period_end?: string | null;
+}
+
+export async function fetchCompanyFilings(
+  companyId: string,
+  limit = 25,
+  filingType?: string
+): Promise<CompanyFiling[]> {
+  const params = new URLSearchParams({ limit: String(limit) });
+  if (filingType) params.set("filing_type", filingType);
+  return aiGet<CompanyFiling[]>(`/companies/${companyId}/filings?${params.toString()}`);
 }

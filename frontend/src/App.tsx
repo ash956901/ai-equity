@@ -8,6 +8,11 @@ import { PortfolioView } from "./views/PortfolioView";
 import { DiscoveryView } from "./views/DiscoveryView";
 import { CompanyView } from "./views/CompanyView";
 import { CompareView } from "./views/CompareView";
+import { WatchlistView } from "./views/WatchlistView";
+import { NewsView } from "./views/NewsView";
+import { FilingsView } from "./views/FilingsView";
+import { ProfileView } from "./views/ProfileView";
+import { SettingsView } from "./views/SettingsView";
 import { AuthView, OnboardingView } from "./views/AuthView";
 import { Placeholder } from "./views/Placeholder";
 import { useAuth } from "./lib/auth";
@@ -51,6 +56,16 @@ export default function App() {
         return <CompanyView companyId={companyId} onOpenCompany={openCompany} />;
       case "compare":
         return <CompareView />;
+      case "watchlist":
+        return <WatchlistView onOpenCompany={openCompany} />;
+      case "news":
+        return <NewsView />;
+      case "filings":
+        return <FilingsView />;
+      case "profile":
+        return <ProfileView />;
+      case "settings":
+        return <SettingsView />;
       default:
         return <Placeholder title={label} />;
     }

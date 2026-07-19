@@ -29,6 +29,11 @@ interface AuthContextValue {
   verify: (email: string, otp: string, purpose: "signup" | "login") => Promise<AuthResponse>;
   demo: () => Promise<AuthResponse>;
   setExpertise: (level: "beginner" | "intermediate" | "advanced") => Promise<void>;
+  saveProfile: (input: {
+    full_name?: string;
+    phone_number?: string;
+    expertise_level?: "beginner" | "intermediate" | "advanced";
+  }) => Promise<void>;
   finishOnboarding: () => void;
   logout: () => Promise<void>;
 }
@@ -93,13 +98,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const demo = useCallback(() => demoLogin().then(apply), [apply]);
 
-  const setExpertise = useCallback(
-    async (level: "beginner" | "intermediate" | "advanced") => {
-      const updated = await updateProfile({ expertise_level: level });
+  const saveProfile = useCallback(
+    async (input: {
+      full_name?: string;
+      phone_number?: string;
+      expertise_level?: "beginner" | "intermediate" | "advanced";
+    }) => {
+      const updated = await updateProfile(input);
       setUser(updated);
       setAuthUser(updated.id, updated.expertise_level);
     },
     []
+  );
+
+  const setExpertise = useCallback(
+    (level: "beginner" | "intermediate" | "advanced") =>
+      saveProfile({ expertise_level: level }),
+    [saveProfile]
   );
 
   const logout = useCallback(async () => {
@@ -124,6 +139,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         verify,
         demo,
         setExpertise,
+        saveProfile,
         finishOnboarding,
         logout,
       }}
