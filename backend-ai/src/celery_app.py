@@ -75,6 +75,11 @@ app.conf.beat_schedule = {
         "task": "etl.crawl_ir",
         "schedule": crontab(hour=2, minute=0, day_of_week="saturday"),
     },
+    # Build the document-insight corpus (concalls + annual reports) — weekly Sun 04:00
+    "build-insight-corpus-weekly": {
+        "task": "etl.build_insight_corpus",
+        "schedule": crontab(hour=4, minute=0, day_of_week="sunday"),
+    },
     # Sync and causal-tag news every 6 hours
     "sync-news-every-6-hours": {
         "task": "etl.sync_news",

@@ -342,6 +342,95 @@ def crawl_ir_pages(
 
 
 # ------------------------------------------------------------------ #
+#  Insight corpus builder (curated document acquisition)               #
+# ------------------------------------------------------------------ #
+
+# Curated large-cap universe for the document-insight corpus. Kept bounded so
+# enrichment cost/time stays predictable (portfolio holdings are added on top).
+NIFTY_CORE = [
+    "RELIANCE", "TCS", "HDFCBANK", "ICICIBANK", "INFY", "HINDUNILVR", "ITC",
+    "SBIN", "BHARTIARTL", "KOTAKBANK", "LT", "AXISBANK", "BAJFINANCE", "ASIANPAINT",
+    "MARUTI", "HCLTECH", "SUNPHARMA", "TITAN", "ULTRACEMCO", "WIPRO", "NESTLEIND",
+    "ONGC", "NTPC", "POWERGRID", "TATAMOTORS", "TATASTEEL", "JSWSTEEL", "COALINDIA",
+    "GRASIM", "ADANIENT", "HINDALCO", "CIPLA", "DRREDDY", "BAJAJFINSV", "TECHM",
+    "BRITANNIA", "EICHERMOT", "HEROMOTOCO", "DIVISLAB", "M&M",
+]
+
+
+def _resolve_corpus_companies(db, company_ids: Optional[list[str]]) -> list[Company]:
+    """Companies to build the corpus for: explicit ids, else Nifty core + all
+    companies referenced by any portfolio holding."""
+    from src.db.models import Holding
+
+    if company_ids:
+        return db.query(Company).filter(Company.id.in_([UUID(c) for c in company_ids])).all()
+
+    companies = (
+        db.query(Company).filter(Company.ticker_nse.in_(NIFTY_CORE)).all()
+    )
+    seen = {c.id for c in companies}
+    held_ids = {h.company_id for h in db.query(Holding.company_id).distinct()}
+    for cid in held_ids:
+        if cid not in seen:
+            c = db.query(Company).filter(Company.id == cid).first()
+            if c:
+                companies.append(c)
+                seen.add(cid)
+    return companies
+
+
+@app.task(bind=True, name="etl.build_insight_corpus")
+def build_insight_corpus(self, company_ids: Optional[list[str]] = None, per_company_docs: int = 4):
+    """Acquire concalls + annual reports + announcements for the curated set,
+    download them, and enqueue the real ETL enrichment pipeline for each."""
+    db = SessionLocal()
+    run = _log_etl_run(db, "build_insight_corpus")
+    try:
+        from src.etl.ingestion_service import DocumentIngestionService
+        from src.etl.sources import ExchangeSource, ScreenerSource
+
+        companies = _resolve_corpus_companies(db, company_ids)
+        sources = [ScreenerSource(), ExchangeSource()]
+        ingestion = DocumentIngestionService(db)
+
+        seen = downloaded = queued = 0
+        for company in companies:
+            docs: list[dict] = []
+            for source in sources:
+                try:
+                    docs += source.fetch(company)
+                except Exception:
+                    logger.warning("source %s failed for %s", source.name, company.name, exc_info=True)
+            for meta in docs[:per_company_docs]:
+                seen += 1
+                try:
+                    filing = ingestion.ingest_filing(company.id, meta, download=True)
+                except Exception:
+                    logger.warning("ingest failed: %s", meta.get("attachment_url"), exc_info=True)
+                    continue
+                if filing and filing.status == "downloaded" and filing.raw_uri:
+                    process_filing.delay(str(filing.id))
+                    downloaded += 1
+                    queued += 1
+        result = {
+            "companies": len(companies),
+            "docs_seen": seen,
+            "downloaded": downloaded,
+            "queued_for_enrichment": queued,
+        }
+        _finish_etl_run(db, run, records=downloaded)
+        logger.info("build_insight_corpus: %s", result)
+        return result
+    except Exception as e:
+        db.rollback()
+        _finish_etl_run(db, run, status="failed", error=str(e))
+        logger.exception("build_insight_corpus failed")
+        raise
+    finally:
+        db.close()
+
+
+# ------------------------------------------------------------------ #
 #  Full company refresh (on-demand)                                    #
 # ------------------------------------------------------------------ #
 
