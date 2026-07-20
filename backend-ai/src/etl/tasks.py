@@ -314,10 +314,27 @@ def crawl_ir_pages(
         company_id=UUID(company_id) if company_id else None,
     )
     try:
+        from src.etl.ingestion_service import DocumentIngestionService
+
         crawler = IRCrawler()
         cid = UUID(company_id) if company_id else None
         results = crawler.crawl(company_id=cid)
-        _finish_etl_run(db, run, records=len(results))
+
+        # Persist discovered IR documents as filing metadata rows (previously
+        # dropped). Downloads happen later via the corpus builder / on-demand.
+        ingestion = DocumentIngestionService(db)
+        persisted = 0
+        for r in results:
+            try:
+                rc = r.get("company_id")
+                if not rc:
+                    continue
+                filing = ingestion.ingest_filing(UUID(rc), r, download=False)
+                if filing:
+                    persisted += 1
+            except Exception:
+                logger.warning("crawl_ir: failed to persist %s", r.get("url"), exc_info=True)
+        _finish_etl_run(db, run, records=persisted)
     except Exception as e:
         _finish_etl_run(db, run, status="failed", error=str(e))
     finally:

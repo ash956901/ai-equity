@@ -16,6 +16,7 @@ app = Celery(
         "src.etl.news_sync_task",
         "src.etl.portfolio_news_task",
         "src.etl.event_monitor_task",
+        "src.etl.bootstrap_task",
     ],
 )
 
@@ -32,6 +33,11 @@ app.conf.update(
 )
 
 app.conf.beat_schedule = {
+    # Self-provision seed data (idempotent) — daily 05:30 IST, before other jobs.
+    "bootstrap-self-provision": {
+        "task": "etl.bootstrap",
+        "schedule": crontab(hour=5, minute=30),
+    },
     # Sync the full NSE+BSE stock universe daily at 6:00 AM IST (before market open)
     "sync-stock-universe-daily": {
         "task": "etl.sync_stock_universe",
