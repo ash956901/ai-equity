@@ -54,6 +54,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Restore session on boot.
   useEffect(() => {
     let cancelled = false;
+    // Watchdog: never hang on the loading spinner. If /auth/me doesn't answer
+    // (e.g. the API is momentarily restarting), fall through to the login screen.
+    const watchdog = setTimeout(() => {
+      if (!cancelled) setLoading(false);
+    }, 6000);
     fetchMe()
       .then((u) => {
         if (cancelled) return;
@@ -68,9 +73,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
+        clearTimeout(watchdog);
       });
     return () => {
       cancelled = true;
+      clearTimeout(watchdog);
     };
   }, []);
 

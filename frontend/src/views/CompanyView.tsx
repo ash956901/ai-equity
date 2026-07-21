@@ -465,7 +465,7 @@ function InsightsPanel({ companyId }: { companyId: string }) {
   return (
     <Card>
       <CardHeader
-        title="Document Insights"
+        title="Investor Signals"
         icon="lightbulb"
         right={
           data && data.digest.total > 0 ? (

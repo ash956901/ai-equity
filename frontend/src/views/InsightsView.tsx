@@ -19,16 +19,33 @@ const TYPES: { key: string; label: string }[] = [
 
 const SEVERITIES = ["", "high", "medium", "low"];
 
-export function typeMeta(t: string): { icon: string; tone: "negative" | "warning" | "positive" | "neutral" | "tag"; label: string } {
+// Plain-English framing so a non-technical investor immediately gets the "so what".
+export function typeMeta(t: string): {
+  icon: string;
+  tone: "negative" | "warning" | "positive" | "neutral" | "tag";
+  label: string;
+  meaning: string;
+} {
   switch (t) {
-    case "red_flag": return { icon: "flag", tone: "negative", label: "Red flag" };
-    case "risk": return { icon: "warning", tone: "warning", label: "Risk" };
-    case "opportunity": return { icon: "trending_up", tone: "positive", label: "Opportunity" };
-    case "guidance": return { icon: "explore", tone: "neutral", label: "Guidance" };
-    case "hidden_signal": return { icon: "visibility", tone: "tag", label: "Hidden signal" };
-    case "management_tone": return { icon: "record_voice_over", tone: "neutral", label: "Mgmt tone" };
-    default: return { icon: "lightbulb", tone: "neutral", label: t };
+    case "red_flag":
+      return { icon: "warning", tone: "negative", label: "Be cautious", meaning: "A warning sign — a reason to be careful with this stock." };
+    case "risk":
+      return { icon: "visibility", tone: "warning", label: "Worth watching", meaning: "A possible downside to keep an eye on." };
+    case "opportunity":
+      return { icon: "trending_up", tone: "positive", label: "Good sign", meaning: "Could be a positive for the stock." };
+    case "guidance":
+      return { icon: "flag", tone: "neutral", label: "Outlook change", meaning: "Management changed what they expect ahead." };
+    case "hidden_signal":
+      return { icon: "lightbulb", tone: "tag", label: "Hidden clue", meaning: "Something non-obvious that's easy to miss." };
+    case "management_tone":
+      return { icon: "record_voice_over", tone: "neutral", label: "Management mood", meaning: "How the leadership is talking about the business." };
+    default:
+      return { icon: "lightbulb", tone: "neutral", label: t, meaning: "" };
   }
+}
+
+export function severityWord(sev: string): string {
+  return sev === "high" ? "Significant" : sev === "low" ? "Minor" : "Moderate";
 }
 
 const SEV_TONE: Record<string, string> = {
@@ -60,10 +77,10 @@ export function InsightsView({ onOpenCompany }: Props) {
   return (
     <div className="space-y-lg">
       <div>
-        <h1 className="text-headline-lg font-semibold text-on-surface">Document Insights</h1>
+        <h1 className="text-headline-lg font-semibold text-on-surface">Investor Signals</h1>
         <p className="text-body-sm text-on-surface-variant mt-1 max-w-2xl">
-          Non-obvious signals extracted by Minerva from concall transcripts, annual reports,
-          and filings — red flags, guidance shifts, and hidden exposures.
+          Plain-English signals Minerva reads out of company earnings calls and reports —
+          so you can spot risks early and catch opportunities, no finance jargon needed.
         </p>
       </div>
 
@@ -140,11 +157,17 @@ export function InsightCard({ it, onOpen }: { it: Insight; onOpen: () => void })
           {meta.label}
         </Chip>
         <span className={`text-label-caps font-label-caps ${SEV_TONE[it.severity] ?? "text-on-surface-variant"}`}>
-          {it.severity}
+          {severityWord(it.severity)}
         </span>
       </div>
 
       <div className="text-card-title font-semibold text-on-surface leading-snug">{it.title}</div>
+      {meta.meaning && (
+        <p className="text-body-sm text-on-surface-variant flex items-start gap-1.5">
+          <Icon name="lightbulb" className="text-[15px] text-primary shrink-0 mt-0.5" />
+          <span>{meta.meaning}</span>
+        </p>
+      )}
       {it.detail && <p className="text-body-sm text-on-surface-variant">{it.detail}</p>}
       {it.source_quote && (
         <blockquote className="text-body-sm text-on-surface-variant border-l-2 border-outline pl-md italic">
