@@ -326,6 +326,9 @@ export function DominoView() {
                 selected?.id === c.id ? "bg-primary text-on-primary border-primary" : "bg-bg-1 text-on-surface-variant border-outline-variant hover:text-on-surface"
               }`}
             >
+              {c.is_active_now && (
+                <span title={c.activating_event ?? "Live event matches this chain"} className="mr-1">⚡</span>
+              )}
               {c.name}
             </button>
           ))}
@@ -372,6 +375,22 @@ export function DominoView() {
                     </div>
                     <span className="text-body-sm text-on-surface font-semibold">{confidence}%</span>
                   </div>
+                  {selected.verified_confidence != null && (
+                    <div
+                      className="text-caption text-positive mt-1"
+                      title="Backed by 2 years of real price history"
+                    >
+                      ✓ market-verified {Math.round(selected.verified_confidence * 100)}%
+                      {(selected.verified_lag_days ?? 0) > 0 && (
+                        <span className="text-on-surface-variant"> · leads by ~{selected.verified_lag_days}d</span>
+                      )}
+                    </div>
+                  )}
+                  {selected.is_active_now && selected.activating_event && (
+                    <div className="text-caption text-warning mt-1" title={selected.activating_event}>
+                      ⚡ Live: {selected.activating_event.slice(0, 60)}
+                    </div>
+                  )}
                 </div>
                 {selected.current_commodity_change_pct !== undefined && (
                   <span className="text-caption text-on-surface-variant flex items-center gap-1">

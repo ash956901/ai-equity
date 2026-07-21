@@ -87,9 +87,44 @@ def get_market_causal(db: Session = Depends(get_db)) -> dict[str, Any]:
             for r in rows
         ]
 
+    # Verified (market-evidence) confidence per chain: the exposure edge linking
+    # the chain's commodity to its terminal sector, when the verifier scored it.
+    from src.db.models import SectorExposure
+
+    def _verified_edge(commodity: str | None, sector: str | None):
+        if not commodity or not sector:
+            return None
+        return (
+            db.query(SectorExposure)
+            .filter(
+                SectorExposure.commodity == commodity,
+                SectorExposure.sector == sector,
+                SectorExposure.verified_confidence.isnot(None),
+            )
+            .first()
+        )
+
+    # Event→chain activation: a chain is "live" when a recent geopolitical event
+    # matches its trigger tokens (e.g. middle_east_conflict ↔ "Middle East …").
+    _GENERIC = {"price", "up", "down", "strength", "deficit", "surge"}
+
+    def _activating_event(trigger_value: str):
+        tokens = [t for t in (trigger_value or "").lower().split("_") if len(t) > 2 and t not in _GENERIC]
+        if not tokens:
+            return None
+        for e in events:
+            hay = f"{e.title} {e.category or ''} {e.region or ''} {e.country or ''}".lower()
+            hits = sum(1 for t in tokens if t in hay)
+            if hits >= min(2, len(tokens)):
+                return e
+        return None
+
     chain_list = []
     for c in chains:
         change_pct = commodity_changes.get(c.hop1_target, {}).get("change_pct", 0.0) or 0.0
+        terminal = c.hop3_target or c.hop2_target
+        edge = _verified_edge(c.hop1_target, terminal)
+        live_event = _activating_event(c.trigger_value)
         chain_list.append({
             "id": str(c.id),
             "name": c.name,
@@ -102,8 +137,12 @@ def get_market_causal(db: Session = Depends(get_db)) -> dict[str, Any]:
             "hop3_target": c.hop3_target,
             "hop3_relationship": c.hop3_relationship,
             "confidence": c.confidence,
+            "verified_confidence": edge.verified_confidence if edge else None,
+            "verified_lag_days": edge.verified_lag_days if edge else None,
             "current_commodity_change_pct": change_pct,
-            "affected_companies": sector_companies.get(c.hop3_target or c.hop2_target or "", []),
+            "is_active_now": live_event is not None,
+            "activating_event": live_event.title if live_event else None,
+            "affected_companies": sector_companies.get(terminal or "", []),
         })
 
     return {

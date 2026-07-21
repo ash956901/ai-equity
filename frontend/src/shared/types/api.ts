@@ -433,7 +433,11 @@ export interface CausalChainItem {
   hop3_target: string | null;
   hop3_relationship: string | null;
   confidence: number;
+  verified_confidence?: number | null;
+  verified_lag_days?: number | null;
   current_commodity_change_pct?: number;
+  is_active_now?: boolean;
+  activating_event?: string | null;
   affected_companies?: { id: string; name: string; ticker?: string | null }[];
 }
 

@@ -80,6 +80,11 @@ app.conf.beat_schedule = {
         "task": "etl.build_insight_corpus",
         "schedule": crontab(hour=4, minute=0, day_of_week="sunday"),
     },
+    # Cross-document trend synthesis — weekly Sun 06:00 (after the corpus build)
+    "synthesize-trends-weekly": {
+        "task": "etl.synthesize_trends",
+        "schedule": crontab(hour=6, minute=0, day_of_week="sunday"),
+    },
     # Sync and causal-tag news every 6 hours
     "sync-news-every-6-hours": {
         "task": "etl.sync_news",

@@ -9,6 +9,7 @@ interface Props {
 
 const TYPES: { key: string; label: string }[] = [
   { key: "", label: "All" },
+  { key: "trend", label: "Patterns over time" },
   { key: "red_flag", label: "Red flags" },
   { key: "risk", label: "Risks" },
   { key: "opportunity", label: "Opportunities" },
@@ -39,6 +40,8 @@ export function typeMeta(t: string): {
       return { icon: "lightbulb", tone: "tag", label: "Hidden clue", meaning: "Something non-obvious that's easy to miss." };
     case "management_tone":
       return { icon: "record_voice_over", tone: "neutral", label: "Management mood", meaning: "How the leadership is talking about the business." };
+    case "trend":
+      return { icon: "timeline", tone: "tag", label: "Pattern over time", meaning: "Something happening across several quarters — one document alone wouldn't show it." };
     default:
       return { icon: "lightbulb", tone: "neutral", label: t, meaning: "" };
   }

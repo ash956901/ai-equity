@@ -745,6 +745,11 @@ class SectorExposure(Base):
     verified_confidence: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     verified_sample_size: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     verified_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    # Lead-lag (Granger-style) evidence: the lag (in trading days) at which the
+    # commodity's returns best predict the sector's returns, and that correlation.
+    # lag=0 means same-day co-movement was the strongest signal (no lead).
+    verified_lag_days: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    verified_lag_correlation: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     __table_args__ = (

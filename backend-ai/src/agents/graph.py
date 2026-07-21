@@ -122,11 +122,52 @@ def _synthesize(state: ResearchState) -> dict:
         query=state["query"], tasks=tasks, results=results, context_note=state.get("context_note")
     )
 
-    # Stream inside the node so ``messages`` mode captures per-token chunks,
-    # while we accumulate the full text for persistence.
     llm = get_llm(temperature=0.3)
-    parts: list[str] = []
-    for chunk in llm.stream([HumanMessage(content=prompt)]):
+    # Only calls tagged "final_answer" surface as user-visible tokens (see
+    # stream_research) — so draft/critique calls below never leak.
+    stream_cfg = {"tags": ["final_answer"]}
+
+    # Evaluator-optimizer (complex path only): draft → grounding check → revise.
+    if state.get("route") == "complex":
+        try:
+            draft = llm.invoke([HumanMessage(content=prompt)]).content
+            evidence_text = prompt.split("Evidence:\n", 1)[-1][:6000]
+            critique_prompt = (
+                "You are a strict fact-checker. Below is EVIDENCE and a DRAFT answer.\n"
+                "List every specific factual claim (numbers, named events, quotes) in the "
+                "DRAFT that is NOT supported by the EVIDENCE. If everything is supported, "
+                "reply with exactly: OK\n\n"
+                f"EVIDENCE:\n{evidence_text}\n\nDRAFT:\n{draft[:6000]}"
+            )
+            critique = get_llm(temperature=0.0).invoke([HumanMessage(content=critique_prompt)]).content.strip()
+            if critique.upper().startswith("OK"):
+                # Draft is grounded — surface it via the custom token channel
+                # (no extra LLM call needed).
+                for i in range(0, len(draft), 48):
+                    writer({"token_text": draft[i:i + 48]})
+                return {"response": draft, "sources": aggregator.build_sources(results)}
+            # One revision pass, streamed as the final answer.
+            writer({"stage": "synthesizing", "detail": "Fact-checking and revising"})
+            revise_prompt = (
+                f"{prompt}\n\nA previous draft contained claims not supported by the "
+                f"evidence:\n{critique[:1500]}\n"
+                "Rewrite the answer using ONLY supported claims. Where evidence is "
+                "missing, say so instead of guessing."
+            )
+            parts: list[str] = []
+            for chunk in llm.stream([HumanMessage(content=revise_prompt)], config=stream_cfg):
+                if chunk.content:
+                    parts.append(chunk.content)
+            return {"response": "".join(parts), "sources": aggregator.build_sources(results)}
+        except Exception:
+            import logging as _logging
+            _logging.getLogger(__name__).warning(
+                "Grounding check failed; falling back to direct synthesis", exc_info=True
+            )
+
+    # Simple path (or fallback): stream directly.
+    parts = []
+    for chunk in llm.stream([HumanMessage(content=prompt)], config=stream_cfg):
         if chunk.content:
             parts.append(chunk.content)
     return {"response": "".join(parts), "sources": aggregator.build_sources(results)}
@@ -197,17 +238,30 @@ def _agent(state: ResearchState) -> dict:
         tool_calls = getattr(ai, "tool_calls", None) or []
         if not tool_calls:
             break
-        for call in tool_calls:
-            name = call["name"]
-            writer({"stage": "specialist", "detail": name})
-            specialist = SPECIALISTS_BY_NAME.get(name)
+        # Announce all specialists up front, then run them in parallel — results
+        # are appended in the original call order so ToolMessages stay aligned.
+        from concurrent.futures import ThreadPoolExecutor
+
+        def _run_specialist(call: dict) -> Any:
+            specialist = SPECIALISTS_BY_NAME.get(call["name"])
             if specialist is None:
-                result: Any = {"error": f"unknown specialist {name}"}
-            else:
-                try:
-                    result = specialist.invoke(call["args"], config=tool_config)
-                except Exception as exc:
-                    result = {"error": str(exc)}
+                return {"error": f"unknown specialist {call['name']}"}
+            try:
+                return specialist.invoke(call["args"], config=tool_config)
+            except Exception as exc:
+                return {"error": str(exc)}
+
+        for call in tool_calls:
+            writer({"stage": "specialist", "detail": call["name"]})
+
+        if len(tool_calls) == 1:
+            results_list = [_run_specialist(tool_calls[0])]
+        else:
+            with ThreadPoolExecutor(max_workers=min(4, len(tool_calls))) as pool:
+                results_list = list(pool.map(_run_specialist, tool_calls))
+
+        for call, result in zip(tool_calls, results_list):
+            name = call["name"]
             evidence.append(
                 {
                     "name": name,
@@ -266,10 +320,16 @@ def stream_research(inputs: dict, config: dict):
     graph = build_research_graph()
     for mode, data in graph.stream(inputs, config, stream_mode=["custom", "messages"]):
         if mode == "custom":
-            yield ("stage", data)
+            # Custom channel carries stages AND pre-verified draft tokens.
+            if isinstance(data, dict) and "token_text" in data:
+                yield ("token", data["token_text"])
+            else:
+                yield ("stage", data)
         elif mode == "messages":
             chunk, meta = data
-            if meta.get("langgraph_node") == "synthesize":
+            # Only the call tagged "final_answer" is user-visible — draft and
+            # critique calls in the synthesize node are filtered out.
+            if meta.get("langgraph_node") == "synthesize" and "final_answer" in (meta.get("tags") or []):
                 text = getattr(chunk, "content", None)
                 if text:
                     yield ("token", text)

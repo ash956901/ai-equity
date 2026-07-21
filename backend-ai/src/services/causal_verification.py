@@ -161,12 +161,28 @@ def compute_exposure_confidence(
     if r != r:  # NaN guard
         return None
 
+    # Lead-lag (Granger-style) evidence: correlate commodity returns at day t
+    # with sector returns at day t+lag. A strong lagged correlation is stronger
+    # causal evidence than same-day co-movement (the commodity move PRECEDES
+    # the sector move).
+    best_lag = 0
+    best_lag_r = r
+    for lag in range(1, 6):
+        if len(comm_ret) - lag < MIN_SAMPLE:
+            break
+        lag_r = float(np.corrcoef(comm_ret[:-lag], sect_ret[lag:])[0, 1])
+        if lag_r == lag_r and abs(lag_r) > abs(best_lag_r):
+            best_lag = lag
+            best_lag_r = lag_r
+
     n = int(len(comm_ret))
     return {
         "correlation": round(r, 4),
         "sample_size": n,
-        # Confidence = strength of the empirical relationship.
-        "confidence": round(abs(r), 4),
+        # Confidence = strongest empirical relationship (same-day or lead-lag).
+        "confidence": round(max(abs(r), abs(best_lag_r)), 4),
+        "lag_days": best_lag,
+        "lag_correlation": round(best_lag_r, 4),
     }
 
 
@@ -199,6 +215,8 @@ def verify_all_exposures(db: Session) -> dict[str, Any]:
         exposure.verified_correlation = result["correlation"]
         exposure.verified_confidence = result["confidence"]
         exposure.verified_sample_size = result["sample_size"]
+        exposure.verified_lag_days = result.get("lag_days")
+        exposure.verified_lag_correlation = result.get("lag_correlation")
         exposure.verified_at = datetime.utcnow()
         verified += 1
     db.commit()

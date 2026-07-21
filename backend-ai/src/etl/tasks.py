@@ -430,6 +430,27 @@ def build_insight_corpus(self, company_ids: Optional[list[str]] = None, per_comp
         db.close()
 
 
+@app.task(bind=True, name="etl.synthesize_trends")
+def synthesize_trends(self):
+    """Cross-document trend synthesis for all companies with multi-doc insights."""
+    db = SessionLocal()
+    run = _log_etl_run(db, "synthesize_trends")
+    try:
+        from src.etl.trend_synthesis import synthesize_all_trends
+
+        result = synthesize_all_trends()
+        _finish_etl_run(db, run, records=result.get("trend_insights", 0))
+        logger.info("synthesize_trends: %s", result)
+        return result
+    except Exception as e:
+        db.rollback()
+        _finish_etl_run(db, run, status="failed", error=str(e))
+        logger.exception("synthesize_trends failed")
+        raise
+    finally:
+        db.close()
+
+
 # ------------------------------------------------------------------ #
 #  Full company refresh (on-demand)                                    #
 # ------------------------------------------------------------------ #
@@ -457,7 +478,7 @@ def refresh_company(self, company_id: str):
 #  Document Processing pipeline                                        #
 # ------------------------------------------------------------------ #
 
-_INSIGHT_TYPES = {"red_flag", "guidance", "risk", "opportunity", "hidden_signal", "management_tone"}
+_INSIGHT_TYPES = {"red_flag", "guidance", "risk", "opportunity", "hidden_signal", "management_tone", "trend"}
 
 
 def _persist_filing_insights(db, filing, enrichment: dict) -> int:
@@ -538,8 +559,10 @@ def process_filing(self, filing_id: str):
         file_path = filing.raw_uri
         
         # Get metadata
+        company = db.query(Company).filter(Company.id == filing.company_id).first()
         metadata = {
             "company_id": str(filing.company_id),
+            "company_name": company.name if company else "",
             "filing_id": str(filing.id),
             "filing_type": filing.filing_type or "",
             "filing_date": filing.filing_date.isoformat() if filing.filing_date else "",
