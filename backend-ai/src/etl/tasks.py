@@ -472,8 +472,9 @@ def _persist_filing_insights(db, filing, enrichment: dict) -> int:
     db.query(CompanyInsight).filter(CompanyInsight.filing_id == filing.id).delete()
 
     meta = filing.metadata_ or {}
-    doc_type = (meta.get("doc_type") or filing.filing_type or "") or None
-    period = str(meta.get("date") or "") or None
+    # Truncate to column widths — filing_type can be a long announcement subject.
+    doc_type = ((meta.get("doc_type") or filing.filing_type or "")[:40]) or None
+    period = (str(meta.get("date") or "")[:64]) or None
 
     rows: list = []
     for it in enrichment.get("insights") or []:
