@@ -41,23 +41,3 @@ class EmbeddingGenerator:
             logger.error(f"Error generating document embeddings: {e}")
             # Return chunks without embeddings
             return chunks
-            
-    def generate_document_embeddings(self, chunks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """Generate embeddings for document chunks."""
-        try:
-            # Extract texts for embedding
-            texts = [chunk['text'] for chunk in chunks]
-            
-            # Generate embeddings
-            embeddings = self.generate_embeddings(texts)
-            
-            # Add embeddings to chunks
-            for i, chunk in enumerate(chunks):
-                if i < len(embeddings):
-                    chunk['embedding'] = embeddings[i]
-                
-            return chunks
-        except Exception as e:
-            logger.error(f"Error generating document embeddings: {e}")
-            # Return chunks without embeddings
-            return chunks

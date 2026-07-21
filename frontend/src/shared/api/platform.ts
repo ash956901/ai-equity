@@ -494,3 +494,24 @@ export async function fetchCompanyInsights(
 ): Promise<CompanyInsights> {
   return aiGet<CompanyInsights>(`/insights/company/${companyId}?limit=${limit}`);
 }
+
+// ------------------------------------------------------------------ //
+//  Chat message history                                                //
+// ------------------------------------------------------------------ //
+
+export interface ChatMessageItem {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  created_at?: string | null;
+}
+
+export async function fetchSessionMessages(
+  sessionId: string,
+  userId: string,
+  limit = 100
+): Promise<ChatMessageItem[]> {
+  return aiGet<ChatMessageItem[]>(
+    `/chat/session/${sessionId}/messages?user_id=${userId}&limit=${limit}`
+  );
+}

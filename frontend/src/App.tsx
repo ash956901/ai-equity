@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { AppShell } from "./components/shell/AppShell";
 import { NAV, type ViewKey } from "./routes";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 import { DashboardView } from "./views/DashboardView";
 import { DominoView } from "./views/DominoView";
 import { MinervaView } from "./views/MinervaView";
@@ -20,11 +21,38 @@ import { Placeholder } from "./views/Placeholder";
 import { useAuth } from "./lib/auth";
 import { Icon } from "./components/Icon";
 
+const VALID_VIEWS = new Set(NAV.map((n) => n.key));
+
+function parseHash(): { view: ViewKey; companyId: string | null } {
+  const raw = window.location.hash.replace(/^#\/?/, ""); // "#/company/<id>" or "#news"
+  const [v, id] = raw.split("/");
+  const view = (VALID_VIEWS.has(v as ViewKey) ? v : "dashboard") as ViewKey;
+  return { view, companyId: v === "company" && id ? id : null };
+}
+
 export default function App() {
   const { user, loading, needsOnboarding } = useAuth();
-  const [view, setView] = useState<ViewKey>("dashboard");
-  const [companyId, setCompanyId] = useState<string | null>(null);
+  const initial = parseHash();
+  const [view, setView] = useState<ViewKey>(initial.view);
+  const [companyId, setCompanyId] = useState<string | null>(initial.companyId);
   const label = NAV.find((n) => n.key === view)?.label ?? view;
+
+  // Two-way sync between app state and the URL hash so refresh + deep-links work
+  // and browser back/forward navigates views.
+  useEffect(() => {
+    const target = view === "company" && companyId ? `#/company/${companyId}` : `#/${view}`;
+    if (window.location.hash !== target) window.location.hash = target;
+  }, [view, companyId]);
+
+  useEffect(() => {
+    const onHash = () => {
+      const { view: v, companyId: c } = parseHash();
+      setView(v);
+      setCompanyId(c);
+    };
+    window.addEventListener("hashchange", onHash);
+    return () => window.removeEventListener("hashchange", onHash);
+  }, []);
 
   if (loading) {
     return (
@@ -79,7 +107,7 @@ export default function App() {
 
   return (
     <AppShell active={view} onNavigate={setView}>
-      {renderView()}
+      <ErrorBoundary key={view}>{renderView()}</ErrorBoundary>
     </AppShell>
   );
 }

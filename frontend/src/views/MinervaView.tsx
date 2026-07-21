@@ -1,5 +1,5 @@
-import { useMemo, useRef, useState } from "react";
-import { streamChatQuery } from "../lib/api";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { streamChatQuery, listChatSessions, fetchSessionMessages } from "../lib/api";
 import { getUserId } from "../lib/user";
 import { Icon } from "../components/Icon";
 import { Markdown } from "../components/Markdown";
@@ -22,6 +22,7 @@ interface Thread {
   messages: Msg[];
   backendSessionId?: string;
   updatedAt: string;
+  loaded?: boolean; // false = a persisted session whose messages aren't fetched yet
 }
 
 /* ── Stage stepper ────────────────────────────────────────────────────── */
@@ -154,6 +155,53 @@ export function MinervaView() {
 
   const active = threads.find((t) => t.id === activeId) ?? threads[0];
 
+  // Restore past conversations from the backend on mount (kept below the fresh
+  // "New research thread" so a refresh no longer wipes history).
+  useEffect(() => {
+    let cancelled = false;
+    listChatSessions(userId)
+      .then((sessions) => {
+        if (cancelled || sessions.length === 0) return;
+        setThreads((cur) => [
+          ...cur,
+          ...sessions.map((s) => ({
+            id: `sess-${s.id}`,
+            title: s.title || "Past conversation",
+            messages: [] as Msg[],
+            backendSessionId: s.id,
+            updatedAt: s.last_message_at || s.created_at,
+            loaded: false,
+          })),
+        ]);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [userId]);
+
+  async function openThread(id: string) {
+    setActiveId(id);
+    setThreadsOpen(false);
+    const t = threads.find((x) => x.id === id);
+    if (!t || t.loaded || !t.backendSessionId) return;
+    patchThread(id, (x) => ({ ...x, loaded: true })); // optimistic to avoid double-fetch
+    try {
+      const msgs = await fetchSessionMessages(t.backendSessionId, userId);
+      patchThread(id, (x) => ({
+        ...x,
+        messages: msgs.map((m) => ({
+          id: m.id,
+          role: m.role,
+          text: m.content,
+          time: m.created_at ? new Date(m.created_at).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }) : "",
+        })),
+      }));
+    } catch {
+      /* leave empty on failure */
+    }
+  }
+
   const patchThread = (id: string, fn: (t: Thread) => Thread) =>
     setThreads((cur) => cur.map((t) => (t.id === id ? fn(t) : t)));
 
@@ -260,10 +308,7 @@ export function MinervaView() {
         {filteredThreads.map((t) => (
           <button
             key={t.id}
-            onClick={() => {
-              setActiveId(t.id);
-              setThreadsOpen(false);
-            }}
+            onClick={() => openThread(t.id)}
             className={`w-full text-left rounded p-sm border transition-colors ${
               active?.id === t.id ? "bg-bg-2 border-primary/40" : "bg-transparent border-transparent hover:bg-bg-2"
             }`}

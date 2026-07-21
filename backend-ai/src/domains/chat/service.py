@@ -1,5 +1,6 @@
 """Business logic for chat query and session listing."""
 
+import logging
 import time
 from typing import Any, Optional
 from uuid import UUID
@@ -16,6 +17,8 @@ from src.app.telemetry import traceable
 from src.db.models import ChatMessage, ChatSession, NewsArticle, User, Portfolio
 from src.utils.cache import get_analysis_cache
 from src.utils.data_sources import DataSource
+
+logger = logging.getLogger(__name__)
 
 
 MAX_AGENT_RETRIES = 2
@@ -97,7 +100,7 @@ class ChatService:
         upload_id: Optional[UUID],
         company_id: Optional[UUID] = None,
     ) -> dict[str, Any]:
-        print(f"[STAGE 2: SERVICE] process_query called: user_id={user_id}, query='{query[:50]}...'")
+        logger.debug(f"[STAGE 2: SERVICE] process_query called: user_id={user_id}, query='{query[:50]}...'")
 
         # Guardrails: rate limit + input validation / prompt-injection defence
         check_rate_limit(str(user_id))
@@ -112,9 +115,9 @@ class ChatService:
             )
             self.db.add(user)
             self.db.flush()
-            print(f"[STAGE 2a: USER] Created new user: {user_id}")
+            logger.debug(f"[STAGE 2a: USER] Created new user: {user_id}")
         else:
-            print(f"[STAGE 2a: USER] User exists: {user_id}")
+            logger.debug(f"[STAGE 2a: USER] User exists: {user_id}")
 
         resolved_session_id = session_id
         if not resolved_session_id:
@@ -127,7 +130,7 @@ class ChatService:
             self.db.commit()
             self.db.refresh(session)
             resolved_session_id = session.id
-            print(f"[STAGE 2b: SESSION] Created new session: {resolved_session_id}")
+            logger.debug(f"[STAGE 2b: SESSION] Created new session: {resolved_session_id}")
         else:
             session = (
                 self.db.query(ChatSession)
@@ -139,7 +142,7 @@ class ChatService:
             )
             if not session:
                 raise HTTPException(status_code=404, detail="Session not found")
-            print(f"[STAGE 2b: SESSION] Using existing session: {resolved_session_id}")
+            logger.debug(f"[STAGE 2b: SESSION] Using existing session: {resolved_session_id}")
 
         primary_portfolio = (
             self.db.query(Portfolio)
@@ -148,7 +151,7 @@ class ChatService:
         )
         primary_portfolio_id = primary_portfolio.id if primary_portfolio else None
         if primary_portfolio_id:
-            print(f"[STAGE 3: PORTFOLIO] Primary portfolio: {primary_portfolio_id}")
+            logger.debug(f"[STAGE 3: PORTFOLIO] Primary portfolio: {primary_portfolio_id}")
 
         # --- Cache check (skip for document-attached queries) ---
         cache = get_analysis_cache()
@@ -157,7 +160,7 @@ class ChatService:
             cache_key = self._cache_key(query, expertise_level, user_id, primary_portfolio_id)
             cached = cache.get(cache_key)
             if cached:
-                print(f"[CACHE HIT] Returning cached response for query='{query[:50]}'")
+                logger.debug(f"[CACHE HIT] Returning cached response for query='{query[:50]}'")
                 # Still save user message / assistant response to DB for session continuity
                 self.db.add(ChatMessage(session_id=resolved_session_id, role="user", content=query))
                 self.db.add(ChatMessage(
@@ -186,14 +189,14 @@ class ChatService:
             news_context=news_context,
         )
 
-        print(f"[STAGE 3: USER_MESSAGE] Built message (full): {user_message}")
+        logger.debug(f"[STAGE 3: USER_MESSAGE] Built message (full): {user_message}")
 
-        print(f"[STAGE 4: PIPELINE] Running planner/task-queue/worker-pool flow for session_id={resolved_session_id}")
+        logger.debug(f"[STAGE 4: PIPELINE] Running planner/task-queue/worker-pool flow for session_id={resolved_session_id}")
         result: Optional[dict[str, Any]] = None
         last_err = None
         for attempt in range(1, MAX_AGENT_RETRIES + 1):
             try:
-                print(f"[STAGE 4: ATTEMPT {attempt}/{MAX_AGENT_RETRIES}] Running research pipeline...")
+                logger.debug(f"[STAGE 4: ATTEMPT {attempt}/{MAX_AGENT_RETRIES}] Running research pipeline...")
 
                 from src.agents.graph import run_research
 
@@ -209,16 +212,16 @@ class ChatService:
                     {"configurable": {"thread_id": str(resolved_session_id)}},
                 )
 
-                print(f"[STAGE 4: ATTEMPT {attempt}] Pipeline succeeded")
+                logger.debug(f"[STAGE 4: ATTEMPT {attempt}] Pipeline succeeded")
                 last_err = None
                 break
             except Exception as invoke_err:
                 last_err = invoke_err
                 err_msg = str(invoke_err)
-                print(f"[STAGE 4: ATTEMPT {attempt}] Pipeline failed: {err_msg[:200]}")
+                logger.debug(f"[STAGE 4: ATTEMPT {attempt}] Pipeline failed: {err_msg[:200]}")
 
                 if "output_parse_failed" in err_msg or "BadRequestError" in type(invoke_err).__name__:
-                    print(f"[STAGE 4: RETRY] Retrying after {RETRY_BACKOFF_SECONDS * attempt}s...")
+                    logger.debug(f"[STAGE 4: RETRY] Retrying after {RETRY_BACKOFF_SECONDS * attempt}s...")
                     if attempt < MAX_AGENT_RETRIES:
                         time.sleep(RETRY_BACKOFF_SECONDS * attempt)
                         continue
@@ -229,14 +232,14 @@ class ChatService:
         if result is None:
             raise RuntimeError("Pipeline returned no result")
 
-        print(f"[STAGE 4: RESULT_FULL] result keys = {list(result.keys())}")
+        logger.debug(f"[STAGE 4: RESULT_FULL] result keys = {list(result.keys())}")
 
         response_text = apply_output_guardrail(result["response"])
-        print(f"[STAGE 4: LLM_RESPONSE_FULL] response_text = {response_text}")
+        logger.debug(f"[STAGE 4: LLM_RESPONSE_FULL] response_text = {response_text}")
 
         tokens_used = int(result.get("tokens_used", 0))
         if tokens_used:
-            print(f"[STAGE 4: TOKENS_USED] tokens_used = {tokens_used}")
+            logger.debug(f"[STAGE 4: TOKENS_USED] tokens_used = {tokens_used}")
 
         self.db.add(
             ChatMessage(
@@ -255,7 +258,7 @@ class ChatService:
         )
         self.db.commit()
 
-        print(f"[STAGE 5: DB] Messages saved to DB, session={resolved_session_id}")
+        logger.debug(f"[STAGE 5: DB] Messages saved to DB, session={resolved_session_id}")
 
         data_sources = result.get("data_sources") or [
             DataSource(
@@ -271,7 +274,7 @@ class ChatService:
                 "response_text": response_text,
                 "data_sources": data_sources,
             })
-            print(f"[CACHE SET] Stored response under key {cache_key[:24]}...")
+            logger.debug(f"[CACHE SET] Stored response under key {cache_key[:24]}...")
 
         return {
             "response": response_text,
@@ -397,6 +400,32 @@ class ChatService:
             except Exception:
                 pass
             yield sse("error", {"detail": str(e)})
+
+    def get_messages(self, session_id: UUID, user_id: UUID, limit: int = 100) -> list[dict[str, Any]]:
+        """Return the messages of a session, but only if the user owns it."""
+        session = (
+            self.db.query(ChatSession)
+            .filter(ChatSession.id == session_id, ChatSession.user_id == user_id)
+            .first()
+        )
+        if not session:
+            return []
+        messages = (
+            self.db.query(ChatMessage)
+            .filter(ChatMessage.session_id == session_id)
+            .order_by(ChatMessage.created_at.asc())
+            .limit(limit)
+            .all()
+        )
+        return [
+            {
+                "id": str(m.id),
+                "role": m.role,
+                "content": m.content,
+                "created_at": m.created_at.isoformat() if m.created_at else None,
+            }
+            for m in messages
+        ]
 
     def list_sessions(self, user_id: UUID, limit: int) -> list[dict[str, Any]]:
         sessions = (

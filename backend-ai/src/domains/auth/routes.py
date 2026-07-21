@@ -159,6 +159,44 @@ def verify_otp(
 
 DEMO_USER_EMAIL = "test@equityai.dev"
 
+# ── Login brute-force protection: 5 attempts / 5 min per (email, IP) ─────────
+_LOGIN_LIMIT = 5
+_LOGIN_WINDOW = 300
+_login_attempts: dict[str, list[float]] = {}
+
+
+def _check_login_rate(email: str, ip: str) -> None:
+    """Sliding-window limiter (Redis when available, in-proc fallback)."""
+    import time as _time
+
+    key = f"login_rl:{email.lower()}:{ip}"
+    now = _time.time()
+    try:
+        import redis as _redis
+
+        settings = get_settings()
+        if settings.redis_url:
+            r = _redis.from_url(settings.redis_url, socket_timeout=2)
+            pipe = r.pipeline()
+            pipe.zremrangebyscore(key, 0, now - _LOGIN_WINDOW)
+            pipe.zadd(key, {str(now): now})
+            pipe.zcard(key)
+            pipe.expire(key, _LOGIN_WINDOW)
+            count = pipe.execute()[2]
+            if count > _LOGIN_LIMIT:
+                raise HTTPException(status_code=429, detail="Too many login attempts. Try again in a few minutes.")
+            return
+    except HTTPException:
+        raise
+    except Exception:
+        pass  # fall through to in-process limiter
+
+    bucket = [t for t in _login_attempts.get(key, []) if t > now - _LOGIN_WINDOW]
+    bucket.append(now)
+    _login_attempts[key] = bucket
+    if len(bucket) > _LOGIN_LIMIT:
+        raise HTTPException(status_code=429, detail="Too many login attempts. Try again in a few minutes.")
+
 
 @router.post("/register", response_model=AuthResponse)
 def register(
@@ -206,6 +244,7 @@ def login(
 ):
     """Authenticate with email + password and start a session."""
     settings = get_settings()
+    _check_login_rate(body.email, request.client.host if request.client else "unknown")
     svc = AuthService(db)
     try:
         user = svc.authenticate(body.email, body.password)

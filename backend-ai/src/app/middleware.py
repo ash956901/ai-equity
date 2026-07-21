@@ -41,6 +41,98 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
             clear_request_context()
 
 
+class AuthorizationMiddleware(BaseHTTPMiddleware):
+    """Enforce that the session user only touches their own data.
+
+    Closes the IDOR gap: endpoints historically trusted a ``user_id`` from the
+    query string / JSON body / path. This middleware decodes the JWT access
+    cookie and rejects any request whose ``user_id`` doesn't match the session.
+
+    Rules:
+    - ``/auth/*``, health/docs, and public market-data endpoints stay open.
+    - Requests under PROTECTED_PREFIXES require a valid session.
+    - Any request carrying a ``user_id`` (query, JSON body, or ``/users/{id}``
+      path) must have a session whose subject matches it.
+    """
+
+    PROTECTED_PREFIXES = ("/portfolios", "/watchlists", "/simulator", "/users", "/chat")
+    EXEMPT_PREFIXES = ("/auth", "/health", "/docs", "/openapi", "/redoc", "/api/v1/status")
+
+    @staticmethod
+    def _session_user(request: Request) -> str | None:
+        token = request.cookies.get("access_token")
+        if not token:
+            return None
+        try:
+            import jwt as _jwt
+
+            from src.config import get_settings
+
+            s = get_settings()
+            payload = _jwt.decode(token, s.jwt_secret_key, algorithms=[s.jwt_algorithm])
+            if payload.get("type") != "access":
+                return None
+            return payload.get("sub")
+        except Exception:
+            return None
+
+    async def dispatch(self, request: Request, call_next):
+        path = request.url.path
+        if request.method == "OPTIONS" or path == "/" or path.startswith(self.EXEMPT_PREFIXES):
+            return await call_next(request)
+
+        session_user = self._session_user(request)
+
+        # Collect any user_id claims on the request.
+        claimed: set[str] = set()
+        qid = request.query_params.get("user_id")
+        if qid:
+            claimed.add(qid)
+        parts = path.strip("/").split("/")
+        if len(parts) >= 2 and parts[0] == "users":
+            claimed.add(parts[1])
+        # NOTE: reading the request body in BaseHTTPMiddleware breaks downstream
+        # StreamingResponse (SSE) — so skip body inspection on streaming paths.
+        # Those endpoints are still session-gated by the protected-prefix check.
+        is_streaming = path.endswith("/stream") or "stream" in path.rsplit("/", 1)[-1]
+        if (
+            not is_streaming
+            and request.method in ("POST", "PUT", "PATCH")
+            and "json" in (request.headers.get("content-type") or "")
+        ):
+            body = await request.body()
+            if body:
+                try:
+                    import json as _json
+
+                    data = _json.loads(body)
+                    if isinstance(data, dict) and data.get("user_id"):
+                        claimed.add(str(data["user_id"]))
+                except Exception:
+                    pass
+
+                # Re-inject the consumed body for downstream handlers.
+                async def receive():
+                    return {"type": "http.request", "body": body}
+
+                request._receive = receive  # noqa: SLF001
+
+        protected = path.startswith(self.PROTECTED_PREFIXES)
+        if (protected or claimed) and not session_user:
+            return Response(
+                content='{"detail":"Not authenticated"}',
+                status_code=401,
+                media_type="application/json",
+            )
+        if claimed and any(c != session_user for c in claimed):
+            return Response(
+                content='{"detail":"Forbidden: user mismatch"}',
+                status_code=403,
+                media_type="application/json",
+            )
+        return await call_next(request)
+
+
 class CSRFMiddleware(BaseHTTPMiddleware):
     """Validate CSRF double-submit cookie on mutating requests."""
 
@@ -89,6 +181,7 @@ class CSRFMiddleware(BaseHTTPMiddleware):
 def register_middleware(app: FastAPI) -> None:
     """Attach middleware stack to the FastAPI app."""
     app.add_middleware(RequestContextMiddleware)
+    app.add_middleware(AuthorizationMiddleware)
     app.add_middleware(CSRFMiddleware)
 
     allowed_origins = os.getenv("ALLOWED_ORIGINS", "*").split(",")

@@ -111,3 +111,15 @@ def list_sessions(
     """List chat sessions for a user."""
     service = ChatService(db)
     return service.list_sessions(user_id=user_id, limit=limit)
+
+
+@router.get("/session/{session_id}/messages")
+def get_session_messages(
+    session_id: UUID,
+    user_id: UUID,
+    limit: int = 100,
+    db: Session = Depends(get_db),
+):
+    """Return the messages of a session (owner-checked via user_id)."""
+    service = ChatService(db)
+    return service.get_messages(session_id=session_id, user_id=user_id, limit=limit)
