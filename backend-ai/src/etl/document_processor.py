@@ -5,13 +5,24 @@ import logging
 import re
 from pathlib import Path
 from typing import List, Optional, Dict, Any, Tuple
-import fitz  # PyMuPDF
-import PyPDF2
-import docx
 import pandas as pd
-from PyPDF2 import PdfReader
-from docx import Document as DocxDocument
 from pptx import Presentation
+
+# Optional deps — PDF extraction uses pdfplumber (see extract_text_from_pdf),
+# so these are only needed for their specific formats. Guard the imports so a
+# missing PyMuPDF/PyPDF2/python-docx doesn't break the whole ETL pipeline.
+try:
+    import fitz  # PyMuPDF (unused; kept for optional callers)
+except ImportError:  # pragma: no cover
+    fitz = None
+try:
+    from PyPDF2 import PdfReader
+except ImportError:  # pragma: no cover
+    PdfReader = None
+try:
+    from docx import Document as DocxDocument
+except ImportError:  # pragma: no cover
+    DocxDocument = None
 
 logger = logging.getLogger(__name__)
 

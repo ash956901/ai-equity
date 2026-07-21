@@ -141,6 +141,36 @@ class Filing(Base):
     )
 
 
+class CompanyInsight(Base):
+    """A single structured insight extracted from a company document.
+
+    Populated by the ETL enricher (per filing/concall/annual report). This is the
+    queryable read-surface for the "hidden insights" feature — previously the
+    enricher's output lived only in ``filings.metadata`` JSONB that nothing read.
+    """
+
+    __tablename__ = "company_insights"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    company_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("companies.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    filing_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("filings.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    # red_flag | guidance | risk | opportunity | hidden_signal | management_tone
+    insight_type: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    title: Mapped[str] = mapped_column(String(500), nullable=False)
+    detail: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    severity: Mapped[str] = mapped_column(String(16), default="medium")  # low | medium | high
+    source_quote: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    period: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    doc_type: Mapped[Optional[str]] = mapped_column(String(40), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+
+
 class FinancialStatementRaw(Base):
     __tablename__ = "financial_statements_raw"
 

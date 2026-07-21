@@ -2,7 +2,6 @@
 
 import logging
 from typing import List, Dict, Any
-import ollama
 
 logger = logging.getLogger(__name__)
 

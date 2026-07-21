@@ -457,6 +457,66 @@ def refresh_company(self, company_id: str):
 #  Document Processing pipeline                                        #
 # ------------------------------------------------------------------ #
 
+_INSIGHT_TYPES = {"red_flag", "guidance", "risk", "opportunity", "hidden_signal", "management_tone"}
+
+
+def _persist_filing_insights(db, filing, enrichment: dict) -> int:
+    """Write structured CompanyInsight rows from an enrichment result.
+
+    Idempotent per filing (clears prior rows first). Falls back to deriving
+    red-flag insights from the legacy ``red_flags`` list when the model didn't
+    return a structured ``insights`` array.
+    """
+    from src.db.models import CompanyInsight
+
+    db.query(CompanyInsight).filter(CompanyInsight.filing_id == filing.id).delete()
+
+    meta = filing.metadata_ or {}
+    doc_type = (meta.get("doc_type") or filing.filing_type or "") or None
+    period = str(meta.get("date") or "") or None
+
+    rows: list = []
+    for it in enrichment.get("insights") or []:
+        if not isinstance(it, dict):
+            continue
+        title = (it.get("title") or "").strip()
+        if not title:
+            continue
+        itype = (it.get("type") or "").strip().lower()
+        if itype not in _INSIGHT_TYPES:
+            itype = "risk"
+        severity = (it.get("severity") or "medium").strip().lower()
+        if severity not in ("low", "medium", "high"):
+            severity = "medium"
+        rows.append(CompanyInsight(
+            company_id=filing.company_id,
+            filing_id=filing.id,
+            insight_type=itype,
+            title=title[:500],
+            detail=(it.get("detail") or "").strip() or None,
+            severity=severity,
+            source_quote=(it.get("quote") or "").strip() or None,
+            period=period,
+            doc_type=doc_type,
+        ))
+
+    if not rows:
+        for rf in enrichment.get("red_flags") or []:
+            if rf:
+                rows.append(CompanyInsight(
+                    company_id=filing.company_id,
+                    filing_id=filing.id,
+                    insight_type="red_flag",
+                    title=str(rf)[:500],
+                    severity="medium",
+                    period=period,
+                    doc_type=doc_type,
+                ))
+
+    for r in rows:
+        db.add(r)
+    return len(rows)
+
 
 @app.task(bind=True, name="etl.process_filing")
 def process_filing(self, filing_id: str):
@@ -495,8 +555,14 @@ def process_filing(self, filing_id: str):
         enrichment = result.get("enrichment", {})
         
         # Load chunks to Qdrant
-        loader = ETLLoadTask()
-        loaded_count = loader.load_chunks(chunks)
+        # Load vectors to Qdrant — degrade gracefully if Qdrant/embeddings are
+        # unavailable, so document insights are still persisted below.
+        try:
+            loader = ETLLoadTask()
+            loaded_count = loader.load_chunks(chunks)
+        except Exception as e:
+            logger.warning("Qdrant load failed for %s (%s); persisting insights only", filing_id, e)
+            loaded_count = 0
         
         # Update filing status and save enrichment metadata to DB
         filing.status = "processed"
@@ -512,8 +578,12 @@ def process_filing(self, filing_id: str):
         # Persist causal signals so the graph-mining job can grow SectorExposure edges.
         current_meta['causal_signals'] = enrichment.get("causal_signals", {})
         filing.metadata_ = current_meta
-        
+
+        # Persist structured, queryable insights (the read-surface for the UI).
+        insight_count = _persist_filing_insights(db, filing, enrichment)
+
         db.commit()
+        logger.info("process_filing: %s → %d chunks, %d insights", filing_id, loaded_count, insight_count)
         
         _finish_etl_run(db, run, records=loaded_count)
         return {"loaded": loaded_count}

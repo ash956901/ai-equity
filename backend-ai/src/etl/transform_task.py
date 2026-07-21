@@ -41,9 +41,14 @@ class ETLTransformTask:
             **metadata
         )
         
-        # Generate embeddings
-        embedded_chunks = self.embedding_generator.generate_document_embeddings(chunks)
-        
+        # Generate embeddings. Degrade gracefully if the embedder (Ollama) is
+        # unavailable — the enrichment/insights must still be persisted.
+        try:
+            embedded_chunks = self.embedding_generator.generate_document_embeddings(chunks)
+        except Exception as e:
+            logger.warning("Embedding generation failed (%s); continuing without vectors", e)
+            embedded_chunks = []
+
         return {
             "chunks": embedded_chunks,
             "enrichment": enrichment_data
