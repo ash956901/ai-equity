@@ -501,6 +501,9 @@ function InsightsPanel({ companyId }: { companyId: string }) {
                   />
                   <div className="min-w-0">
                     <div className="text-body-md text-on-surface font-medium">{it.title}</div>
+                    {it.plain_summary && (
+                      <div className="text-body-sm text-on-surface mt-0.5">{it.plain_summary}</div>
+                    )}
                     {it.detail && (
                       <div className="text-body-sm text-on-surface-variant mt-0.5">{it.detail}</div>
                     )}

@@ -489,10 +489,24 @@ def _companies_for_sectors(sectors: list[str], per_sector: int = 4) -> dict[str,
     try:
         for sector in {s for s in sectors if s}:
             rows = db.query(Company).filter(Company.sector == sector).limit(per_sector).all()
-            out[sector] = [
-                {"name": c.name, "ticker": c.ticker_nse or c.ticker_bse, "id": str(c.id)}
-                for c in rows
-            ]
+            if not rows:
+                like = f"%{sector}%"
+                rows = (
+                    db.query(Company)
+                    .filter((Company.industry.ilike(like)) | (Company.sector.ilike(like)))
+                    .limit(per_sector)
+                    .all()
+                )
+            entries = []
+            for c in rows:
+                t = c.ticker_nse or c.ticker_bse
+                entries.append({
+                    "name": c.name,
+                    # Numeric scrip codes mean nothing to readers — omit them.
+                    "ticker": t if t and not str(t).isdigit() else None,
+                    "id": str(c.id),
+                })
+            out[sector] = entries
     finally:
         db.close()
     return out

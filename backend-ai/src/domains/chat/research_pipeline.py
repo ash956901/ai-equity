@@ -256,11 +256,18 @@ class ResearchWorkerPool:
         financials = self._tool_output(get_latest_financials, {"company_id": company_id, "periods": 4})
         ratios = self._tool_output(calculate_ratios, {"company_id": company_id})
         risk_flags = self._tool_output(detect_risk_flags, {"company_id": company_id})
+        from src.agents.tools.financial import fetch_company_insights
+
+        try:
+            document_insights = fetch_company_insights(company_id)
+        except Exception:
+            document_insights = []
         payload = {
             "company": company,
             "financials": financials,
             "ratios": ratios,
             "risk_flags": risk_flags,
+            "document_insights": document_insights,
         }
         return TaskResult(
             name=task.name,
@@ -401,6 +408,29 @@ class ResultAggregator:
         context_block = ""
         if context_note:
             context_block = f"\n\nConversation context:\n{self._truncate(context_note, 2000)}"
+
+        # Adapt the writing style to the user's expertise (carried in the context
+        # note as "expertise_level=<level>"). Beginners get plain language.
+        style = (
+            "Write a concise, decision-ready answer."
+        )
+        note = context_note or ""
+        if "expertise_level=beginner" in note:
+            style = (
+                "The reader is a COMPLETE BEGINNER investor. Write in plain, everyday "
+                "language: no jargon (or explain any term in brackets the first time), "
+                "use short sentences and simple analogies, and after each key point add "
+                "the 'so what' — what it means for their money. Prefer 'the company "
+                "earns/owes/spends' phrasing over ratio names. End with a one-line "
+                "takeaway starting 'In short:'. Keep it friendly but factual, and never "
+                "give direct buy/sell advice — frame things as 'a positive sign' or "
+                "'a reason for caution'."
+            )
+        elif "expertise_level=advanced" in note:
+            style = (
+                "The reader is an advanced analyst: be dense and quantitative, lead with "
+                "the numbers, skip explanations of standard terms."
+            )
         return (
             "You are synthesizing a research answer from pre-collected evidence. "
             "Do not invent facts that are not present in the evidence. "
@@ -409,7 +439,7 @@ class ResultAggregator:
             f"{context_block}"
             f"Planned tasks: {task_list}\n\n"
             f"Evidence:\n{evidence_blob}\n\n"
-            "Write a concise, decision-ready answer."
+            f"{style}"
         )
 
     def build_sources(self, results: list[TaskResult]) -> list[dict[str, Any]]:

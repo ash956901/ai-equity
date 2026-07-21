@@ -67,17 +67,14 @@ class AnalysisCache:
         return f"analysis:{digest}"
 
     def get(self, key: str) -> Optional[Any]:
-        print("RAN REDIS GET METHOD---------")
         """Return cached value or ``None`` if missing/expired."""
         if self._redis is not None:
             try:
-                print("RAN REDIS GET METHOD---------", key, self._redis.get(key))
                 data = self._redis.get(key)
                 if data is not None:
                     return json.loads(data)
                 return None
             except Exception as exc:
-                print("RAN REDIS GET METHOD EXCEPTION---------")
                 logger.warning("AnalysisCache Redis GET error: %s", exc)
 
         # In-memory fallback
@@ -91,15 +88,12 @@ class AnalysisCache:
 
     def set(self, key: str, value: Any, ttl: int = DEFAULT_TTL) -> None:
         """Store *value* under *key* with the given TTL (seconds)."""
-        print("RAN REDIS SET METHOD---------")
         if self._redis is not None:
             try:
                 self._redis.setex(key, ttl, json.dumps(value, default=str, ensure_ascii=False))
-                print("RAN REDIS SET METHOD---------", key, value)
 
                 return
             except Exception as exc:
-                print("RAN REDIS SET METHOD EXCEPTION---------")
                 logger.warning("AnalysisCache Redis SET error: %s", exc)
 
         # In-memory fallback — cap at 512 entries to prevent unbounded growth
@@ -110,7 +104,6 @@ class AnalysisCache:
 
     def invalidate(self, key: str) -> None:
         """Remove a single key from the cache."""
-        print("RAN REDIS INVALIDATE METHOD---------")
         if self._redis is not None:
             try:
                 self._redis.delete(key)

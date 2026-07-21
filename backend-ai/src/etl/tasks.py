@@ -495,6 +495,7 @@ def _persist_filing_insights(db, filing, enrichment: dict) -> int:
             insight_type=itype,
             title=title[:500],
             detail=(it.get("detail") or "").strip() or None,
+            plain_summary=(it.get("plain") or "").strip() or None,
             severity=severity,
             source_quote=(it.get("quote") or "").strip() or None,
             period=period,
@@ -554,7 +555,15 @@ def process_filing(self, filing_id: str):
         
         chunks = result.get("chunks", [])
         enrichment = result.get("enrichment", {})
-        
+
+        # Attach the filing's insight summary to every chunk payload so RAG hits
+        # carry insight context alongside the raw text.
+        summary = (enrichment.get("timeline_summary") or "").strip()
+        if summary:
+            for ch in chunks:
+                if isinstance(ch, dict):
+                    ch.setdefault("insight_summary", summary[:300])
+
         # Load chunks to Qdrant
         # Load vectors to Qdrant — degrade gracefully if Qdrant/embeddings are
         # unavailable, so document insights are still persisted below.

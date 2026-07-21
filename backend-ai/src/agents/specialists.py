@@ -23,9 +23,15 @@ def _resolve(name: str) -> tuple[Optional[str], dict]:
 
 @tool
 def company_analysis(company: str) -> dict:
-    """Deep-dive a single company: financials, valuation ratios, and risk flags.
+    """Deep-dive a single company: financials, valuation ratios, risk flags, and
+    insights extracted from its concalls/annual reports.
     Input: a company name or ticker (e.g. 'TCS', 'Asian Paints')."""
-    from src.agents.tools.financial import calculate_ratios, detect_risk_flags, get_latest_financials
+    from src.agents.tools.financial import (
+        calculate_ratios,
+        detect_risk_flags,
+        fetch_company_insights,
+        get_latest_financials,
+    )
 
     company_id, info = _resolve(company)
     if not company_id:
@@ -35,6 +41,7 @@ def company_analysis(company: str) -> dict:
         "financials": get_latest_financials.invoke({"company_id": company_id, "periods": 4}),
         "ratios": calculate_ratios.invoke({"company_id": company_id}),
         "risk_flags": detect_risk_flags.invoke({"company_id": company_id}),
+        "document_insights": fetch_company_insights(company_id),
     }
 
 

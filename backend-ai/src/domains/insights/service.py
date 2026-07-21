@@ -21,6 +21,7 @@ def _serialize(row: CompanyInsight, company: Optional[Company], filing: Optional
         "insight_type": row.insight_type,
         "title": row.title,
         "detail": row.detail,
+        "plain_summary": row.plain_summary,
         "severity": row.severity,
         "source_quote": row.source_quote,
         "period": row.period,
@@ -31,15 +32,45 @@ def _serialize(row: CompanyInsight, company: Optional[Company], filing: Optional
     }
 
 
+def _title_tokens(title: str) -> set[str]:
+    return {w for w in title.lower().split() if len(w) > 3}
+
+
+def _dedupe(rows: list[CompanyInsight]) -> list[CompanyInsight]:
+    """Drop near-duplicate insights repeated across a company's documents.
+
+    Two insights are duplicates when they share company + type and their titles
+    overlap heavily (Jaccard > 0.6). The newest is kept (rows must be sorted
+    newest-first within each severity beforehand).
+    """
+    kept: list[CompanyInsight] = []
+    seen: list[tuple] = []  # (company_id, type, tokens)
+    for r in rows:
+        tokens = _title_tokens(r.title)
+        dup = False
+        for cid, itype, kt in seen:
+            if cid == r.company_id and itype == r.insight_type and tokens and kt:
+                inter = len(tokens & kt)
+                union = len(tokens | kt)
+                if union and inter / union > 0.6:
+                    dup = True
+                    break
+        if not dup:
+            kept.append(r)
+            seen.append((r.company_id, r.insight_type, tokens))
+    return kept
+
+
 class InsightsService:
     def __init__(self, db: Session):
         self.db = db
 
     def _rank(self, rows: list[CompanyInsight]) -> list[CompanyInsight]:
-        return sorted(
+        ranked = sorted(
             rows,
             key=lambda r: (_SEVERITY_RANK.get(r.severity, 1), -(r.created_at.timestamp() if r.created_at else 0)),
         )
+        return _dedupe(ranked)
 
     def company_insights(self, company_id: UUID, limit: int = 50) -> dict[str, Any]:
         company = self.db.query(Company).filter(Company.id == company_id).first()
@@ -87,8 +118,10 @@ class InsightsService:
             q = q.filter(Company.sector == sector)
 
         pairs = q.order_by(CompanyInsight.created_at.desc()).limit(limit * 2).all()
-        # Rank by severity then recency, then cap.
+        # Rank by severity then recency, dedupe near-repeats, then cap.
         pairs.sort(
             key=lambda p: (_SEVERITY_RANK.get(p[0].severity, 1), -(p[0].created_at.timestamp() if p[0].created_at else 0))
         )
-        return [_serialize(row, company, None) for row, company in pairs[:limit]]
+        by_id = {p[0].id: p[1] for p in pairs}
+        deduped = _dedupe([p[0] for p in pairs])
+        return [_serialize(row, by_id[row.id], None) for row in deduped[:limit]]

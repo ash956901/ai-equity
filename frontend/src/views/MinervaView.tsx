@@ -199,7 +199,24 @@ export function MinervaView() {
             scrollToBottom();
           },
           onDone: (data) => {
-            const sources = (data.sources ?? []).map((s) => String((s as Record<string, unknown>).kind ?? (s as Record<string, unknown>).name ?? "")).filter(Boolean);
+            // Humanised source labels so beginners see where the answer came from.
+            const SOURCE_LABEL: Record<string, string> = {
+              company: "Company financials",
+              news: "Recent news",
+              filings: "Filings & concalls",
+              portfolio: "Your portfolio",
+              thematic: "Theme search",
+              causal: "Causal analysis",
+              causal_snapshot: "Causal analysis",
+              web: "Web search",
+              specialist: "Specialist analysis",
+            };
+            const sources = Array.from(new Set(
+              (data.sources ?? [])
+                .map((s) => String((s as Record<string, unknown>).kind ?? (s as Record<string, unknown>).name ?? ""))
+                .filter(Boolean)
+                .map((k) => SOURCE_LABEL[k] ?? k)
+            ));
             patchMsg(threadId, asstId, (m) => ({ ...m, streaming: false, sources }));
             if (data.session_id) patchThread(threadId, (t) => ({ ...t, backendSessionId: data.session_id }));
           },

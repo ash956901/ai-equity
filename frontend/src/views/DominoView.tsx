@@ -124,7 +124,7 @@ function FlowGraph({ chain }: { chain: CausalChainItem }) {
   return (
     // Outer flexbox centres the whole flow vertically; inner group aligns the
     // circles to the top so the dashed path lines up across nodes.
-    <div className="flex-1 flex items-center justify-center py-lg min-h-[300px]">
+    <div className="flex-1 flex flex-col items-center justify-center py-lg min-h-[300px] gap-md">
       <div className="flex flex-col md:flex-row items-center md:items-start w-full">
         {nodes.map((n, i) => (
           <Fragment key={i}>
@@ -133,6 +133,22 @@ function FlowGraph({ chain }: { chain: CausalChainItem }) {
           </Fragment>
         ))}
       </div>
+      {(chain.affected_companies?.length ?? 0) > 0 && (
+        <div className="flex flex-wrap items-center justify-center gap-sm">
+          <span className="text-label-caps font-label-caps text-on-surface-variant">
+            Stocks likely affected
+          </span>
+          {chain.affected_companies!.map((c) => (
+            <span
+              key={c.id}
+              title={c.name}
+              className="text-caption font-medium text-on-surface bg-bg-2 border border-outline-variant rounded-full px-sm py-[2px]"
+            >
+              {c.ticker || c.name}
+            </span>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -228,6 +244,15 @@ function MinervaSynthesis({ chain }: { chain: CausalChainItem | null }) {
             <p key={i}>
               <span className={`font-semibold ${h.direction === "positive" ? "text-positive" : h.direction === "negative" ? "text-negative" : "text-on-surface"}`}>{h.sector}</span>{" "}
               <span className="text-on-surface-variant">— {h.reasoning}</span>
+              {(h.companies?.length ?? 0) > 0 && (
+                <span className="block mt-0.5">
+                  {h.companies!.slice(0, 3).map((c) => (
+                    <span key={c.id} title={c.name} className="inline-block text-caption text-on-surface bg-bg-1 border border-outline-variant rounded-full px-sm py-[1px] mr-xs">
+                      {c.ticker || c.name}
+                    </span>
+                  ))}
+                </span>
+              )}
             </p>
           ))}
           {data.opportunities.length > 0 && (

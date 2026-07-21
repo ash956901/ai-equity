@@ -127,6 +127,65 @@ def detect_risk_flags(company_id: str) -> List[Dict[str, Any]]:
                     "metric": metric,
                     "value": val,
                 })
+
+        # Merge document-derived red flags (from concalls/annual reports) so the
+        # agent sees qualitative warnings, not just ratio breaches.
+        from src.db.models import CompanyInsight
+
+        doc_flags = (
+            db.query(CompanyInsight)
+            .filter(
+                CompanyInsight.company_id == uid,
+                CompanyInsight.insight_type.in_(["red_flag", "risk"]),
+            )
+            .order_by(CompanyInsight.created_at.desc())
+            .limit(6)
+            .all()
+        )
+        for f in doc_flags:
+            flags.append({
+                "flag": "DOCUMENT_" + f.insight_type.upper(),
+                "severity": f.severity,
+                "description": f.title + (f" — {f.detail}" if f.detail else ""),
+                "source": f.doc_type or "filing",
+            })
         return flags
+    finally:
+        db.close()
+
+
+def fetch_company_insights(company_id: str, limit: int = 10) -> List[Dict[str, Any]]:
+    """Document-derived insights for a company (concalls/annual reports/filings).
+
+    Plain helper (not a LangChain tool) used by the company specialist and the
+    fast-path company snapshot so Minerva can ground answers in extracted insights.
+    """
+    from src.db.models import CompanyInsight
+
+    db = next(get_db())
+    try:
+        try:
+            uid = resolve_company_id(company_id, db)
+        except ValueError:
+            return []
+        rows = (
+            db.query(CompanyInsight)
+            .filter(CompanyInsight.company_id == uid)
+            .order_by(CompanyInsight.created_at.desc())
+            .limit(limit)
+            .all()
+        )
+        return [
+            {
+                "type": r.insight_type,
+                "severity": r.severity,
+                "title": r.title,
+                "detail": r.detail,
+                "plain": r.plain_summary,
+                "source": f"{r.doc_type or 'filing'}{' ' + r.period if r.period else ''}",
+                "quote": r.source_quote,
+            }
+            for r in rows
+        ]
     finally:
         db.close()

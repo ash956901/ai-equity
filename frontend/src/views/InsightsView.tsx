@@ -162,12 +162,11 @@ export function InsightCard({ it, onOpen }: { it: Insight; onOpen: () => void })
       </div>
 
       <div className="text-card-title font-semibold text-on-surface leading-snug">{it.title}</div>
-      {meta.meaning && (
-        <p className="text-body-sm text-on-surface-variant flex items-start gap-1.5">
-          <Icon name="lightbulb" className="text-[15px] text-primary shrink-0 mt-0.5" />
-          <span>{meta.meaning}</span>
-        </p>
-      )}
+      {/* Prefer the per-insight plain-English takeaway; fall back to the generic type meaning. */}
+      <p className="text-body-sm text-on-surface flex items-start gap-1.5">
+        <Icon name="lightbulb" className="text-[15px] text-primary shrink-0 mt-0.5" />
+        <span>{it.plain_summary || meta.meaning}</span>
+      </p>
       {it.detail && <p className="text-body-sm text-on-surface-variant">{it.detail}</p>}
       {it.source_quote && (
         <blockquote className="text-body-sm text-on-surface-variant border-l-2 border-outline pl-md italic">

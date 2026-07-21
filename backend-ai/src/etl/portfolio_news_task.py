@@ -91,6 +91,39 @@ def _generate_causal_insight(
     )
     db.add(insight)
 
+    # Mirror material news into the Investor Signals feed (CompanyInsight) so
+    # internet articles surface alongside concall/filing insights. Deduped by title.
+    from src.db.models import CompanyInsight
+
+    title = news_title[:500]
+    exists = (
+        db.query(CompanyInsight)
+        .filter(CompanyInsight.company_id == company.id, CompanyInsight.title == title)
+        .first()
+    )
+    if not exists:
+        itype = (
+            "risk" if impact_direction == "negative"
+            else "opportunity" if impact_direction == "positive"
+            else "hidden_signal"
+        )
+        plain = (
+            "Worth keeping an eye on: news that could weigh on this stock."
+            if impact_direction == "negative"
+            else "A positive sign: news that could help this stock."
+            if impact_direction == "positive"
+            else "Good to know: news that may affect this company."
+        )
+        db.add(CompanyInsight(
+            company_id=company.id,
+            insight_type=itype,
+            title=title,
+            detail=(explanation or "")[:1000] or None,
+            plain_summary=plain,
+            severity="medium",
+            doc_type="news",
+        ))
+
 
 @app.task(bind=True, name="etl.check_portfolio_news")
 def check_portfolio_news(self):

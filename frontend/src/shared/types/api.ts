@@ -434,6 +434,7 @@ export interface CausalChainItem {
   hop3_relationship: string | null;
   confidence: number;
   current_commodity_change_pct?: number;
+  affected_companies?: { id: string; name: string; ticker?: string | null }[];
 }
 
 export interface CausalMarketData {
@@ -485,6 +486,7 @@ export interface CausalLLMImpact {
   direction: "positive" | "negative" | "neutral";
   reasoning: string;
   confidence: number;
+  companies?: { id: string; name: string; ticker?: string | null }[];
 }
 
 export interface CausalLLMData {

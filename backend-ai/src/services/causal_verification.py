@@ -35,6 +35,8 @@ COMMODITY_TICKERS: dict[str, str] = {
     "aluminum": "ALI=F",
     "sugar_11": "SB=F",
     "USDINR": "INR=X",
+    "BRENT_CRUDE_USD": "BZ=F",   # Brent future
+    "XAG": "SI=F",               # silver future
 }
 
 # SectorExposure.sector → NSE sector-index ticker (best available proxy).
@@ -52,6 +54,9 @@ SECTOR_INDEX_TICKERS: dict[str, str] = {
     "Oil & Gas": "^CNXENERGY",
     "Power": "^CNXENERGY",
     "Real Estate": "^CNXREALTY",
+    "Consumer Durables": "^CNXCONSUM",   # Nifty Consumption
+    "Media & Entertainment": "^CNXMEDIA",
+    "Public Sector": "^CNXPSE",
 }
 
 

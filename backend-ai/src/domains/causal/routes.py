@@ -60,6 +60,33 @@ def get_market_causal(db: Session = Depends(get_db)) -> dict[str, Any]:
     )
     chains = db.query(CausalChain).filter(CausalChain.is_active.is_(True)).all()
 
+    # Resolve each chain's terminal sector to concrete listed companies so the
+    # Domino UI can show "…and these are the stocks affected".
+    terminal_sectors = {c.hop3_target or c.hop2_target for c in chains if (c.hop3_target or c.hop2_target)}
+    sector_companies: dict[str, list[dict[str, Any]]] = {}
+    for sector in terminal_sectors:
+        rows = db.query(Company).filter(Company.sector == sector).limit(4).all()
+        if not rows:
+            # Sector names in chains don't always match Company.sector exactly —
+            # fall back to industry and fuzzy sector match.
+            like = f"%{sector}%"
+            rows = (
+                db.query(Company)
+                .filter((Company.industry.ilike(like)) | (Company.sector.ilike(like)))
+                .limit(4)
+                .all()
+            )
+
+        def _display_ticker(r: Company) -> str | None:
+            # Numeric BSE scrip codes mean nothing to a beginner — prefer the name then.
+            t = r.ticker_nse or r.ticker_bse
+            return t if t and not t.isdigit() else None
+
+        sector_companies[sector] = [
+            {"id": str(r.id), "name": r.name, "ticker": _display_ticker(r)}
+            for r in rows
+        ]
+
     chain_list = []
     for c in chains:
         change_pct = commodity_changes.get(c.hop1_target, {}).get("change_pct", 0.0) or 0.0
@@ -76,6 +103,7 @@ def get_market_causal(db: Session = Depends(get_db)) -> dict[str, Any]:
             "hop3_relationship": c.hop3_relationship,
             "confidence": c.confidence,
             "current_commodity_change_pct": change_pct,
+            "affected_companies": sector_companies.get(c.hop3_target or c.hop2_target or "", []),
         })
 
     return {

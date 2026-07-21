@@ -68,7 +68,12 @@ def monitor_geopolitical_events(self):
             from src.integrations.event_impact_classifier import get_event_classifier
             
             classifier = get_event_classifier()
-            significant = classifier.classify_batch(all_events)
+            # LLM classification first (grounded to known DB sectors); keyword fallback.
+            try:
+                significant = classifier.classify_batch_llm(all_events)
+            except Exception:
+                logger.warning("LLM event classification failed; falling back to keywords", exc_info=True)
+                significant = classifier.classify_batch(all_events)
             
             for event_data in significant:
                 # Check if already exists

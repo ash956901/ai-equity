@@ -36,6 +36,7 @@ Extract the following information in strict JSON format:
    - "detail": one sentence explaining the insight and why it matters.
    - "severity": "low", "medium", or "high".
    - "quote": a short verbatim snippet (< 30 words) from the text supporting it, or "" if none.
+   - "plain": ONE sentence for a complete beginner investor — no jargon — saying what this means for them in cautious, non-advisory wording. Start with one of: "A reason for caution:", "A positive sign:", "Worth keeping an eye on:", "Good to know:". E.g. "A reason for caution: the company is borrowing more, which can squeeze future profits."
    Prioritise: changes in guidance/tone vs prior periods, margin/receivables/debt/contingent-liability warning signs, and non-obvious dependencies or opportunities. Leave empty only if truly nothing notable.
 
 Filing Text:

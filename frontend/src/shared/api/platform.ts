@@ -453,6 +453,7 @@ export interface Insight {
   insight_type: string;
   title: string;
   detail?: string | null;
+  plain_summary?: string | null;
   severity: string;
   source_quote?: string | null;
   period?: string | null;

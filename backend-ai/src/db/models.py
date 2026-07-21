@@ -164,6 +164,9 @@ class CompanyInsight(Base):
     insight_type: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
     title: Mapped[str] = mapped_column(String(500), nullable=False)
     detail: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    # Beginner-friendly one-liner: what this means for an ordinary investor,
+    # in cautious non-advisory wording (e.g. "A reason for caution: …").
+    plain_summary: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     severity: Mapped[str] = mapped_column(String(16), default="medium")  # low | medium | high
     source_quote: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     period: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)

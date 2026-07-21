@@ -76,7 +76,10 @@ class VectorService:
                     "filing_id": hit.payload.get("filing_id"),
                     "filing_type": hit.payload.get("filing_type"),
                     "filing_date": hit.payload.get("filing_date"),
+                    # ETL chunks carry `section` (MD&A, Risk Factors…); user uploads carry page_number.
+                    "section": hit.payload.get("section"),
                     "page_number": hit.payload.get("page_number"),
+                    "insight_summary": hit.payload.get("insight_summary"),
                 }
                 for hit in results
             ]
