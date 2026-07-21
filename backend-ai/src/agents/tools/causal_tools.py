@@ -479,6 +479,78 @@ def get_affected_sectors(commodity: str) -> list[str]:
 # New LLM-powered causal chain analysis tool
 # ---------------------------------------------------------------------------
 
+def _companies_for_sectors(sectors: list[str], per_sector: int = 4) -> dict[str, list[dict]]:
+    """Resolve sector names → specific listed companies (event → company join)."""
+    from src.db.database import SessionLocal
+    from src.db.models import Company
+
+    out: dict[str, list[dict]] = {}
+    db = SessionLocal()
+    try:
+        for sector in {s for s in sectors if s}:
+            rows = db.query(Company).filter(Company.sector == sector).limit(per_sector).all()
+            out[sector] = [
+                {"name": c.name, "ticker": c.ticker_nse or c.ticker_bse, "id": str(c.id)}
+                for c in rows
+            ]
+    finally:
+        db.close()
+    return out
+
+
+def _persist_llm_edges(result: dict, commodity_data: dict) -> int:
+    """Persist LLM-discovered impacts as new SectorExposure edges (source=llm_mined).
+
+    Conservative: attaches each impact to the trigger's dominant commodity, tags it
+    llm_mined, and skips sectors already covered for that commodity — so the daily
+    verifier can later score it and the graph grows from its own reasoning.
+    """
+    from src.db.database import SessionLocal
+    from src.db.models import SectorExposure
+
+    commodities = commodity_data.get("commodities", {}) or {}
+    if not commodities:
+        return 0
+    dominant = max(commodities.items(), key=lambda kv: abs((kv[1] or {}).get("change_pct", 0) or 0))[0]
+
+    db = SessionLocal()
+    added = 0
+    try:
+        for key in ("primary_impacts", "hidden_impacts"):
+            for imp in result.get(key, []) or []:
+                if not isinstance(imp, dict):
+                    continue
+                sector = imp.get("sector")
+                direction = imp.get("direction")
+                if not sector or direction not in ("positive", "negative"):
+                    continue
+                exists = (
+                    db.query(SectorExposure)
+                    .filter(SectorExposure.sector == sector, SectorExposure.commodity == dominant)
+                    .first()
+                )
+                if exists:
+                    continue
+                db.add(SectorExposure(
+                    sector=sector,
+                    commodity=dominant,
+                    dependency_type="llm_inferred",
+                    impact_direction=direction,
+                    impact_magnitude="medium",
+                    source="llm_mined",
+                    is_active=True,
+                ))
+                added += 1
+        if added:
+            db.commit()
+    except Exception:
+        db.rollback()
+        logger.exception("Persisting LLM causal edges failed")
+    finally:
+        db.close()
+    return added
+
+
 def analyze_causal_chain_with_llm(trigger: str) -> dict[str, Any]:
     """Use LLM reasoning to discover full causal chain including hidden secondary impacts.
 
@@ -582,6 +654,24 @@ Return ONLY a valid JSON object with these keys:
         result = json.loads(content.strip())
         result["trigger"] = trigger
         result["grounded_sectors"] = known_sectors
+
+        # Event → company: resolve each impacted sector to specific listed companies.
+        impact_lists = [result.get("primary_impacts"), result.get("hidden_impacts")]
+        sectors = [
+            imp.get("sector")
+            for lst in impact_lists
+            for imp in (lst or [])
+            if isinstance(imp, dict) and imp.get("sector")
+        ]
+        companies_map = _companies_for_sectors(sectors)
+        for lst in impact_lists:
+            for imp in lst or []:
+                if isinstance(imp, dict) and imp.get("sector"):
+                    imp["companies"] = companies_map.get(imp["sector"], [])
+
+        # Grow the graph: persist the discovered edges (verified later).
+        result["edges_persisted"] = _persist_llm_edges(result, commodity_data)
+
         cache.set(cache_key, result)
         return result
     except Exception as e:
