@@ -13,13 +13,16 @@ import {
   fetchCompanyFinancials,
   fetchCompanyRatios,
   fetchHistoricalPrices,
+  fetchCompanyInsights,
   streamChatQuery,
   type AICompany,
   type AIQuote,
   type AIFinancials,
   type AIRatios,
   type AIHistoricalPrice,
+  type CompanyInsights,
 } from "../lib/api";
+import { typeMeta } from "./InsightsView";
 import { Card, CardHeader, Chip, Skeleton } from "../components/ui";
 import { Icon } from "../components/Icon";
 import { Markdown } from "../components/Markdown";
@@ -172,6 +175,7 @@ function Workspace({
             <PriceChart companyId={companyId} />
             <KpiRow quote={quote} detail={detail} ratios={ratios} loading={loading} />
             <FinancialsCard financials={financials} ratios={ratios} loading={loading} />
+            <InsightsPanel companyId={companyId} />
           </div>
 
           {/* Right / Minerva */}
@@ -436,6 +440,86 @@ function FinancialsCard({
           </table>
         </div>
       )}
+      </div>
+    </Card>
+  );
+}
+
+function InsightsPanel({ companyId }: { companyId: string }) {
+  const [data, setData] = useState<CompanyInsights | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setData(null);
+    fetchCompanyInsights(companyId, 12)
+      .then((d) => !cancelled && setData(d))
+      .catch(() => !cancelled && setData(null))
+      .finally(() => !cancelled && setLoading(false));
+    return () => {
+      cancelled = true;
+    };
+  }, [companyId]);
+
+  return (
+    <Card>
+      <CardHeader
+        title="Document Insights"
+        icon="lightbulb"
+        right={
+          data && data.digest.total > 0 ? (
+            <span className="text-caption text-on-surface-variant">{data.digest.total} extracted</span>
+          ) : undefined
+        }
+      />
+      <div className="px-lg pb-lg">
+        {loading ? (
+          <div className="space-y-sm">
+            <Skeleton className="h-4 w-full" />
+            <Skeleton className="h-4 w-5/6" />
+          </div>
+        ) : !data || data.insights.length === 0 ? (
+          <p className="text-body-sm text-on-surface-variant">
+            No document insights yet. Minerva enriches concalls & filings as they're ingested.
+          </p>
+        ) : (
+          <ul className="space-y-md">
+            {data.insights.map((it) => {
+              const meta = typeMeta(it.insight_type);
+              return (
+                <li key={it.id} className="flex gap-md">
+                  <Icon
+                    name={meta.icon}
+                    className={`text-[18px] shrink-0 mt-0.5 ${
+                      it.severity === "high"
+                        ? "text-negative"
+                        : it.severity === "medium"
+                        ? "text-warning"
+                        : "text-on-surface-variant"
+                    }`}
+                  />
+                  <div className="min-w-0">
+                    <div className="text-body-md text-on-surface font-medium">{it.title}</div>
+                    {it.detail && (
+                      <div className="text-body-sm text-on-surface-variant mt-0.5">{it.detail}</div>
+                    )}
+                    {it.source_quote && (
+                      <div className="text-caption text-on-surface-variant italic mt-1 border-l-2 border-outline-variant pl-sm">
+                        “{it.source_quote}”
+                      </div>
+                    )}
+                    <div className="text-caption text-on-surface-variant mt-1">
+                      {meta.label}
+                      {it.doc_type ? ` · ${it.doc_type}` : ""}
+                      {it.period ? ` · ${it.period}` : ""}
+                    </div>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        )}
       </div>
     </Card>
   );

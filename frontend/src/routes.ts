@@ -7,6 +7,7 @@ export type ViewKey =
   | "portfolio"
   | "watchlist"
   | "domino"
+  | "insights"
   | "filings"
   | "news"
   | "simulator"
@@ -29,6 +30,7 @@ export const NAV: NavItem[] = [
   { key: "portfolio", label: "Portfolio", icon: "account_balance_wallet", group: "research" },
   { key: "watchlist", label: "Watchlist", icon: "visibility", group: "research" },
   { key: "domino", label: "Domino Effect", icon: "account_tree", group: "research" },
+  { key: "insights", label: "Insights", icon: "lightbulb", group: "research" },
   { key: "filings", label: "Filings", icon: "description", group: "research" },
   { key: "news", label: "News", icon: "newspaper", group: "research" },
   { key: "simulator", label: "Simulator", icon: "query_stats", group: "tools" },

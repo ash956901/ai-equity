@@ -439,3 +439,57 @@ export async function fetchSimHistory(userId: string): Promise<{ trades: SimClos
 export async function fetchSimStats(userId: string): Promise<SimStats> {
   return aiGet<SimStats>(`/simulator/stats?user_id=${userId}`);
 }
+
+// ------------------------------------------------------------------ //
+//  Document insights                                                   //
+// ------------------------------------------------------------------ //
+
+export interface Insight {
+  id: string;
+  company_id: string;
+  company_name?: string | null;
+  ticker?: string | null;
+  sector?: string | null;
+  insight_type: string;
+  title: string;
+  detail?: string | null;
+  severity: string;
+  source_quote?: string | null;
+  period?: string | null;
+  doc_type?: string | null;
+  filing_id?: string | null;
+  filing_title?: string | null;
+  created_at?: string | null;
+}
+
+export interface CompanyInsights {
+  company_id: string;
+  company_name?: string | null;
+  digest: {
+    total: number;
+    by_type: Record<string, number>;
+    by_severity: Record<string, number>;
+  };
+  insights: Insight[];
+}
+
+export async function fetchInsightsFeed(opts?: {
+  insight_type?: string;
+  severity?: string;
+  sector?: string;
+  limit?: number;
+}): Promise<Insight[]> {
+  const p = new URLSearchParams();
+  if (opts?.insight_type) p.set("insight_type", opts.insight_type);
+  if (opts?.severity) p.set("severity", opts.severity);
+  if (opts?.sector) p.set("sector", opts.sector);
+  p.set("limit", String(opts?.limit ?? 60));
+  return aiGet<Insight[]>(`/insights/feed?${p.toString()}`);
+}
+
+export async function fetchCompanyInsights(
+  companyId: string,
+  limit = 50
+): Promise<CompanyInsights> {
+  return aiGet<CompanyInsights>(`/insights/company/${companyId}?limit=${limit}`);
+}

@@ -11,6 +11,7 @@ import { CompareView } from "./views/CompareView";
 import { WatchlistView } from "./views/WatchlistView";
 import { NewsView } from "./views/NewsView";
 import { FilingsView } from "./views/FilingsView";
+import { InsightsView } from "./views/InsightsView";
 import { SimulatorView } from "./views/SimulatorView";
 import { ProfileView } from "./views/ProfileView";
 import { SettingsView } from "./views/SettingsView";
@@ -63,6 +64,8 @@ export default function App() {
         return <NewsView />;
       case "filings":
         return <FilingsView />;
+      case "insights":
+        return <InsightsView onOpenCompany={openCompany} />;
       case "simulator":
         return <SimulatorView />;
       case "profile":
