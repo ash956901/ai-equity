@@ -23,11 +23,15 @@ help:
 infra:
 	brew services start redis
 	brew services start ollama
-	@echo "Redis + Ollama started. (Ensure 'ollama pull nomic-embed-text' has been run once.)"
+	@echo "Starting Docker (colima) + Qdrant..."
+	colima status >/dev/null 2>&1 || colima start
+	docker-compose up -d qdrant
+	@echo "Redis + Ollama + Qdrant started. (Ensure 'ollama pull nomic-embed-text' has been run once.)"
 
 infra-stop:
 	brew services stop redis || true
 	brew services stop ollama || true
+	docker-compose stop qdrant || true
 
 backend:
 	cd $(BACKEND) && .venv/bin/python -m uvicorn src.main:app --host 0.0.0.0 --port 8001 --reload
@@ -52,6 +56,6 @@ health:
 	@printf "Frontend :5173   " && (curl -s -o /dev/null -w "%{http_code}\n" -m 3 http://localhost:5173 || echo DOWN)
 	@printf "Redis :6379      " && (nc -z -G2 localhost 6379 && echo OPEN || echo DOWN)
 	@printf "Ollama :11434    " && (curl -s -o /dev/null -w "%{http_code}\n" -m 3 http://localhost:11434/api/tags || echo DOWN)
-	@printf "Qdrant :6333     " && (nc -z -G2 localhost 6333 && echo OPEN || echo "DOWN (optional)")
+	@printf "Qdrant :6333     " && (nc -z -G2 localhost 6333 && echo OPEN || echo "DOWN (run: docker-compose up -d qdrant)")
 	@printf "Celery worker    " && (pgrep -f "celery.*worker" >/dev/null && echo UP || echo DOWN)
 	@printf "Celery beat      " && (pgrep -f "celery.*beat" >/dev/null && echo UP || echo DOWN)

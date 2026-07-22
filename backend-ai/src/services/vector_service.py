@@ -169,7 +169,7 @@ class VectorService:
                 if cid not in company_matches:
                     company_matches[cid] = {
                         "company_id": cid,
-                        "company_name": hit.payload.get("company", "Unknown"),
+                        "company_name": hit.payload.get("company_name") or hit.payload.get("company") or "Unknown",
                         "max_score": hit.score,
                         "match_count": 1,
                         "evidence": [hit.payload.get("text", "")]
